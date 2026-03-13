@@ -1,6 +1,6 @@
 {
   "name": "skilleval",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Evaluation framework for Agent Skills — test that AI agents correctly discover and use your skills",
   "main": "dist/skilleval.js",
   "types": "dist/skilleval.d.ts",

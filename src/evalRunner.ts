@@ -6,6 +6,7 @@ import {
 } from './types';
 import { ResolvedGrader } from './core/config.types';
 import { getGrader } from './graders';
+import { fmt } from './utils/cli';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -82,7 +83,6 @@ export class EvalRunner {
         parallel: number = 1
     ): Promise<EvalReport> {
         const taskName = path.basename(taskPath);
-        console.log(`Starting eval for task: ${taskName} (${numTrials} trials${parallel > 1 ? `, ${parallel} parallel` : ''})`);
 
         // One-time image build (if provider supports it)
         if (this.provider.prepare) {
@@ -163,7 +163,7 @@ export class EvalRunner {
         let commandCount = 0;
         const startTime = Date.now();
 
-        process.stdout.write(`  Trial ${index + 1}/${total} `);
+        process.stdout.write(`    ${fmt.dim(`${index + 1}/${total}`)}  `);
         const workspace = await this.provider.setup(taskPath, skillsPaths, opts, env);
 
         try {
@@ -175,7 +175,7 @@ export class EvalRunner {
                 instruction
             });
 
-            process.stdout.write('▸ ');
+            process.stdout.write(`${fmt.dim('running')} `);
             const loggedRunCommand = async (cmd: string) => {
                 const result = await this.provider.runCommand(workspace, cmd, env);
                 commandCount++;
@@ -260,8 +260,8 @@ export class EvalRunner {
                 .filter(e => e.type === 'agent_result' || e.type === 'command')
                 .reduce((sum, e) => sum + estimateTokens((e.output || '') + (e.stdout || '') + (e.stderr || '')), 0);
 
-            const status = reward >= 0.5 ? '✓' : '✗';
-            console.log(`${status} reward=${reward.toFixed(2)} (${(duration_ms / 1000).toFixed(1)}s, ${commandCount} cmds, ~${input_tokens + output_tokens} tokens)`);
+            const status = reward >= 0.5 ? fmt.pass('ok') : fmt.fail('fail');
+            process.stdout.write(`\r    ${fmt.dim(`${(index+1)}/${total}`.padEnd(6))} ${status}  ${fmt.bold(reward.toFixed(2))}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}  ${fmt.dim(commandCount + ' cmds')}\n`);
 
             return {
                 trial_id: index + 1,
@@ -276,7 +276,7 @@ export class EvalRunner {
         } catch (err: any) {
             const duration_ms = Date.now() - startTime;
             const errorMsg = err?.message || String(err);
-            console.log(`✗ FAILED: ${errorMsg} (${(duration_ms / 1000).toFixed(1)}s)`);
+            process.stdout.write(`\r    ${fmt.dim(`${(index+1)}/${total}`.padEnd(6))} ${fmt.fail('FAIL')}  ${errorMsg.substring(0, 50)}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}\n`);
 
             let diagnostics = '';
             if (this.provider.diagnose) {
@@ -352,6 +352,6 @@ export class EvalRunner {
         const filePath = path.join(this.logDir, fileName);
 
         await fs.writeJSON(filePath, report, { spaces: 2 });
-        console.log(`Report saved to: ${filePath}`);
+        console.log(`    ${fmt.dim('saved')} ${fileName}`);
     }
 }

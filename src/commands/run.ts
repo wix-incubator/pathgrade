@@ -15,6 +15,7 @@ import { createAgent } from '../agents/registry';
 import { BaseAgent, EvalReport } from '../types';
 import { ResolvedTask } from '../core/config.types';
 import { parseEnvFile } from '../utils/env';
+import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
 
 interface RunOptions {
     task?: string;       // run specific task by name
@@ -37,6 +38,8 @@ async function loadEnvFile(filePath: string): Promise<Record<string, string>> {
 }
 
 export async function runEvals(dir: string, opts: RunOptions) {
+    console.log(`\n${fmt.bold('skilleval')}\n`);
+
     // Load eval.yaml
     const config = await loadEvalConfig(dir);
 
@@ -48,7 +51,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
     if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
     if (Object.keys(rootEnv).length > 0) {
-        console.log(`  Loaded .env: ${Object.keys(rootEnv).join(', ')}`);
+        kv('env', Object.keys(rootEnv).join(', '));
     }
 
     // Detect skills
@@ -61,15 +64,15 @@ export async function runEvals(dir: string, opts: RunOptions) {
         }
         if (stat && await fs.pathExists(skillDir)) {
             skillsPaths = [skillDir];
-            console.log(`  Skill: ${path.relative(dir, skillDir) || '.'}`);
+            kv('skill', path.relative(dir, skillDir) || '.');
         } else {
-            console.error(`  ⚠ Skill path not found: ${config.skill}`);
+            console.error(`  ${fmt.red('warning')}  skill path not found: ${config.skill}`);
         }
     } else {
         const skills = await detectSkills(dir);
         skillsPaths = skills.map(s => s.path);
         if (skills.length > 0) {
-            console.log(`  Skills: ${skills.map(s => s.name).join(', ')}`);
+            kv('skills', skills.map(s => s.name).join(', '));
         }
     }
 
@@ -78,8 +81,8 @@ export async function runEvals(dir: string, opts: RunOptions) {
     if (opts.task) {
         tasksToRun = config.tasks.filter(t => t.name === opts.task);
         if (tasksToRun.length === 0) {
-            console.error(`  ❌ Task "${opts.task}" not found in eval.yaml`);
-            console.log(`  Available tasks: ${config.tasks.map(t => t.name).join(', ')}`);
+            console.error(`  ${fmt.red('error')}  task "${opts.task}" not found`);
+            console.log(`  ${fmt.dim('available:')} ${config.tasks.map(t => t.name).join(', ')}`);
             throw new Error(`Task "${opts.task}" not found`);
         }
     }
@@ -90,7 +93,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
     const outputDir = path.join(outputBase, skillName);
     const resultsDir = path.join(outputDir, 'results');
     await fs.ensureDir(resultsDir);
-    console.log(`  Output: ${outputDir}`);
+    kv('output', outputDir);
 
     // Track CI results
     const reports: EvalReport[] = [];
@@ -141,11 +144,11 @@ export async function runEvals(dir: string, opts: RunOptions) {
         if (opts.validate) {
             // Validation mode
             if (!resolved.solution) {
-                console.error(`  ❌ Task "${resolved.name}" has no solution defined.`);
+                console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no solution defined`);
                 continue;
             }
 
-            console.log(`\n  🔍 Validating "${resolved.name}" with reference solution...\n`);
+            header(`validate: ${resolved.name}`);
 
             const solveAgent = {
                 async run(_instruction: string, _workspace: string, runCommand: any) {
@@ -157,60 +160,49 @@ export async function runEvals(dir: string, opts: RunOptions) {
             const report = await runner.runEval(solveAgent, tmpTaskDir, skillsPaths, evalOpts, 1, env);
             const passed = report.trials[0].reward >= 0.5;
 
-            console.table(report.trials[0].grader_results.map(gr => ({
-                Grader: gr.grader_type,
-                Score: gr.score.toFixed(2),
-                Weight: gr.weight,
+            validationResult(passed, report.trials[0].reward, report.trials[0].grader_results.map(gr => ({
+                type: gr.grader_type,
+                score: gr.score,
+                details: gr.details
             })));
 
-            for (const gr of report.trials[0].grader_results) {
-                console.log(`  [${gr.grader_type}] ${gr.details}`);
-            }
-
-            console.log(`\n  ${passed ? '✅ Validation PASSED' : '❌ Validation FAILED'} — reward: ${report.trials[0].reward.toFixed(2)}\n`);
             if (!passed) allPassed = false;
         } else {
             // Normal eval mode
             const agent = createAgent(agentName);
 
-            console.log(`\n  🚀 ${resolved.name} | agent=${agentName} provider=${providerName} trials=${trials}${parallel > 1 ? ` parallel=${parallel}` : ''}\n`);
+            header(resolved.name);
+            console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('provider')} ${providerName}  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
+            console.log();
 
             try {
                 const report = await runner.runEval(agent, tmpTaskDir, skillsPaths, evalOpts, trials, env, parallel);
                 reports.push(report);
 
-                // Per-trial summary
-                console.table(report.trials.map(t => ({
-                    Trial: t.trial_id,
-                    Reward: t.reward.toFixed(2),
-                    Duration: (t.duration_ms / 1000).toFixed(1) + 's',
-                    Commands: t.n_commands,
-                    'Tokens (in/out)': `~${t.input_tokens}/${t.output_tokens}`,
-                    Graders: t.grader_results.map(g => `${g.grader_type}:${g.score.toFixed(1)}`).join(' ')
-                })));
+                // Per-trial rows
+                for (const t of report.trials) {
+                    trialRow(
+                        t.trial_id, trials, t.reward,
+                        (t.duration_ms / 1000).toFixed(1) + 's',
+                        t.n_commands,
+                        t.grader_results.map(g => ({ type: g.grader_type, score: g.score }))
+                    );
+                }
 
-                // LLM grader reasoning
+                // LLM grader reasoning (condensed)
                 for (const trial of report.trials) {
                     for (const g of trial.grader_results.filter(g => g.grader_type === 'llm_rubric')) {
-                        console.log(`  Trial ${trial.trial_id} [${g.grader_type}] score=${g.score.toFixed(2)}: ${g.details}`);
+                        console.log(`\n    ${fmt.dim(`trial ${trial.trial_id} llm_rubric:`)} ${g.details.substring(0, 120)}`);
                     }
                 }
 
-                // Summary
-                const presetLabel = opts.preset === 'smoke' ? ' (smoke test)'
-                    : opts.preset === 'reliable' ? ' (reliable pass rate)'
-                        : opts.preset === 'regression' ? ' (regression check)'
-                            : '';
-                console.log(`\n  ── Results${presetLabel} ${'─'.repeat(50)}`);
-                console.log(`  Pass Rate  ${(report.pass_rate * 100).toFixed(1)}%${opts.preset === 'reliable' ? '  ◀ key metric' : ''}`);
-                console.log(`  pass@${trials}    ${(report.pass_at_k * 100).toFixed(1)}%${opts.preset === 'smoke' ? '  ◀ key metric' : ''}`);
-                console.log(`  pass^${trials}    ${(report.pass_pow_k * 100).toFixed(1)}%${opts.preset === 'regression' ? '  ◀ key metric' : ''}\n`);
+                resultsSummary(report.pass_rate, report.pass_at_k, report.pass_pow_k, trials, opts.preset);
 
                 if (report.pass_rate < (opts.threshold ?? config.defaults.threshold)) {
                     allPassed = false;
                 }
             } catch (err) {
-                console.error(`\n  ❌ Evaluation failed: ${err}\n`);
+                console.error(`\n  ${fmt.fail('error')}  evaluation failed: ${err}\n`);
                 allPassed = false;
             }
         }
@@ -223,10 +215,10 @@ export async function runEvals(dir: string, opts: RunOptions) {
     if (opts.ci) {
         const threshold = opts.threshold ?? config.defaults.threshold;
         if (!allPassed) {
-            console.error(`\n  ❌ CI check failed (threshold: ${(threshold * 100).toFixed(0)}%)\n`);
+            console.error(`\n  ${fmt.fail('CI FAILED')}  below threshold ${(threshold * 100).toFixed(0)}%\n`);
             throw new Error('CI check failed');
         }
-        console.log(`\n  ✅ CI check passed (threshold: ${(threshold * 100).toFixed(0)}%)\n`);
+        console.log(`\n  ${fmt.pass('CI PASSED')}  above threshold ${(threshold * 100).toFixed(0)}%\n`);
     }
 }
 
