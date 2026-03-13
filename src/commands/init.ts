@@ -22,13 +22,13 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
     }
   }
 
-  console.log('\n  📝 Initializing eval.yaml...\n');
+  console.log('\nskillgrade init\n');
 
   // Detect skills
   const skills = await detectSkills(dir);
 
   if (skills.length === 0) {
-    console.log('  ⚠  No SKILL.md found. Creating a generic template.');
+    console.log('  No SKILL.md found. Creating a generic template.');
     console.log('     Place a SKILL.md in this directory for better scaffolding.\n');
     await writeTemplate(evalPath, 'my-skill', 'Describe what the agent should do with this skill.');
     return;
@@ -50,23 +50,26 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
   // Try LLM-powered scaffold — auto-detect from available API key
   const geminiKey = process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const llmProvider = geminiKey ? 'gemini' : anthropicKey ? 'anthropic' : null;
-  const llmApiKey = geminiKey || anthropicKey;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const llmProvider = geminiKey ? 'gemini' : anthropicKey ? 'anthropic' : openaiKey ? 'openai' : null;
+  const llmApiKey = geminiKey || anthropicKey || openaiKey;
+
+  const providerLabel: Record<string, string> = { gemini: 'Gemini', anthropic: 'Anthropic', openai: 'OpenAI' };
 
   if (llmProvider && llmApiKey) {
-    console.log(`  🤖 Generating eval tasks with ${llmProvider === 'gemini' ? 'Gemini' : 'Anthropic'}...\n`);
+    console.log(`  Generating eval tasks with ${providerLabel[llmProvider]}...\n`);
     try {
       const config = await generateWithLLM(skills, llmApiKey, llmProvider);
       await fs.writeFile(evalPath, config, 'utf-8');
-      console.log(`  ✅ Created eval.yaml with AI-generated tasks`);
+      console.log(`  Created eval.yaml with AI-generated tasks.`);
       console.log(`     Review and edit the file, then run: skillgrade\n`);
       return;
     } catch (err: any) {
-      console.log(`  ⚠  AI generation failed: ${err.message}`);
+      console.log(`  AI generation failed: ${err.message}`);
       console.log('     Falling back to template.\n');
     }
   } else {
-    console.log('  💡 Set GEMINI_API_KEY or ANTHROPIC_API_KEY for AI-powered eval generation.\n');
+    console.log('  Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for AI-powered eval generation.\n');
   }
 
   // Fallback: template-based scaffold
@@ -92,7 +95,7 @@ async function writeTemplate(evalPath: string, taskName: string, instruction: st
     .replace(/\{\{INSTRUCTION\}\}/g, instruction);
 
   await fs.writeFile(evalPath, result, 'utf-8');
-  console.log(`  ✅ Created eval.yaml`);
+  console.log(`  Created eval.yaml.`);
   console.log(`     Edit the file to define your eval tasks, then run: skillgrade\n`);
 }
 
@@ -130,7 +133,7 @@ function extractInstructionHint(skillMd: string): string {
 async function generateWithLLM(
   skills: Array<{ name: string; skillMd: string }>,
   apiKey: string,
-  provider: 'gemini' | 'anthropic' = 'gemini'
+  provider: 'gemini' | 'anthropic' | 'openai' = 'gemini'
 ): Promise<string> {
   const skillSummaries = skills.map(s =>
     `## Skill: ${s.name}\n\n${s.skillMd}`
@@ -237,6 +240,28 @@ tasks:
     const data = await response.json() as any;
     text = data.content?.[0]?.text;
     if (!text) throw new Error('Empty response from Anthropic API');
+  } else if (provider === 'openai') {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API returned ${response.status}`);
+    }
+
+    const data = await response.json() as any;
+    text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('Empty response from OpenAI API');
   } else {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
       method: 'POST',
