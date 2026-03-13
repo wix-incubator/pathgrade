@@ -6,7 +6,7 @@ import {
 } from './types';
 import { ResolvedGrader } from './core/config.types';
 import { getGrader } from './graders';
-import { fmt } from './utils/cli';
+import { fmt, Spinner } from './utils/cli';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -86,7 +86,14 @@ export class EvalRunner {
 
         // One-time image build (if provider supports it)
         if (this.provider.prepare) {
-            await this.provider.prepare(taskPath, skillsPaths, opts, env);
+            const buildSpinner = new Spinner('build', 'building image');
+            try {
+                const imageId = await this.provider.prepare(taskPath, skillsPaths, opts, env);
+                buildSpinner.stop(`${fmt.dim('image ready')}  ${fmt.dim(typeof imageId === 'string' ? imageId : '')}`);
+            } catch (err) {
+                buildSpinner.stop(`${fmt.fail('build failed')}`);
+                throw err;
+            }
         }
 
         let trials: TrialResult[];
@@ -163,7 +170,7 @@ export class EvalRunner {
         let commandCount = 0;
         const startTime = Date.now();
 
-        process.stdout.write(`    ${fmt.dim(`${index + 1}/${total}`)}  `);
+        const spinner = new Spinner(`${index + 1}/${total}`, 'setting up environment');
         const workspace = await this.provider.setup(taskPath, skillsPaths, opts, env);
 
         try {
@@ -175,7 +182,7 @@ export class EvalRunner {
                 instruction
             });
 
-            process.stdout.write(`${fmt.dim('running')} `);
+            spinner.update('running agent');
             const loggedRunCommand = async (cmd: string) => {
                 const result = await this.provider.runCommand(workspace, cmd, env);
                 commandCount++;
@@ -209,6 +216,7 @@ export class EvalRunner {
             for (let gIdx = 0; gIdx < opts.graders.length; gIdx++) {
                 const graderDef = opts.graders[gIdx];
                 const grader = getGrader(graderDef.type);
+                spinner.update(`grading (${graderDef.type}${opts.graders.length > 1 ? ` ${gIdx + 1}/${opts.graders.length}` : ''})`);
 
                 // Build grader config with file references for execution
                 const detIndex = opts.graders.slice(0, gIdx).filter(g => g.type === 'deterministic').length;
@@ -260,8 +268,8 @@ export class EvalRunner {
                 .filter(e => e.type === 'agent_result' || e.type === 'command')
                 .reduce((sum, e) => sum + estimateTokens((e.output || '') + (e.stdout || '') + (e.stderr || '')), 0);
 
-            const status = reward >= 0.5 ? fmt.pass('ok') : fmt.fail('fail');
-            process.stdout.write(`\r    ${fmt.dim(`${(index+1)}/${total}`.padEnd(6))} ${status}  ${fmt.bold(reward.toFixed(2))}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}  ${fmt.dim(commandCount + ' cmds')}\n`);
+            const status = reward >= 0.5 ? fmt.pass('PASS') : fmt.fail('FAIL');
+            spinner.stop(`${status}  ${fmt.bold(reward.toFixed(2))}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}  ${fmt.dim(commandCount + ' cmds')}`);
 
             return {
                 trial_id: index + 1,
@@ -276,7 +284,8 @@ export class EvalRunner {
         } catch (err: any) {
             const duration_ms = Date.now() - startTime;
             const errorMsg = err?.message || String(err);
-            process.stdout.write(`\r    ${fmt.dim(`${(index+1)}/${total}`.padEnd(6))} ${fmt.fail('FAIL')}  ${errorMsg.substring(0, 50)}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}\n`);
+            spinner.stop(`${fmt.fail('FAIL')}  ${errorMsg.substring(0, 50)}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}`);
+
 
             let diagnostics = '';
             if (this.provider.diagnose) {

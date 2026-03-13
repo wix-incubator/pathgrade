@@ -87,3 +87,62 @@ export function validationResult(passed: boolean, reward: number, graders: { typ
     }
     console.log();
 }
+
+/**
+ * In-place spinner that shows current phase + elapsed time on one line.
+ *
+ * Usage:
+ *   const s = new Spinner('1/3', 'building image');
+ *   s.update('running agent');
+ *   s.update('grading');
+ *   s.stop('PASS  0.85  120.3s  2 cmds');
+ */
+export class Spinner {
+    private frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    private frameIdx = 0;
+    private interval: ReturnType<typeof setInterval> | null = null;
+    private prefix: string;
+    private phase: string;
+    private startTime: number;
+
+    constructor(label: string, initialPhase: string) {
+        this.prefix = `    ${fmt.dim(label.padEnd(6))}`;
+        this.phase = initialPhase;
+        this.startTime = Date.now();
+
+        if (process.stdout.isTTY && !NO_COLOR) {
+            this.interval = setInterval(() => this.render(), 80);
+            this.render();
+        } else {
+            // Non-TTY: just print once
+            process.stdout.write(`${this.prefix} ${fmt.dim(this.phase)}\n`);
+        }
+    }
+
+    private render() {
+        const frame = this.frames[this.frameIdx % this.frames.length];
+        this.frameIdx++;
+        const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(0);
+        const line = `${this.prefix} ${fmt.cyan(frame)} ${fmt.dim(this.phase)}  ${fmt.dim(elapsed + 's')}`;
+        process.stdout.write(`\r\x1b[K${line}`);
+    }
+
+    /** Update the spinner's phase text */
+    update(phase: string) {
+        this.phase = phase;
+        if (!this.interval) {
+            // Non-TTY: print each phase
+            process.stdout.write(`${this.prefix} ${fmt.dim(this.phase)}\n`);
+        }
+    }
+
+    /** Stop the spinner and print the final line (replaces the spinner) */
+    stop(finalLine: string) {
+        if (this.interval) {
+            clearInterval(this.interval);
+            this.interval = null;
+        }
+        process.stdout.write(`\r\x1b[K${this.prefix} ${finalLine}\n`);
+    }
+}
+

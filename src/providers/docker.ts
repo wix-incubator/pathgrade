@@ -3,7 +3,6 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tar from 'tar-stream';
 import { EnvironmentProvider, EnvironmentSetupOpts, CommandResult } from '../types';
-import { fmt } from '../utils/cli';
 
 export class DockerProvider implements EnvironmentProvider {
     private docker: Docker;
@@ -76,11 +75,8 @@ export class DockerProvider implements EnvironmentProvider {
             await tmpContainer.kill().catch(() => { });
             await tmpContainer.remove({ force: true }).catch(() => { });
             await this.docker.getImage(baseName).remove({ force: true }).catch(() => { });
-
-            console.log(`    ${fmt.dim('image')} ${this.preparedImage} ${fmt.dim(committed.Id.substring(7, 19))}`);
         } else {
             this.preparedImage = baseName;
-            console.log(`    ${fmt.dim('image')} ${this.preparedImage}`);
         }
 
         return this.preparedImage;
