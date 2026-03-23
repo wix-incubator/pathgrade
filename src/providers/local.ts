@@ -6,6 +6,7 @@ import {
     EnvironmentProvider,
     EnvironmentSetupOpts,
     CommandResult,
+    CommandExecutionOptions,
     EnvironmentHandle,
     TrialRuntime,
     getRuntimeEnv,
@@ -75,27 +76,92 @@ export class LocalProvider implements EnvironmentProvider {
         }
     }
 
-    async runCommand(runtime: EnvironmentHandle, command: string, env?: Record<string, string>): Promise<CommandResult> {
+    async runCommand(
+        runtime: EnvironmentHandle,
+        command: string,
+        env?: Record<string, string>,
+        options?: CommandExecutionOptions
+    ): Promise<CommandResult> {
         const workspacePath = getWorkspacePath(runtime);
         return new Promise((resolve) => {
             const child = spawn(command, {
                 shell: true,
+                detached: process.platform !== 'win32',
                 cwd: workspacePath,
                 env: { ...process.env, ...env, ...getRuntimeEnv(runtime) }
             });
 
             let stdout = '';
             let stderr = '';
+            let settled = false;
+            let killTimer: NodeJS.Timeout | undefined;
+
+            const finish = (result: CommandResult) => {
+                if (settled) return;
+                settled = true;
+                if (killTimer) clearTimeout(killTimer);
+                if (options?.signal && abortHandler) {
+                    options.signal.removeEventListener('abort', abortHandler);
+                }
+                resolve(result);
+            };
+
+            const abortHandler = () => {
+                if (settled) return;
+
+                try {
+                    if (process.platform !== 'win32' && child.pid) {
+                        process.kill(-child.pid, 'SIGTERM');
+                    } else {
+                        child.kill('SIGTERM');
+                    }
+                } catch {
+                    child.kill('SIGTERM');
+                }
+
+                killTimer = setTimeout(() => {
+                    try {
+                        if (process.platform !== 'win32' && child.pid) {
+                            process.kill(-child.pid, 'SIGKILL');
+                        } else if (!child.killed) {
+                            child.kill('SIGKILL');
+                        }
+                    } catch {
+                        if (!child.killed) {
+                            child.kill('SIGKILL');
+                        }
+                    }
+                }, 250);
+            };
+
+            if (options?.signal) {
+                if (options.signal.aborted) {
+                    abortHandler();
+                } else {
+                    options.signal.addEventListener('abort', abortHandler, { once: true });
+                }
+            }
 
             child.stdout.on('data', (data) => { stdout += data.toString(); });
             child.stderr.on('data', (data) => { stderr += data.toString(); });
 
-            child.on('close', (code) => {
-                resolve({ stdout, stderr, exitCode: code ?? 1 });
+            child.on('close', (code, signal) => {
+                finish({
+                    stdout,
+                    stderr,
+                    exitCode: code ?? (options?.signal?.aborted ? 124 : 1),
+                    timedOut: options?.signal?.aborted || undefined,
+                    killed: signal != null || undefined,
+                });
             });
 
             child.on('error', () => {
-                resolve({ stdout, stderr, exitCode: 1 });
+                finish({
+                    stdout,
+                    stderr,
+                    exitCode: options?.signal?.aborted ? 124 : 1,
+                    timedOut: options?.signal?.aborted || undefined,
+                });
             });
         });
     }

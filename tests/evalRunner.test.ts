@@ -137,6 +137,39 @@ describe('EvalRunner', () => {
     expect(report.trials[0].grader_results).toEqual([]);
   });
 
+  it('aborts agent commands when the agent times out', async () => {
+    const provider = makeMockProvider();
+    const seenSignals: AbortSignal[] = [];
+    (provider.runCommand as any).mockImplementation(
+      async (_runtime: unknown, _cmd: string, _env: unknown, options?: { signal?: AbortSignal }) =>
+        await new Promise((resolve) => {
+          if (options?.signal) {
+            seenSignals.push(options.signal);
+            options.signal.addEventListener(
+              'abort',
+              () => resolve({ stdout: '', stderr: 'aborted', exitCode: 124, timedOut: true }),
+              { once: true }
+            );
+          }
+        })
+    );
+
+    const agent = {
+      run: vi.fn().mockImplementation(async (_instruction: string, _workspace: string, runCommand: any) => {
+        const res = await runCommand('sleep forever');
+        return `Result: ${res.stderr}`;
+      }),
+    } as any as BaseAgent;
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(agent, '/task', [], makeEvalOpts({ timeoutSec: 0.01 }), 1);
+
+    expect(report.trials[0].reward).toBe(0);
+    expect(seenSignals).toHaveLength(1);
+    expect(seenSignals[0].aborted).toBe(true);
+    expect(report.trials[0].session_log[report.trials[0].session_log.length - 1].output).toContain('timed out');
+  });
+
   it('saves report to logDir when provided', async () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();

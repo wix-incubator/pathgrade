@@ -35,6 +35,20 @@ This slice did **not** add the conversation runner, scripted replies, completion
 - Existing single-turn eval execution still runs through `EvalRunner`.
 - Focused tests were added for local isolation, session-capable runtime usage, and prompt temp-file behavior.
 
+## Current Working Tree Progress
+
+Additional Phase 2 work has been completed in the current worktree after commit `8c6f45f`:
+
+- [x] Remove Docker/provider branching from the main run path in `src/commands/run.ts`
+- [x] Remove Docker-specific staging from `prepareTempTaskDir()`
+- [x] Add real session continuation behavior per agent adapter
+  - Claude uses native `-c` continuation
+  - Gemini uses transcript accumulation fallback
+  - Codex uses transcript accumulation fallback
+- [x] Make local command execution abortable so agent timeouts can terminate child processes
+
+This work is verified in the working tree and ready for the next commit.
+
 ## Verification Evidence
 
 Verified immediately before commit `8c6f45f`:
@@ -48,35 +62,46 @@ Result:
 - 152 tests passed
 - TypeScript build passed
 
+Verified again after the additional Phase 2 work above:
+
+- `npm test`
+- `npm run build`
+
+Result:
+
+- 16 test files passed
+- 158 tests passed
+- TypeScript build passed
+
 ## Remaining Phase 2 Checklist
 
 These are the remaining steps to fully close the Phase 2 runtime checkpoint described in the design doc:
 
-- [ ] Remove Docker/provider branching from the main run path in `src/commands/run.ts`
-- [ ] Remove Docker-specific staging and remaining Docker-first assumptions from runtime setup
-- [ ] Add real session continuation behavior per agent adapter
+- [x] Remove Docker/provider branching from the main run path in `src/commands/run.ts`
+- [x] Remove Docker-specific staging and remaining Docker-first assumptions from runtime setup
+- [x] Add real session continuation behavior per agent adapter
   - Claude native continuation first
   - transcript fallback for agents without reliable native continuation
-- [ ] Make local command execution abortable so runtime timeouts can stop child processes cleanly
+- [x] Make local command execution abortable so runtime timeouts can stop child processes cleanly
 - [ ] Remove Docker dependencies and leftover Docker surface area if no longer needed
 - [ ] Verify the local-only runtime remains CI-safe after the Docker removal work
 
 ## Recommended Next Slice
 
-Recommended next slice: **finish Phase 2 before starting the conversation runner**.
+Recommended next slice: **finish Docker cleanup before starting the conversation runner**.
 
 Order:
 
-1. Remove Docker/provider branching from `src/commands/run.ts`
-2. Simplify task staging to local-only assumptions
-3. Add native continuation support and transcript fallback in the agent adapters
-4. Add abortable local command execution
-5. Remove Docker dependencies and re-verify build/tests
+1. Remove the remaining Docker CLI/docs surface
+2. Remove `dockerode` and related package dependencies
+3. Remove `src/providers/docker.ts` if nothing still depends on it
+4. Re-verify `npm test` and `npm run build`
+5. Confirm the checkpoint doc reflects the landing commit and final Phase 2 state
 
 Rationale:
 
-- The conversation runner depends on the runtime boundary being settled.
-- If we build `conversationRunner` before finishing Phase 2, we risk rewriting orchestration code twice.
+- The runtime behavior is already local-only, but the public surface still advertises transitional Docker paths.
+- Finishing that cleanup keeps docs, CLI help, and dependencies aligned with the actual runtime before Phase 3 begins.
 
 ## Next Major Phase After That
 

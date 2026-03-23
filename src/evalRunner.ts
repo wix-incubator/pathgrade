@@ -3,7 +3,7 @@ import * as path from 'path';
 import {
     BaseAgent, EnvironmentProvider,
     LogEntry, TrialResult, EvalReport, GraderResult,
-    EnvironmentHandle, AgentCommandRunner, AgentSession,
+    EnvironmentHandle, AgentCommandRunner, AgentSession, CommandExecutionOptions,
 } from './types';
 import { ResolvedGrader } from './core/config.types';
 import { getGrader } from './graders';
@@ -18,6 +18,41 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
         promise.then(
             (val) => { clearTimeout(timer); resolve(val); },
             (err) => { clearTimeout(timer); reject(err); }
+        );
+    });
+}
+
+function withAbortTimeout<T>(
+    run: (signal: AbortSignal) => Promise<T>,
+    timeoutMs: number,
+    label: string
+): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const controller = new AbortController();
+        let timedOut = false;
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, timeoutMs);
+
+        run(controller.signal).then(
+            (val) => {
+                clearTimeout(timer);
+                if (timedOut || controller.signal.aborted) {
+                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
+                    return;
+                }
+                resolve(val);
+            },
+            (err) => {
+                clearTimeout(timer);
+                if (timedOut || controller.signal.aborted) {
+                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
+                    return;
+                }
+                reject(err);
+            }
         );
     });
 }
@@ -212,25 +247,30 @@ export class EvalRunner {
                 instruction
             });
 
-            spinner.update('running agent');
-            const loggedRunCommand = async (cmd: string) => {
-                const result = await this.provider.runCommand(runtime, cmd, env);
-                commandCount++;
-                sessionLog.push({
-                    type: 'command',
-                    timestamp: this.timestamp(),
-                    command: cmd,
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                    exitCode: result.exitCode
-                });
-                return result;
-            };
-
             const agentTimeoutMs = opts.timeoutSec * 1000;
-            const session = await createAgentSession(agent, runtime, loggedRunCommand);
-            const turnResult = await withTimeout(
-                session.start({ message: instruction }),
+            spinner.update('running agent');
+            const turnResult = await withAbortTimeout(
+                async (signal) => {
+                    const loggedRunCommand: AgentCommandRunner = async (cmd: string, options?: CommandExecutionOptions) => {
+                        const result = await this.provider.runCommand(runtime, cmd, env, {
+                            ...options,
+                            signal: options?.signal ?? signal,
+                        });
+                        commandCount++;
+                        sessionLog.push({
+                            type: 'command',
+                            timestamp: this.timestamp(),
+                            command: cmd,
+                            stdout: result.stdout,
+                            stderr: result.stderr,
+                            exitCode: result.exitCode
+                        });
+                        return result;
+                    };
+
+                    const session = await createAgentSession(agent, runtime, loggedRunCommand);
+                    return await session.start({ message: instruction });
+                },
                 agentTimeoutMs,
                 `Agent (limit: ${opts.timeoutSec}s)`
             );

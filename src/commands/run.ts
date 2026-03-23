@@ -8,7 +8,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { loadEvalConfig, resolveTask } from '../core/config';
 import { detectSkills } from '../core/skills';
-import { DockerProvider } from '../providers/docker';
 import { LocalProvider } from '../providers/local';
 import { EvalRunner, EvalRunOptions } from '../evalRunner';
 import { createAgent } from '../agents/registry';
@@ -26,7 +25,7 @@ interface RunOptions {
     threshold?: number;
     preset?: 'smoke' | 'reliable' | 'regression';
     agent?: string;      // override agent (gemini|claude)
-    provider?: string;   // override provider (docker|local)
+    provider?: string;   // deprecated runtime override; local is always used
     output?: string;     // output directory for reports and temp files
     grader?: string;     // filter graders by type (deterministic|llm_rubric)
 }
@@ -106,11 +105,16 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const resolved = await resolveTask(taskDef, config.defaults, dir);
         const trials = opts.trials ?? resolved.trials;
         const parallel = opts.parallel ?? 1;
-        const providerName = opts.provider || resolved.provider;
 
-        // Create a provider-aware task bundle for this run
+        if (opts.provider && opts.provider !== 'local') {
+            console.error(`  ${fmt.red('warning')}  ignoring provider override "${opts.provider}"; pathgrade run uses the local runtime`);
+        } else if (resolved.provider && resolved.provider !== 'local') {
+            console.error(`  ${fmt.red('warning')}  ignoring task provider "${resolved.provider}" for "${resolved.name}"; pathgrade run uses the local runtime`);
+        }
+
+        // Create a local task bundle for this run
         const tmpTaskDir = path.join(outputDir, 'tmp', resolved.name);
-        await prepareTempTaskDir(resolved, dir, tmpTaskDir, providerName);
+        await prepareTempTaskDir(resolved, dir, tmpTaskDir);
 
         // Build eval options — pass resolved content directly
         const evalOpts: EvalRunOptions = {
@@ -137,10 +141,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 else if (hasGemini) agentName = 'gemini';
             }
         }
-        // Pick provider
-        const provider = providerName === 'docker'
-            ? new DockerProvider()
-            : new LocalProvider();
+        const provider = new LocalProvider();
 
         const runner = new EvalRunner(provider, resultsDir);
 
@@ -175,7 +176,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
             const agent = createAgent(agentName);
 
             header(resolved.name);
-            console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('provider')} ${providerName}  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
+            console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('provider')} local  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
             console.log();
 
             try {
@@ -223,8 +224,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
 async function prepareTempTaskDir(
     resolved: ResolvedTask,
     baseDir: string,
-    tmpDir: string,
-    providerName: string
+    tmpDir: string
 ) {
     await fs.ensureDir(tmpDir);
 
@@ -264,47 +264,12 @@ async function prepareTempTaskDir(
         }
     }
 
-    // Copy workspace files into the task bundle for both local and Docker runs
-    let dockerfileContent = `FROM ${resolved.docker.base}\n\nWORKDIR /workspace\n\n`;
+    // Copy workspace files into the local task bundle.
     for (const w of resolved.workspace) {
         const srcPath = path.resolve(baseDir, w.src);
         const destInTmp = path.join(tmpDir, path.basename(w.src));
         if (await fs.pathExists(srcPath)) {
             await fs.copy(srcPath, destInTmp);
-            if (providerName === 'docker') {
-                dockerfileContent += `COPY ${path.basename(w.src)} ${w.dest}\n`;
-                if (w.chmod) {
-                    dockerfileContent += `RUN chmod ${w.chmod} ${w.dest}\n`;
-                }
-            }
         }
-    }
-
-    if (providerName === 'docker') {
-        await fs.ensureDir(path.join(tmpDir, 'environment'));
-
-        // Install agent CLI
-        if (resolved.agent === 'gemini') {
-            dockerfileContent += `RUN npm install -g @google/gemini-cli\n\n`;
-        } else if (resolved.agent === 'claude') {
-            dockerfileContent += `RUN npm install -g @anthropic-ai/claude-code\n\n`;
-        } else if (resolved.agent === 'codex') {
-            dockerfileContent += `RUN npm install -g @openai/codex\n\n`;
-        }
-
-        // Docker setup commands
-        if (resolved.docker.setup) {
-            dockerfileContent += `RUN ${resolved.docker.setup.trim()}\n\n`;
-        }
-
-        // Grader setup commands
-        for (const g of resolved.graders) {
-            if (g.setup) {
-                dockerfileContent += `# Grader setup\nRUN ${g.setup.trim()}\n\n`;
-            }
-        }
-
-        dockerfileContent += `\nCOPY . .\nCMD ["bash"]\n`;
-        await fs.writeFile(path.join(tmpDir, 'environment', 'Dockerfile'), dockerfileContent);
     }
 }

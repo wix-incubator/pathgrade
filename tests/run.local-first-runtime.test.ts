@@ -158,7 +158,7 @@ describe('runEvals local-first runtime path', () => {
     expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(false);
   });
 
-  it('still prepares Docker artifacts when Docker is requested explicitly', async () => {
+  it('keeps the runtime local even when Docker is requested explicitly', async () => {
     resolveTaskMock.mockResolvedValueOnce({
       name: 'test-task',
       instruction: 'do it',
@@ -175,7 +175,30 @@ describe('runEvals local-first runtime path', () => {
     await runEvals('/repo', { provider: 'docker' });
 
     const writtenPaths = mockWriteFile.mock.calls.map(call => String(call[0]));
-    expect(dockerProviderCtor).toHaveBeenCalledTimes(1);
-    expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(true);
+    expect(localProviderCtor).toHaveBeenCalledTimes(1);
+    expect(dockerProviderCtor).not.toHaveBeenCalled();
+    expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(false);
+  });
+
+  it('keeps the runtime local even when the task config says docker', async () => {
+    resolveTaskMock.mockResolvedValueOnce({
+      name: 'test-task',
+      instruction: 'do it',
+      workspace: [],
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
+      agent: 'gemini',
+      provider: 'docker',
+      trials: 1,
+      timeout: 300,
+      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
+    });
+
+    await runEvals('/repo', {});
+
+    const writtenPaths = mockWriteFile.mock.calls.map(call => String(call[0]));
+    expect(localProviderCtor).toHaveBeenCalledTimes(1);
+    expect(dockerProviderCtor).not.toHaveBeenCalled();
+    expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import {
     EnvironmentProvider,
     EnvironmentSetupOpts,
     CommandResult,
+    CommandExecutionOptions,
     EnvironmentHandle,
     getRuntimeHandle,
 } from '../types';
@@ -180,7 +181,12 @@ export class DockerProvider implements EnvironmentProvider {
         return files;
     }
 
-    async runCommand(containerId: EnvironmentHandle, command: string, env?: Record<string, string>): Promise<CommandResult> {
+    async runCommand(
+        containerId: EnvironmentHandle,
+        command: string,
+        env?: Record<string, string>,
+        _options?: CommandExecutionOptions
+    ): Promise<CommandResult> {
         const container = this.docker.getContainer(getRuntimeHandle(containerId));
         const envPairs = env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : [];
 

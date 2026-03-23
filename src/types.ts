@@ -2,6 +2,12 @@ export interface CommandResult {
     stdout: string;
     stderr: string;
     exitCode: number;
+    timedOut?: boolean;
+    killed?: boolean;
+}
+
+export interface CommandExecutionOptions {
+    signal?: AbortSignal;
 }
 
 export interface GraderConfig {
@@ -70,7 +76,7 @@ export interface TrialRuntime {
 }
 
 export type EnvironmentHandle = string | TrialRuntime;
-export type AgentCommandRunner = (cmd: string) => Promise<CommandResult>;
+export type AgentCommandRunner = (cmd: string, options?: CommandExecutionOptions) => Promise<CommandResult>;
 
 export interface AgentTurnInput {
     message: string;
@@ -142,6 +148,11 @@ export interface EnvironmentProvider {
     cleanup(workspacePath: EnvironmentHandle): Promise<void>;
     /** One-time teardown. */
     teardown?(): Promise<void>;
-    runCommand(workspacePath: EnvironmentHandle, command: string, env?: Record<string, string>): Promise<CommandResult>;
+    runCommand(
+        workspacePath: EnvironmentHandle,
+        command: string,
+        env?: Record<string, string>,
+        options?: CommandExecutionOptions
+    ): Promise<CommandResult>;
     diagnose?(workspacePath: EnvironmentHandle): Promise<string>;
 }

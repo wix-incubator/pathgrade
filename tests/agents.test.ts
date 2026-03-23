@@ -8,6 +8,14 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
+function decodePromptWriteCommand(cmd: string): string {
+  const match = cmd.match(/echo '([^']+)' \| base64 -d/);
+  if (!match) {
+    throw new Error(`Could not extract base64 payload from command: ${cmd}`);
+  }
+  return Buffer.from(match[1], 'base64').toString('utf8');
+}
+
 describe('GeminiAgent', () => {
   it('writes instruction via base64 and runs gemini CLI', async () => {
     const agent = new GeminiAgent();
@@ -63,6 +71,36 @@ describe('GeminiAgent', () => {
 
     const expectedB64 = Buffer.from(instruction).toString('base64');
     expect(capturedCmd).toContain(expectedB64);
+  });
+
+  it('falls back to transcript accumulation for session replies', async () => {
+    const agent = new GeminiAgent();
+    const commands: string[] = [];
+    let cliCallCount = 0;
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      if (cmd.includes('gemini')) {
+        cliCallCount++;
+        return {
+          stdout: cliCallCount === 1 ? 'assistant one' : 'assistant two',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    await session.start({ message: 'First user message' });
+    await session.reply({ message: 'Second user message', continueSession: true });
+
+    expect(commands[1]).toContain('gemini');
+    expect(commands[3]).toContain('gemini');
+
+    const secondPrompt = decodePromptWriteCommand(commands[2]);
+    expect(secondPrompt).toContain('First user message');
+    expect(secondPrompt).toContain('assistant one');
+    expect(secondPrompt).toContain('Second user message');
   });
 });
 
@@ -121,6 +159,23 @@ describe('ClaudeAgent', () => {
     const expectedB64 = Buffer.from(instruction).toString('base64');
     expect(capturedCmd).toContain(expectedB64);
   });
+
+  it('uses native continuation when replying in a session', async () => {
+    const agent = new ClaudeAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      return { stdout: 'output', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    await session.start({ message: 'First turn' });
+    await session.reply({ message: 'Second turn', continueSession: true });
+
+    expect(commands).toHaveLength(4);
+    expect(commands[1]).toContain('claude -p --dangerously-skip-permissions');
+    expect(commands[3]).toContain('claude -p -c --dangerously-skip-permissions');
+  });
 });
 
 describe('CodexAgent', () => {
@@ -141,5 +196,35 @@ describe('CodexAgent', () => {
     expect(commands[1]).toContain('--full-auto');
     expect(commands[1]).toContain('--skip-git-repo-check');
     expect(result).toContain('output');
+  });
+
+  it('falls back to transcript accumulation for session replies', async () => {
+    const agent = new CodexAgent();
+    const commands: string[] = [];
+    let cliCallCount = 0;
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      if (cmd.includes('codex exec')) {
+        cliCallCount++;
+        return {
+          stdout: cliCallCount === 1 ? 'assistant one' : 'assistant two',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    await session.start({ message: 'First user message' });
+    await session.reply({ message: 'Second user message', continueSession: true });
+
+    expect(commands[1]).toContain('codex exec');
+    expect(commands[3]).toContain('codex exec');
+
+    const secondPrompt = decodePromptWriteCommand(commands[2]);
+    expect(secondPrompt).toContain('First user message');
+    expect(secondPrompt).toContain('assistant one');
+    expect(secondPrompt).toContain('Second user message');
   });
 });

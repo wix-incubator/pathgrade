@@ -178,5 +178,26 @@ describe('LocalProvider', () => {
         'tmp',
       ]);
     });
+
+    it('aborts long-running commands when the signal is canceled', async () => {
+      const tempDir = path.join(os.tmpdir(), `pathgrade-cmd-abort-${Date.now()}`);
+      await fsExtra.ensureDir(tempDir);
+      tempDirs.push(tempDir);
+
+      const controller = new AbortController();
+      const startTime = Date.now();
+      const resultPromise = provider.runCommand(
+        makeRuntime(tempDir),
+        'trap "exit 143" TERM; sleep 10',
+        undefined,
+        { signal: controller.signal }
+      );
+
+      setTimeout(() => controller.abort(), 50);
+      const result = await resultPromise;
+
+      expect(Date.now() - startTime).toBeLessThan(2000);
+      expect(result.timedOut).toBe(true);
+    });
   });
 });
