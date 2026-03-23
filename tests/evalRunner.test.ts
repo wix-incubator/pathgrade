@@ -124,6 +124,54 @@ describe('EvalRunner', () => {
     expect(report.trials[0].session_log.some(entry => entry.output === 'Session raw output')).toBe(true);
   });
 
+  it('runs scripted multi-turn conversations and stops on done_phrase', async () => {
+    const provider = makeMockProvider();
+    const start = vi.fn().mockResolvedValue({
+      rawOutput: 'Turn one raw output',
+      assistantMessage: 'What is your goal?',
+      exitCode: 0,
+    });
+    const reply = vi.fn().mockResolvedValue({
+      rawOutput: 'Turn two raw output',
+      assistantMessage: 'Project brief created successfully.',
+      exitCode: 0,
+    });
+    const createSession = vi.fn().mockResolvedValue({ start, reply });
+    const agent = { createSession } as unknown as BaseAgent;
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
+      }),
+    });
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(agent, '/task', [], makeEvalOpts({
+      instruction: undefined,
+      conversation: {
+        opener: 'Help me start a new project.',
+        completion: {
+          max_turns: 4,
+          done_phrase: 'brief created',
+        },
+        replies: [
+          { content: 'The goal is validating demand quickly.' },
+        ],
+      },
+    }), 1);
+
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ message: 'Help me start a new project.' }));
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ message: 'The goal is validating demand quickly.' }));
+    expect(report.trials[0].conversation).toEqual(expect.objectContaining({
+      total_turns: 2,
+      completion_reason: 'done_phrase',
+    }));
+    expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual(['opener', 'scripted']);
+    expect(report.trials[0].session_log.filter(entry => entry.type === 'agent_result')).toHaveLength(2);
+  });
+
   it('handles agent errors gracefully', async () => {
     const provider = makeMockProvider();
     const agent = {

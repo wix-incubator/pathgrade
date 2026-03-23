@@ -9,6 +9,8 @@ import {
     EvalTaskConfig,
     ResolvedTask,
     ResolvedGrader,
+    ConversationConfig,
+    ResolvedConversation,
     WorkspaceMapping,
     EnvironmentConfig,
 } from './config.types';
@@ -81,12 +83,37 @@ function validateConfig(raw: any): EvalConfig {
 
     const tasks: EvalTaskConfig[] = raw.tasks.map((t: any, i: number) => {
         if (!t.name) throw new Error(`Task ${i} is missing a "name"`);
-        if (!t.instruction) throw new Error(`Task "${t.name}" is missing an "instruction"`);
+        if (t.instruction && t.conversation) {
+            throw new Error(`Task "${t.name}" must define exactly one of "instruction" or "conversation"`);
+        }
+        if (!t.instruction && !t.conversation) {
+            throw new Error(`Task "${t.name}" is missing an "instruction" or "conversation"`);
+        }
         if (!t.graders || !Array.isArray(t.graders) || t.graders.length === 0) {
             throw new Error(`Task "${t.name}" must have at least one grader`);
         }
         if (t.provider !== undefined || t.docker !== undefined) {
             throw new Error(`Task "${t.name}" uses deprecated provider/docker fields; pathgrade runs locally only`);
+        }
+        if (t.conversation) {
+            if (!t.conversation.opener) {
+                throw new Error(`Task "${t.name}" conversation is missing an "opener"`);
+            }
+            if (!t.conversation.completion || typeof t.conversation.completion !== 'object') {
+                throw new Error(`Task "${t.name}" conversation is missing a "completion" block`);
+            }
+            if (typeof t.conversation.completion.max_turns !== 'number' || t.conversation.completion.max_turns < 1) {
+                throw new Error(`Task "${t.name}" conversation completion must include a positive "max_turns"`);
+            }
+            if (t.conversation.persona !== undefined) {
+                throw new Error(`Task "${t.name}" conversation.persona is not supported yet`);
+            }
+            if (t.conversation.step_graders !== undefined) {
+                throw new Error(`Task "${t.name}" conversation.step_graders are not supported yet`);
+            }
+            if (!Array.isArray(t.conversation.replies) || t.conversation.replies.length === 0) {
+                throw new Error(`Task "${t.name}" conversation must include at least one scripted reply in "replies"`);
+            }
         }
 
         const workspace: WorkspaceMapping[] = (t.workspace || []).map((w: any) => {
@@ -103,6 +130,24 @@ function validateConfig(raw: any): EvalConfig {
         return {
             name: t.name,
             instruction: t.instruction,
+            conversation: t.conversation ? {
+                opener: t.conversation.opener,
+                completion: {
+                    max_turns: t.conversation.completion.max_turns,
+                    signal: t.conversation.completion.signal,
+                    done_phrase: t.conversation.completion.done_phrase,
+                    timeout: t.conversation.completion.timeout,
+                },
+                replies: t.conversation.replies.map((reply: any) => {
+                    if (!reply?.content) {
+                        throw new Error(`Task "${t.name}" conversation replies must include "content"`);
+                    }
+                    return {
+                        content: reply.content,
+                        when: reply.when,
+                    };
+                }),
+            } : undefined,
             workspace,
             graders: t.graders.map((g: any) => ({
                 type: g.type,
@@ -143,7 +188,12 @@ export async function resolveTask(
     const grader_model = task.grader_model || defaults.grader_model;
 
     // Resolve instruction — could be inline text or file path
-    const instruction = await resolveFileOrInline(task.instruction, baseDir);
+    const instruction = task.instruction
+        ? await resolveFileOrInline(task.instruction, baseDir)
+        : undefined;
+    const conversation = task.conversation
+        ? await resolveConversation(task.conversation, baseDir)
+        : undefined;
 
     // Resolve graders
     const graders: ResolvedGrader[] = await Promise.all(
@@ -172,6 +222,7 @@ export async function resolveTask(
     return {
         name: task.name,
         instruction,
+        conversation,
         workspace: task.workspace || [],
         graders,
         solution,
@@ -180,6 +231,22 @@ export async function resolveTask(
         timeout,
         grader_model,
         environment,
+    };
+}
+
+async function resolveConversation(
+    conversation: ConversationConfig,
+    baseDir: string
+): Promise<ResolvedConversation> {
+    return {
+        opener: await resolveFileOrInline(conversation.opener, baseDir),
+        completion: conversation.completion,
+        replies: await Promise.all(
+            conversation.replies.map(async (reply) => ({
+                content: await resolveFileOrInline(reply.content, baseDir),
+                when: reply.when,
+            }))
+        ),
     };
 }
 

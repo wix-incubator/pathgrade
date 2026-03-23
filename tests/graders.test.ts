@@ -349,6 +349,43 @@ describe('LLMGrader', () => {
 
     globalThis.fetch = originalFetch;
   });
+
+  it('includes the full multi-turn transcript when conversation logs are present', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('rubric' as any);
+
+    const originalFetch = globalThis.fetch;
+    let capturedBody: any;
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: any) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{ text: '{"score": 0.8, "reasoning": "covers the whole conversation"}' }] } }],
+        }),
+      };
+    });
+
+    const provider = makeProvider('');
+    const sessionLog = [
+      { type: 'agent_start', instruction: 'Help me start a project.', timestamp: '' },
+      { type: 'user_reply', output: 'Help me start a project.', turn_number: 1, reply_source: 'opener', timestamp: '' },
+      { type: 'agent_result', output: 'raw turn one', assistant_message: 'What is your goal?', turn_number: 1, timestamp: '' },
+      { type: 'user_reply', output: 'Validate demand quickly.', turn_number: 2, reply_source: 'scripted', timestamp: '' },
+      { type: 'agent_result', output: 'raw turn two', assistant_message: 'Project brief created.', turn_number: 2, timestamp: '' },
+    ];
+
+    const env = { GEMINI_API_KEY: 'test-key' };
+    await grader.grade('/workspace', provider, baseConfig, '/task', sessionLog, env);
+
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).toContain('Conversation Transcript');
+    expect(prompt).toContain('User: Help me start a project.');
+    expect(prompt).toContain('Assistant: What is your goal?');
+    expect(prompt).toContain('User: Validate demand quickly.');
+    expect(prompt).toContain('Assistant: Project brief created.');
+
+    globalThis.fetch = originalFetch;
+  });
 });
 
 describe('getGrader', () => {

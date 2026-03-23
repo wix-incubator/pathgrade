@@ -120,10 +120,25 @@ export class LLMGrader implements Grader {
             sections.push(`## Commands Executed\n${cmds}`);
         }
 
-        // Include agent output
-        const agentEntry = sessionLog.find(e => e.type === 'agent_result');
-        if (agentEntry?.output) {
-            sections.push(`## Agent Output\n${agentEntry.output}`);
+        const conversationEntries = sessionLog.filter(e => e.type === 'user_reply' || e.type === 'agent_result');
+        const hasConversationReplies = conversationEntries.some(e => e.type === 'user_reply');
+        if (hasConversationReplies) {
+            const transcriptLines = conversationEntries.map((entry) => {
+                if (entry.type === 'user_reply') {
+                    return `User: ${entry.output || ''}`;
+                }
+                return `Assistant: ${entry.assistant_message || entry.output || ''}`;
+            }).join('\n');
+            sections.push(`## Conversation Transcript\n${transcriptLines}`);
+        } else {
+            const agentEntries = sessionLog.filter(e => e.type === 'agent_result');
+            if (agentEntries.length > 0) {
+                const outputs = agentEntries
+                    .map(e => e.assistant_message || e.output || '')
+                    .filter(Boolean)
+                    .join('\n\n');
+                sections.push(`## Agent Output\n${outputs}`);
+            }
         }
 
         // Include results from any prior graders (e.g., deterministic tests)

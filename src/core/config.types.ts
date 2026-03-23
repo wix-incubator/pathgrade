@@ -12,6 +12,35 @@ export interface WorkspaceMapping {
     chmod?: string;     // e.g. "+x"
 }
 
+export interface ConversationReplyConfig {
+    content: string;
+    when?: string;
+}
+
+export interface ConversationCompletionConfig {
+    max_turns: number;
+    signal?: string;
+    done_phrase?: string;
+    timeout?: number;
+}
+
+export interface ConversationConfig {
+    opener: string;
+    completion: ConversationCompletionConfig;
+    replies: ConversationReplyConfig[];
+}
+
+export interface ResolvedConversationReply {
+    content: string;
+    when?: string;
+}
+
+export interface ResolvedConversation {
+    opener: string;
+    completion: ConversationCompletionConfig;
+    replies: ResolvedConversationReply[];
+}
+
 /** Grader definition */
 export interface EvalGraderConfig {
     type: 'deterministic' | 'llm_rubric';
@@ -31,7 +60,8 @@ export interface EnvironmentConfig {
 /** Single eval task */
 export interface EvalTaskConfig {
     name: string;
-    instruction: string;    // inline text or path to .md file
+    instruction?: string;   // inline text or path to .md file
+    conversation?: ConversationConfig;
     workspace?: WorkspaceMapping[];
     graders: EvalGraderConfig[];
     solution?: string;      // path to reference solution script
@@ -65,7 +95,8 @@ export interface EvalConfig {
 /** Resolved task — all defaults applied, file references resolved to content */
 export interface ResolvedTask {
     name: string;
-    instruction: string;    // actual content (not file path)
+    instruction?: string;   // actual content (not file path)
+    conversation?: ResolvedConversation;
     workspace: WorkspaceMapping[];
     graders: ResolvedGrader[];
     solution?: string;      // resolved file path

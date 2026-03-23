@@ -67,6 +67,32 @@ tasks:
     await expect(loadEvalConfig('/test')).rejects.toThrow('missing an "instruction"');
   });
 
+  it('accepts conversation tasks without instruction', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    const yaml = `version: "1"
+tasks:
+  - name: test-task
+    conversation:
+      opener: "Start here"
+      completion:
+        max_turns: 3
+      replies:
+        - content: "First reply"
+    graders:
+      - type: deterministic
+        run: "echo ok"
+`;
+    mockReadFile.mockResolvedValue(yaml as any);
+
+    const config = await loadEvalConfig('/test');
+    expect(config.tasks[0].instruction).toBeUndefined();
+    expect(config.tasks[0].conversation).toEqual({
+      opener: 'Start here',
+      completion: { max_turns: 3 },
+      replies: [{ content: 'First reply' }],
+    });
+  });
+
   it('throws when task has no graders', async () => {
     mockPathExists.mockResolvedValue(true as any);
     const yaml = `version: "1"
@@ -396,5 +422,42 @@ describe('resolveTask', () => {
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.graders[0].setup).toBe('npm install -g typescript');
+  });
+
+  it('resolves conversation opener and scripted replies from files', async () => {
+    const task: EvalTaskConfig = {
+      name: 'test-task',
+      conversation: {
+        opener: 'conversation/opener.md',
+        completion: { max_turns: 4, done_phrase: 'done' },
+        replies: [
+          { content: 'conversation/reply-1.md' },
+          { content: 'Inline fallback', when: 'goal' },
+        ],
+      },
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+    };
+
+    mockPathExists.mockImplementation(async (candidate: any) =>
+      String(candidate).includes('conversation/opener.md') ||
+      String(candidate).includes('conversation/reply-1.md')
+    );
+    mockReadFile.mockImplementation(async (candidate: any) => {
+      const fullPath = String(candidate);
+      if (fullPath.includes('conversation/opener.md')) return 'Opened from file';
+      if (fullPath.includes('conversation/reply-1.md')) return 'Reply from file';
+      return '';
+    });
+
+    const resolved = await resolveTask(task, defaults, '/base');
+    expect(resolved.instruction).toBeUndefined();
+    expect(resolved.conversation).toEqual({
+      opener: 'Opened from file',
+      completion: { max_turns: 4, done_phrase: 'done' },
+      replies: [
+        { content: 'Reply from file' },
+        { content: 'Inline fallback', when: 'goal' },
+      ],
+    });
   });
 });

@@ -10,6 +10,31 @@ export interface CommandExecutionOptions {
     signal?: AbortSignal;
 }
 
+export interface TurnCommand extends CommandResult {
+    command: string;
+}
+
+export type ConversationReplySource = 'opener' | 'scripted' | 'scripted_pattern';
+
+export interface ConversationTurn {
+    turn_number: number;
+    user_message: string;
+    user_message_source: ConversationReplySource;
+    raw_agent_output: string;
+    assistant_message: string;
+    duration_ms: number;
+    commands: TurnCommand[];
+    turn_status: 'completed' | 'error' | 'timeout';
+}
+
+export type ConversationCompletionReason =
+    | 'max_turns'
+    | 'signal'
+    | 'done_phrase'
+    | 'timeout'
+    | 'no_replies'
+    | 'error';
+
 export interface GraderConfig {
     type: 'deterministic' | 'llm_rubric';
     command?: string;         // for deterministic: shell command to execute (e.g. 'bash tests/test.sh')
@@ -26,7 +51,7 @@ export interface GraderResult {
 }
 
 export interface LogEntry {
-    type: 'agent_start' | 'command' | 'agent_result' | 'grader' | 'reward';
+    type: 'agent_start' | 'command' | 'agent_result' | 'grader' | 'reward' | 'user_reply';
     timestamp: string;
     instruction?: string;
     command?: string;
@@ -34,8 +59,11 @@ export interface LogEntry {
     stderr?: string;
     exitCode?: number;
     output?: string;
+    assistant_message?: string;
     value?: number;
     grader_result?: GraderResult;
+    turn_number?: number;
+    reply_source?: ConversationReplySource;
 }
 
 export interface TrialResult {
@@ -47,6 +75,12 @@ export interface TrialResult {
     input_tokens: number;     // estimated from instruction length
     output_tokens: number;    // estimated from agent output
     session_log: LogEntry[];
+    conversation?: {
+        turns: ConversationTurn[];
+        total_turns: number;
+        completion_reason: ConversationCompletionReason;
+        timeout_triggered_at_turn?: number;
+    };
 }
 
 export interface EvalReport {
@@ -106,10 +140,21 @@ export function getRuntimeEnv(handle: EnvironmentHandle): Record<string, string>
     return typeof handle === 'string' ? {} : handle.env;
 }
 
-export abstract class BaseAgent {
-    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+export async function createAgentSession(
+    agent: BaseAgent,
+    runtime: EnvironmentHandle,
+    runCommand: AgentCommandRunner
+): Promise<AgentSession> {
+    if (
+        typeof (agent as any).createSession === 'function' &&
+        (agent as any).createSession !== BaseAgent.prototype.createSession
+    ) {
+        return await (agent as any).createSession(runtime, runCommand);
+    }
+
+    if (typeof (agent as any).run === 'function') {
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
-            const rawOutput = await this.run(message, getWorkspacePath(runtime), runCommand);
+            const rawOutput = await (agent as any).run(message, getWorkspacePath(runtime), runCommand);
             return {
                 rawOutput,
                 assistantMessage: rawOutput,
@@ -121,6 +166,14 @@ export abstract class BaseAgent {
             start: async ({ message }) => runTurn(message),
             reply: async ({ message }) => runTurn(message),
         };
+    }
+
+    throw new Error('Agent must implement createSession() or run()');
+}
+
+export abstract class BaseAgent {
+    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+        return createAgentSession(this, runtime, runCommand);
     }
 
     abstract run(

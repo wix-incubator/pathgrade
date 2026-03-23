@@ -1,11 +1,19 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import {
-    BaseAgent, EnvironmentProvider,
-    LogEntry, TrialResult, EvalReport, GraderResult,
-    EnvironmentHandle, AgentCommandRunner, AgentSession, CommandExecutionOptions,
+    AgentCommandRunner,
+    BaseAgent,
+    CommandExecutionOptions,
+    EnvironmentHandle,
+    EnvironmentProvider,
+    EvalReport,
+    GraderResult,
+    LogEntry,
+    TrialResult,
+    createAgentSession,
 } from './types';
-import { ResolvedGrader } from './core/config.types';
+import { ResolvedConversation, ResolvedGrader } from './core/config.types';
+import { runConversationTrial } from './conversationRunner';
 import { getGrader } from './graders';
 import { fmt, Spinner } from './utils/cli';
 
@@ -16,8 +24,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
         }, timeoutMs);
 
         promise.then(
-            (val) => { clearTimeout(timer); resolve(val); },
-            (err) => { clearTimeout(timer); reject(err); }
+            (value) => { clearTimeout(timer); resolve(value); },
+            (error) => { clearTimeout(timer); reject(error); }
         );
     });
 }
@@ -37,30 +45,26 @@ function withAbortTimeout<T>(
         }, timeoutMs);
 
         run(controller.signal).then(
-            (val) => {
+            (value) => {
                 clearTimeout(timer);
                 if (timedOut || controller.signal.aborted) {
                     reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
                     return;
                 }
-                resolve(val);
+                resolve(value);
             },
-            (err) => {
+            (error) => {
                 clearTimeout(timer);
                 if (timedOut || controller.signal.aborted) {
                     reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
                     return;
                 }
-                reject(err);
+                reject(error);
             }
         );
     });
 }
 
-/**
- * Calculate pass@k: probability of at least 1 success in k trials
- * Using unbiased estimator: 1 - C(n-c, k) / C(n, k)
- */
 function calculatePassAtK(n: number, c: number, k: number): number {
     if (n - c < k) return 1.0;
     let result = 1.0;
@@ -70,55 +74,22 @@ function calculatePassAtK(n: number, c: number, k: number): number {
     return 1.0 - result;
 }
 
-/**
- * Calculate pass^k: probability that all k trials succeed
- */
 function calculatePassPowK(n: number, c: number, k: number): number {
     const p = c / n;
     return Math.pow(p, k);
 }
 
-/** Estimate token count from text (~4 chars per token) */
 function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
 
-async function createAgentSession(
-    agent: BaseAgent,
-    runtime: EnvironmentHandle,
-    runCommand: AgentCommandRunner
-): Promise<AgentSession> {
-    if (typeof (agent as any).createSession === 'function') {
-        return await (agent as any).createSession(runtime, runCommand);
-    }
-
-    if (typeof (agent as any).run === 'function') {
-        const legacyRun = async (message: string) => {
-            const workspacePath = typeof runtime === 'string' ? runtime : runtime.workspacePath;
-            const rawOutput = await (agent as any).run(message, workspacePath, runCommand);
-            return {
-                rawOutput,
-                assistantMessage: rawOutput,
-                exitCode: 0,
-            };
-        };
-
-        return {
-            start: async ({ message }) => legacyRun(message),
-            reply: async ({ message }) => legacyRun(message),
-        };
-    }
-
-    throw new Error('Agent must implement createSession() or run()');
-}
-
-/** Options for running an eval */
 export interface EvalRunOptions {
-    instruction: string;
+    instruction?: string;
+    conversation?: ResolvedConversation;
     graders: ResolvedGrader[];
     timeoutSec: number;
-    graderModel?: string;       // default LLM grader model
-    graderTimeoutSec?: number;  // timeout per grader (default: 120s)
+    graderModel?: string;
+    graderTimeoutSec?: number;
     environment: {
         cpus: number;
         memory_mb: number;
@@ -147,17 +118,20 @@ export class EvalRunner {
         env?: Record<string, string>,
         parallel: number = 1
     ): Promise<EvalReport> {
+        if (!opts.instruction && !opts.conversation) {
+            throw new Error('EvalRunOptions must include instruction or conversation');
+        }
+
         const taskName = path.basename(taskPath);
 
-        // One-time image build (if provider supports it)
         if (this.provider.prepare) {
             const buildSpinner = new Spinner('build', 'building image');
             try {
                 const imageId = await this.provider.prepare(taskPath, skillsPaths, opts, env);
                 buildSpinner.stop(`${fmt.dim('image ready')}  ${fmt.dim(typeof imageId === 'string' ? imageId : '')}`);
-            } catch (err) {
+            } catch (error) {
                 buildSpinner.stop(`${fmt.fail('build failed')}`);
-                throw err;
+                throw error;
             }
         }
 
@@ -169,8 +143,7 @@ export class EvalRunner {
             } else {
                 trials = [];
                 for (let i = 0; i < numTrials; i++) {
-                    const result = await this.runSingleTrial(agent, taskPath, skillsPaths, opts, i, numTrials, env);
-                    trials.push(result);
+                    trials.push(await this.runSingleTrial(agent, taskPath, skillsPaths, opts, i, numTrials, env));
                 }
             }
         } finally {
@@ -179,8 +152,8 @@ export class EvalRunner {
             }
         }
 
-        const totalReward = trials.reduce((sum, t) => sum + t.reward, 0);
-        const successes = trials.filter(t => t.reward >= 0.5).length;
+        const totalReward = trials.reduce((sum, trial) => sum + trial.reward, 0);
+        const successes = trials.filter((trial) => trial.reward >= 0.5).length;
 
         const report: EvalReport = {
             task: taskName,
@@ -188,7 +161,7 @@ export class EvalRunner {
             pass_at_k: calculatePassAtK(numTrials, successes, numTrials),
             pass_pow_k: calculatePassPowK(numTrials, successes, numTrials),
             trials,
-            skills_used: skillsPaths.map(p => path.basename(p))
+            skills_used: skillsPaths.map((skillPath) => path.basename(skillPath)),
         };
 
         if (this.logDir) {
@@ -209,12 +182,12 @@ export class EvalRunner {
         env?: Record<string, string>
     ): Promise<TrialResult[]> {
         const results: TrialResult[] = new Array(numTrials);
-        const queue = Array.from({ length: numTrials }, (_, i) => i);
+        const queue = Array.from({ length: numTrials }, (_, index) => index);
 
         const workers = Array.from({ length: Math.min(parallel, numTrials) }, async () => {
             while (queue.length > 0) {
-                const i = queue.shift()!;
-                results[i] = await this.runSingleTrial(agent, taskPath, skillsPaths, opts, i, numTrials, env);
+                const index = queue.shift()!;
+                results[index] = await this.runSingleTrial(agent, taskPath, skillsPaths, opts, index, numTrials, env);
             }
         });
 
@@ -239,105 +212,86 @@ export class EvalRunner {
         const runtime = await this.provider.setup(taskPath, skillsPaths, opts, env);
 
         try {
-            const instruction = opts.instruction;
+            let inputText = '';
+            let conversationData: TrialResult['conversation'];
 
-            sessionLog.push({
-                type: 'agent_start',
-                timestamp: this.timestamp(),
-                instruction
-            });
+            if (opts.conversation) {
+                spinner.update('running conversation');
+                const conversationResult = await runConversationTrial({
+                    agent,
+                    conversation: opts.conversation,
+                    env,
+                    provider: this.provider,
+                    runtime,
+                    timeoutSec: opts.timeoutSec,
+                    timestamp: () => this.timestamp(),
+                });
+                sessionLog.push(...conversationResult.sessionLog);
+                commandCount = conversationResult.commandCount;
+                conversationData = conversationResult.conversation;
+                inputText = conversationResult.inputText;
+            } else {
+                if (!opts.instruction) {
+                    throw new Error('EvalRunOptions must include instruction or conversation');
+                }
 
-            const agentTimeoutMs = opts.timeoutSec * 1000;
-            spinner.update('running agent');
-            const turnResult = await withAbortTimeout(
-                async (signal) => {
-                    const loggedRunCommand: AgentCommandRunner = async (cmd: string, options?: CommandExecutionOptions) => {
-                        const result = await this.provider.runCommand(runtime, cmd, env, {
-                            ...options,
-                            signal: options?.signal ?? signal,
-                        });
-                        commandCount++;
-                        sessionLog.push({
-                            type: 'command',
-                            timestamp: this.timestamp(),
-                            command: cmd,
-                            stdout: result.stdout,
-                            stderr: result.stderr,
-                            exitCode: result.exitCode
-                        });
-                        return result;
-                    };
+                const instruction = opts.instruction;
+                inputText = instruction;
+                sessionLog.push({
+                    type: 'agent_start',
+                    timestamp: this.timestamp(),
+                    instruction,
+                });
 
-                    const session = await createAgentSession(agent, runtime, loggedRunCommand);
-                    return await session.start({ message: instruction });
-                },
-                agentTimeoutMs,
-                `Agent (limit: ${opts.timeoutSec}s)`
-            );
+                const agentTimeoutMs = opts.timeoutSec * 1000;
+                spinner.update('running agent');
+                const turnResult = await withAbortTimeout(
+                    async (signal) => {
+                        const loggedRunCommand: AgentCommandRunner = async (cmd: string, options?: CommandExecutionOptions) => {
+                            const result = await this.provider.runCommand(runtime, cmd, env, {
+                                ...options,
+                                signal: options?.signal ?? signal,
+                            });
+                            commandCount++;
+                            sessionLog.push({
+                                type: 'command',
+                                timestamp: this.timestamp(),
+                                command: cmd,
+                                stdout: result.stdout,
+                                stderr: result.stderr,
+                                exitCode: result.exitCode,
+                            });
+                            return result;
+                        };
 
-            sessionLog.push({
-                type: 'agent_result',
-                timestamp: this.timestamp(),
-                output: turnResult.rawOutput
-            });
-
-            // Run all graders
-            const graderResults: GraderResult[] = [];
-
-            for (let gIdx = 0; gIdx < opts.graders.length; gIdx++) {
-                const graderDef = opts.graders[gIdx];
-                const grader = getGrader(graderDef.type);
-                spinner.update(`grading (${graderDef.type}${opts.graders.length > 1 ? ` ${gIdx + 1}/${opts.graders.length}` : ''})`);
-
-                // Build grader config with file references for execution
-                const detIndex = opts.graders.slice(0, gIdx).filter(g => g.type === 'deterministic').length;
-                const llmIndex = opts.graders.slice(0, gIdx).filter(g => g.type === 'llm_rubric').length;
-
-                const graderConfig = {
-                    type: graderDef.type,
-                    command: graderDef.type === 'deterministic'
-                        ? `bash tests/${detIndex === 0 ? 'test.sh' : `test_${detIndex}.sh`}`
-                        : undefined,
-                    rubric: graderDef.type === 'llm_rubric'
-                        ? `prompts/${llmIndex === 0 ? 'quality.md' : `quality_${llmIndex}.md`}`
-                        : undefined,
-                    model: graderDef.model || opts.graderModel,
-                    weight: graderDef.weight,
-                };
-
-                const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
-                const result = await withTimeout(
-                    grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env),
-                    graderTimeoutMs,
-                    `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
+                        const session = await createAgentSession(agent, runtime, loggedRunCommand);
+                        return await session.start({ message: instruction });
+                    },
+                    agentTimeoutMs,
+                    `Agent (limit: ${opts.timeoutSec}s)`
                 );
-                graderResults.push(result);
 
                 sessionLog.push({
-                    type: 'grader',
+                    type: 'agent_result',
                     timestamp: this.timestamp(),
-                    grader_result: result
+                    output: turnResult.rawOutput,
+                    assistant_message: turnResult.assistantMessage,
                 });
             }
 
-            // Calculate weighted reward
-            const totalWeight = graderResults.reduce((sum, r) => sum + r.weight, 0);
-            const reward = totalWeight > 0
-                ? graderResults.reduce((sum, r) => sum + r.score * r.weight, 0) / totalWeight
-                : 0;
+            const { graderResults, reward } = await this.runGraders(runtime, taskPath, opts, sessionLog, spinner, env);
 
             sessionLog.push({
                 type: 'reward',
                 timestamp: this.timestamp(),
-                value: reward
+                value: reward,
             });
 
             const duration_ms = Date.now() - startTime;
-
-            const input_tokens = estimateTokens(instruction);
+            const input_tokens = estimateTokens(inputText);
             const output_tokens = sessionLog
-                .filter(e => e.type === 'agent_result' || e.type === 'command')
-                .reduce((sum, e) => sum + estimateTokens((e.output || '') + (e.stdout || '') + (e.stderr || '')), 0);
+                .filter((entry) => entry.type === 'agent_result' || entry.type === 'command')
+                .reduce((sum, entry) => sum + estimateTokens((entry.output || '') + (entry.stdout || '') + (entry.stderr || '')), 0);
 
             const status = reward >= 0.5 ? fmt.pass('PASS') : fmt.fail('FAIL');
             spinner.stop(`${status}  ${fmt.bold(reward.toFixed(2))}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}  ${fmt.dim(commandCount + ' cmds')}`);
@@ -350,21 +304,21 @@ export class EvalRunner {
                 n_commands: commandCount,
                 input_tokens,
                 output_tokens,
-                session_log: sessionLog
+                session_log: sessionLog,
+                conversation: conversationData,
             };
-        } catch (err: any) {
+        } catch (error: any) {
             const duration_ms = Date.now() - startTime;
-            const errorMsg = err?.message || String(err);
+            const errorMsg = error?.message || String(error);
             spinner.stop(`${fmt.fail('FAIL')}  ${errorMsg.substring(0, 50)}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}`);
-
 
             let diagnostics = '';
             if (this.provider.diagnose) {
                 try {
                     diagnostics = await this.provider.diagnose(runtime);
                     console.log(diagnostics);
-                } catch (e) {
-                    diagnostics = `(diagnostics failed: ${e})`;
+                } catch (diagnosticsError) {
+                    diagnostics = `(diagnostics failed: ${diagnosticsError})`;
                 }
             }
 
@@ -372,7 +326,7 @@ export class EvalRunner {
                 type: 'reward',
                 timestamp: this.timestamp(),
                 value: 0,
-                output: diagnostics ? `${errorMsg}\n\n${diagnostics}` : errorMsg
+                output: diagnostics ? `${errorMsg}\n\n${diagnostics}` : errorMsg,
             });
 
             return {
@@ -383,11 +337,64 @@ export class EvalRunner {
                 n_commands: commandCount,
                 input_tokens: 0,
                 output_tokens: 0,
-                session_log: sessionLog
+                session_log: sessionLog,
             };
         } finally {
             await this.provider.cleanup(runtime);
         }
+    }
+
+    private async runGraders(
+        runtime: EnvironmentHandle,
+        taskPath: string,
+        opts: EvalRunOptions,
+        sessionLog: LogEntry[],
+        spinner: Spinner,
+        env?: Record<string, string>
+    ): Promise<{ graderResults: GraderResult[]; reward: number }> {
+        const graderResults: GraderResult[] = [];
+
+        for (let gIdx = 0; gIdx < opts.graders.length; gIdx++) {
+            const graderDef = opts.graders[gIdx];
+            const grader = getGrader(graderDef.type);
+            spinner.update(`grading (${graderDef.type}${opts.graders.length > 1 ? ` ${gIdx + 1}/${opts.graders.length}` : ''})`);
+
+            const detIndex = opts.graders.slice(0, gIdx).filter((graderEntry) => graderEntry.type === 'deterministic').length;
+            const llmIndex = opts.graders.slice(0, gIdx).filter((graderEntry) => graderEntry.type === 'llm_rubric').length;
+
+            const graderConfig = {
+                type: graderDef.type,
+                command: graderDef.type === 'deterministic'
+                    ? `bash tests/${detIndex === 0 ? 'test.sh' : `test_${detIndex}.sh`}`
+                    : undefined,
+                rubric: graderDef.type === 'llm_rubric'
+                    ? `prompts/${llmIndex === 0 ? 'quality.md' : `quality_${llmIndex}.md`}`
+                    : undefined,
+                model: graderDef.model || opts.graderModel,
+                weight: graderDef.weight,
+            };
+
+            const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
+            const result = await withTimeout(
+                grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env),
+                graderTimeoutMs,
+                `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
+            );
+            graderResults.push(result);
+
+            sessionLog.push({
+                type: 'grader',
+                timestamp: this.timestamp(),
+                grader_result: result,
+            });
+        }
+
+        const totalWeight = graderResults.reduce((sum, result) => sum + result.weight, 0);
+        const reward = totalWeight > 0
+            ? graderResults.reduce((sum, result) => sum + result.score * result.weight, 0) / totalWeight
+            : 0;
+
+        return { graderResults, reward };
     }
 
     private sanitize(report: EvalReport, env?: Record<string, string>): EvalReport {
@@ -413,10 +420,11 @@ export class EvalRunner {
                 if (entry.stdout) entry.stdout = redact(entry.stdout);
                 if (entry.stderr) entry.stderr = redact(entry.stderr);
                 if (entry.output) entry.output = redact(entry.output);
+                if (entry.assistant_message) entry.assistant_message = redact(entry.assistant_message);
                 if (entry.grader_result?.details) entry.grader_result.details = redact(entry.grader_result.details);
             }
-            for (const gr of trial.grader_results) {
-                if (gr.details) gr.details = redact(gr.details);
+            for (const graderResult of trial.grader_results) {
+                if (graderResult.details) graderResult.details = redact(graderResult.details);
             }
         }
 

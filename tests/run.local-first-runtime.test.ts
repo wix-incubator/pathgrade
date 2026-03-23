@@ -172,6 +172,50 @@ describe('runEvals local-first runtime path', () => {
     );
   });
 
+  it('passes conversation tasks through with conversation timeout precedence', async () => {
+    resolveTaskMock.mockResolvedValueOnce({
+      name: 'conversation-task',
+      instruction: undefined,
+      conversation: {
+        opener: 'Help me start a project.',
+        completion: {
+          max_turns: 4,
+          timeout: 45,
+        },
+        replies: [{ content: 'It is for freelance designers.' }],
+      },
+      workspace: [],
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
+      agent: 'gemini',
+      trials: 1,
+      timeout: 300,
+      environment: { cpus: 2, memory_mb: 2048 },
+    });
+
+    await runEvals('/repo', {});
+
+    expect(runEvalMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('/pathgrade/repo/tmp/conversation-task'),
+      [],
+      expect.objectContaining({
+        instruction: undefined,
+        conversation: {
+          opener: 'Help me start a project.',
+          completion: {
+            max_turns: 4,
+            timeout: 45,
+          },
+          replies: [{ content: 'It is for freelance designers.' }],
+        },
+        timeoutSec: 45,
+      }),
+      1,
+      expect.any(Object),
+      1,
+    );
+  });
+
   it('propagates OPENAI_BASE_URL to the runner environment', async () => {
     const originalBaseUrl = process.env.OPENAI_BASE_URL;
     const originalApiKey = process.env.OPENAI_API_KEY;

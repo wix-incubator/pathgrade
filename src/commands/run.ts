@@ -111,15 +111,25 @@ export async function runEvals(dir: string, opts: RunOptions) {
         await prepareTempTaskDir(resolved, dir, tmpTaskDir);
 
         // Build eval options — pass resolved content directly
-        const evalOpts: EvalRunOptions = {
-            instruction: resolved.instruction,
-            graders: opts.grader
-                ? resolved.graders.filter(g => g.type === opts.grader)
-                : resolved.graders,
-            timeoutSec: resolved.timeout,
-            graderModel: resolved.grader_model,
-            environment: resolved.environment,
-        };
+        const filteredGraders = opts.grader
+            ? resolved.graders.filter(g => g.type === opts.grader)
+            : resolved.graders;
+        const evalOpts: EvalRunOptions = resolved.conversation
+            ? {
+                instruction: undefined,
+                conversation: resolved.conversation,
+                graders: filteredGraders,
+                timeoutSec: resolved.conversation.completion.timeout ?? resolved.timeout,
+                graderModel: resolved.grader_model,
+                environment: resolved.environment,
+            }
+            : {
+                instruction: resolved.instruction,
+                graders: filteredGraders,
+                timeoutSec: resolved.timeout,
+                graderModel: resolved.grader_model,
+                environment: resolved.environment,
+            };
 
         // Pick agent: CLI flag > task-level override > auto-detect from API key > default
         let agentName = opts.agent || resolved.agent;
@@ -143,6 +153,11 @@ export async function runEvals(dir: string, opts: RunOptions) {
             // Validation mode
             if (!resolved.solution) {
                 console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no solution defined`);
+                continue;
+            }
+            if (resolved.conversation) {
+                console.error(`  ${fmt.red('error')}  validation mode does not support conversation tasks yet`);
+                allPassed = false;
                 continue;
             }
 
