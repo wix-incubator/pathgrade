@@ -75,8 +75,8 @@ For a fresh session, start with:
 
 1. Read this file.
 2. Read [docs/2026-03-23-wix-fork-proposal.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-wix-fork-proposal.md).
-3. Execute the next unchecked item in order.
+3. Then continue from [docs/2026-03-23-conversation-runtime-foundation-plan.md](/Users/nadavlac/projects/pathgrade/.worktrees/conversation-runtime-foundation/docs/2026-03-23-conversation-runtime-foundation-plan.md).
 
 Suggested opener:
 
-`Continue Pathgrade migration from docs/2026-03-23-local-first-migration-plan.md. Read that file and docs/2026-03-23-wix-fork-proposal.md, then execute the next unchecked item.`
+`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file, docs/2026-03-23-wix-fork-proposal.md, and the Phase 2/3 sections of docs/2026-03-20-multi-turn-conversations-design.md, then execute the next unchecked item.`
