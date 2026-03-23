@@ -1,7 +1,7 @@
 # Pathgrade Local-First Migration Plan
 
 **Date:** 2026-03-23
-**Status:** In Progress
+**Status:** Complete
 **Scope:** First architecture slice after the `skillgrade` -> `pathgrade` rename.
 
 ## Goal
@@ -49,7 +49,7 @@ This slice is complete when:
   - CLI/help expectations
   - Any tests that assert provider defaults or Docker-first wording
 
-- [ ] Verify the local-first baseline end to end.
+- [x] Verify the local-first baseline end to end.
   - Run `npm test`
   - Run `npm run build`
   - Run one example locally
@@ -63,11 +63,11 @@ This slice is complete when:
 
 ## Done Criteria
 
-- [ ] The default mental model of the repo is local-first
+- [x] The default mental model of the repo is local-first
 - [x] The default config path uses `provider: local`
 - [x] The CLI help no longer describes Docker as the default
-- [ ] Tests and build pass
-- [ ] One local example run has been verified
+- [x] Tests and build pass
+- [x] One local example run has been verified
 
 ## Session Handoff
 

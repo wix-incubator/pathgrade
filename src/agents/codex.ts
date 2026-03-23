@@ -10,7 +10,7 @@ export class CodexAgent extends BaseAgent {
         const b64 = Buffer.from(instruction).toString('base64');
         await runCommand(`echo '${b64}' | base64 -d > /tmp/.prompt.md`);
 
-        const command = `codex --approval-mode full-auto "$(cat /tmp/.prompt.md)"`;
+        const command = `codex exec --full-auto --skip-git-repo-check "$(cat /tmp/.prompt.md)"`;
         const result = await runCommand(command);
 
         if (result.exitCode !== 0) {

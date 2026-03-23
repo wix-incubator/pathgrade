@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GeminiAgent } from '../src/agents/gemini';
 import { ClaudeAgent } from '../src/agents/claude';
+import { CodexAgent } from '../src/agents/codex';
 import { CommandResult } from '../src/types';
 
 beforeEach(() => {
@@ -119,5 +120,26 @@ describe('ClaudeAgent', () => {
 
     const expectedB64 = Buffer.from(instruction).toString('base64');
     expect(capturedCmd).toContain(expectedB64);
+  });
+});
+
+describe('CodexAgent', () => {
+  it('writes instruction via base64 and runs codex exec with non-git workspace support', async () => {
+    const agent = new CodexAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      return { stdout: 'output', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test instruction', '/workspace', mockRunCommand);
+
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toContain('base64');
+    expect(commands[0]).toContain('/tmp/.prompt.md');
+    expect(commands[1]).toContain('codex exec');
+    expect(commands[1]).toContain('--full-auto');
+    expect(commands[1]).toContain('--skip-git-repo-check');
+    expect(result).toContain('output');
   });
 });
