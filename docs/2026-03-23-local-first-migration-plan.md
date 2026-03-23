@@ -39,10 +39,10 @@ This slice is complete when:
   - Update README and active architecture docs so local execution is the primary path.
   - Keep Docker mentions only where they are still true for transitional compatibility.
 
-- [ ] Simplify the main run path around local execution.
+- [x] Simplify the main run path around local execution.
   - Make `LocalProvider` the default provider.
   - Remove Docker-first assumptions from the normal execution path.
-  - Decide whether Docker remains as a temporary optional fallback or is removed from user-facing flow now.
+  - Decision: keep Docker as a temporary optional fallback for now.
 
 - [ ] Update tests to match the new default behavior.
   - Config tests

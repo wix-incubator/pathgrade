@@ -106,10 +106,11 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const resolved = await resolveTask(taskDef, config.defaults, dir);
         const trials = opts.trials ?? resolved.trials;
         const parallel = opts.parallel ?? 1;
+        const providerName = opts.provider || resolved.provider;
 
-        // Create a temp task directory for Docker builds
+        // Create a provider-aware task bundle for this run
         const tmpTaskDir = path.join(outputDir, 'tmp', resolved.name);
-        await prepareTempTaskDir(resolved, dir, tmpTaskDir);
+        await prepareTempTaskDir(resolved, dir, tmpTaskDir, providerName);
 
         // Build eval options — pass resolved content directly
         const evalOpts: EvalRunOptions = {
@@ -136,8 +137,6 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 else if (hasGemini) agentName = 'gemini';
             }
         }
-        const providerName = opts.provider || resolved.provider;
-
         // Pick provider
         const provider = providerName === 'docker'
             ? new DockerProvider()
@@ -217,11 +216,16 @@ export async function runEvals(dir: string, opts: RunOptions) {
 }
 
 /**
- * Create a temp task directory for Docker builds.
- * Contains: Dockerfile, workspace files, grader scripts.
+ * Create a temp task directory for runtime execution.
+ * Contains shared workspace files, grader scripts, prompts, and optional Docker assets.
  * No longer writes task.toml or instruction.md — those are passed directly.
  */
-async function prepareTempTaskDir(resolved: ResolvedTask, baseDir: string, tmpDir: string) {
+async function prepareTempTaskDir(
+    resolved: ResolvedTask,
+    baseDir: string,
+    tmpDir: string,
+    providerName: string
+) {
     await fs.ensureDir(tmpDir);
 
     // Write each deterministic grader script
@@ -260,44 +264,47 @@ async function prepareTempTaskDir(resolved: ResolvedTask, baseDir: string, tmpDi
         }
     }
 
-    // Write Dockerfile
-    await fs.ensureDir(path.join(tmpDir, 'environment'));
+    // Copy workspace files into the task bundle for both local and Docker runs
     let dockerfileContent = `FROM ${resolved.docker.base}\n\nWORKDIR /workspace\n\n`;
-
-    // Install agent CLI
-    if (resolved.agent === 'gemini') {
-        dockerfileContent += `RUN npm install -g @google/gemini-cli\n\n`;
-    } else if (resolved.agent === 'claude') {
-        dockerfileContent += `RUN npm install -g @anthropic-ai/claude-code\n\n`;
-    } else if (resolved.agent === 'codex') {
-        dockerfileContent += `RUN npm install -g @openai/codex\n\n`;
-    }
-
-    // Docker setup commands
-    if (resolved.docker.setup) {
-        dockerfileContent += `RUN ${resolved.docker.setup.trim()}\n\n`;
-    }
-
-    // Grader setup commands
-    for (const g of resolved.graders) {
-        if (g.setup) {
-            dockerfileContent += `# Grader setup\nRUN ${g.setup.trim()}\n\n`;
-        }
-    }
-
-    // Copy workspace files
     for (const w of resolved.workspace) {
         const srcPath = path.resolve(baseDir, w.src);
         const destInTmp = path.join(tmpDir, path.basename(w.src));
         if (await fs.pathExists(srcPath)) {
             await fs.copy(srcPath, destInTmp);
-            dockerfileContent += `COPY ${path.basename(w.src)} ${w.dest}\n`;
-            if (w.chmod) {
-                dockerfileContent += `RUN chmod ${w.chmod} ${w.dest}\n`;
+            if (providerName === 'docker') {
+                dockerfileContent += `COPY ${path.basename(w.src)} ${w.dest}\n`;
+                if (w.chmod) {
+                    dockerfileContent += `RUN chmod ${w.chmod} ${w.dest}\n`;
+                }
             }
         }
     }
 
-    dockerfileContent += `\nCOPY . .\nCMD ["bash"]\n`;
-    await fs.writeFile(path.join(tmpDir, 'environment', 'Dockerfile'), dockerfileContent);
+    if (providerName === 'docker') {
+        await fs.ensureDir(path.join(tmpDir, 'environment'));
+
+        // Install agent CLI
+        if (resolved.agent === 'gemini') {
+            dockerfileContent += `RUN npm install -g @google/gemini-cli\n\n`;
+        } else if (resolved.agent === 'claude') {
+            dockerfileContent += `RUN npm install -g @anthropic-ai/claude-code\n\n`;
+        } else if (resolved.agent === 'codex') {
+            dockerfileContent += `RUN npm install -g @openai/codex\n\n`;
+        }
+
+        // Docker setup commands
+        if (resolved.docker.setup) {
+            dockerfileContent += `RUN ${resolved.docker.setup.trim()}\n\n`;
+        }
+
+        // Grader setup commands
+        for (const g of resolved.graders) {
+            if (g.setup) {
+                dockerfileContent += `# Grader setup\nRUN ${g.setup.trim()}\n\n`;
+            }
+        }
+
+        dockerfileContent += `\nCOPY . .\nCMD ["bash"]\n`;
+        await fs.writeFile(path.join(tmpDir, 'environment', 'Dockerfile'), dockerfileContent);
+    }
 }
