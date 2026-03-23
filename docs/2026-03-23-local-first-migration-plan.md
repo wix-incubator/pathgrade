@@ -44,7 +44,7 @@ This slice is complete when:
   - Remove Docker-first assumptions from the normal execution path.
   - Decision: keep Docker as a temporary optional fallback for now.
 
-- [ ] Update tests to match the new default behavior.
+- [x] Update tests to match the new default behavior.
   - Config tests
   - CLI/help expectations
   - Any tests that assert provider defaults or Docker-first wording

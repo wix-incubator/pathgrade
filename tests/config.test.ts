@@ -212,7 +212,7 @@ tasks:
 describe('resolveTask', () => {
   const defaults: EvalDefaults = {
     agent: 'gemini',
-    provider: 'docker',
+    provider: 'local',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
@@ -231,7 +231,7 @@ describe('resolveTask', () => {
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.agent).toBe('gemini');
-    expect(resolved.provider).toBe('docker');
+    expect(resolved.provider).toBe('local');
     expect(resolved.trials).toBe(5);
     expect(resolved.timeout).toBe(300);
     expect(resolved.docker.base).toBe('node:20-slim');
@@ -242,7 +242,7 @@ describe('resolveTask', () => {
       name: 'test-task',
       instruction: 'do it now',
       agent: 'claude',
-      provider: 'local',
+      provider: 'docker',
       trials: 10,
       timeout: 600,
       docker: { base: 'ubuntu:22.04' },
@@ -253,7 +253,7 @@ describe('resolveTask', () => {
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.agent).toBe('claude');
-    expect(resolved.provider).toBe('local');
+    expect(resolved.provider).toBe('docker');
     expect(resolved.trials).toBe(10);
     expect(resolved.timeout).toBe(600);
     expect(resolved.docker.base).toBe('ubuntu:22.04');
