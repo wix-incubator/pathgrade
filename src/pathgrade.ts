@@ -130,7 +130,7 @@ function printHelp() {
     --trials=N         Override trial count (overrides preset)
     --parallel=N       Run trials concurrently
     --agent=gemini|claude|codex   Override agent (default: auto-detect from API key)
-    --provider=docker|local Override provider (default: docker)
+    --provider=local|docker Override provider (default: local)
     --output=DIR       Output directory for reports and temp files
                        Default: $TMPDIR/pathgrade
     --validate         Verify graders using reference solutions

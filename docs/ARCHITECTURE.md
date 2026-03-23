@@ -1,6 +1,6 @@
 # Pathgrade - Architecture Guide
 
-**Pathgrade** is a CLI tool that evaluates whether AI agents (Gemini, Claude, Codex) correctly discover and use Agent Skills. It runs trials in isolated Docker containers and grades the results using deterministic tests and LLM rubrics.
+**Pathgrade** is a CLI tool that evaluates whether AI agents (Gemini, Claude, Codex) correctly discover and use Agent Skills. It runs trials in isolated local workspaces by default, keeps Docker as an optional compatibility path, and grades the results using deterministic tests and LLM rubrics.
 
 ---
 
@@ -11,7 +11,7 @@
 3. [Data Structures](#3-data-structures)
 4. [The `eval.yaml` Configuration](#4-the-evalyaml-configuration)
 5. [End-to-End Execution Flow](#5-end-to-end-execution-flow)
-6. [Docker Lifecycle](#6-docker-lifecycle)
+6. [Runtime Providers](#6-runtime-providers)
 7. [Grading System](#7-grading-system)
 8. [CLI Commands & Flags](#8-cli-commands--flags)
 9. [Output & Results](#9-output--results)
@@ -31,13 +31,13 @@
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                     SKILLGRADE CLI                               │
+│                     PATHGRADE CLI                                │
 │                                                                  │
-│   Reads eval.yaml → Builds Docker image → Runs N trials         │
+│   Reads eval.yaml → Creates local trial workspace → Runs N trials│
 │                                                                  │
 │   For EACH trial:                                                │
 │   ┌────────────────────────────────────────────────────────┐     │
-│   │              Docker Container                          │     │
+│   │         Local Trial Workspace (default)                │     │
 │   │                                                        │     │
 │   │   1. AI Agent receives instruction                     │     │
 │   │   2. Agent discovers & uses your skill                 │     │
@@ -92,8 +92,8 @@ src/
 │   └── codex.ts            ← Wraps: codex --approval-mode full-auto "$(cat /tmp/.prompt.md)"
 │
 ├── providers/
-│   ├── docker.ts           ← Docker provider: build image, create/destroy containers
-│   └── local.ts            ← Local provider: temp directories (for CI/testing)
+│   ├── docker.ts           ← Optional compatibility provider: build image, create/destroy containers
+│   └── local.ts            ← Default provider: isolated temp directories
 │
 ├── graders/
 │   └── index.ts            ← DeterministicGrader (bash → JSON) & LLMGrader (API call)
@@ -126,7 +126,11 @@ pathgrade.ts ──parse args──→ commands/run.ts
                     ▼
               evalRunner.ts ─────────────────────────────────┐
                     │                                        │
-                    ├──→ providers/docker.ts (or local.ts)   │
+                    ├──→ providers/local.ts (default)        │
+                    │      • setup()    → create temp dir    │
+                    │      • cleanup()  → remove temp dir    │
+                    │                                        │
+                    ├──→ providers/docker.ts (optional)      │
                     │      • prepare()  → build image        │
                     │      • setup()    → create container   │
                     │      • cleanup()  → destroy container  │
@@ -156,24 +160,24 @@ EvalConfig                          ← Top-level eval.yaml
 ├── skill?: string                  ← Path to SKILL.md (optional, auto-detected)
 ├── defaults: EvalDefaults          ← Global defaults for all tasks
 │   ├── agent: string               ← "gemini" | "claude" | "codex"
-│   ├── provider: string            ← "docker" | "local"
+│   ├── provider: string            ← "local" | "docker"
 │   ├── trials: number              ← How many times to run each task
 │   ├── timeout: number             ← Seconds before killing the agent
 │   ├── threshold: number           ← Pass/fail threshold for --ci mode
 │   ├── grader_model?: string       ← Default LLM model for rubric grading
 │   ├── docker: DockerConfig
 │   │   ├── base: string            ← Docker base image (e.g., "node:20-slim")
-│   │   └── setup?: string          ← Extra shell commands during image build
+│   │   └── setup?: string          ← Extra shell commands during Docker image build
 │   └── environment: EnvironmentConfig
-│       ├── cpus: number            ← CPU limit per container
-│       └── memory_mb: number       ← Memory limit per container
+│       ├── cpus: number            ← CPU limit per trial runtime
+│       └── memory_mb: number       ← Memory limit per trial runtime
 │
 └── tasks: EvalTaskConfig[]         ← List of evaluation scenarios
     ├── name: string                ← Unique task identifier
     ├── instruction: string         ← What to tell the agent (inline or file path)
     ├── workspace?: WorkspaceMapping[]
-    │   ├── src: string             ← Local file to copy into container
-    │   ├── dest: string            ← Where it goes in the container
+    │   ├── src: string             ← Local file to copy into the trial workspace
+    │   ├── dest: string            ← Where it goes in the trial workspace
     │   └── chmod?: string          ← Permission change (e.g., "+x")
     ├── graders: EvalGraderConfig[]
     │   ├── type: string            ← "deterministic" or "llm_rubric"
@@ -265,7 +269,7 @@ skill: ./skills/superlint
 
 defaults:
   agent: gemini               # Which AI agent to test with
-  provider: docker            # Run in Docker (vs "local" for temp dirs)
+  provider: local             # Run locally by default (Docker remains optional)
   trials: 5                   # Run each task 5 times
   timeout: 300                # Kill agent after 5 minutes
   threshold: 0.8              # CI fails if pass_rate < 80%
@@ -511,7 +515,7 @@ Let's trace trial #1 of the `fix-linting` task with Gemini:
 
 ---
 
-## 6. Docker Lifecycle
+## 6. Runtime Providers
 
 ### 6.1 Image Build (One-Time Per Task)
 
@@ -593,9 +597,9 @@ Different AI agents look for skills in different places:
 
 Pathgrade copies skills into **both** directories so the same image works regardless of which agent is being tested.
 
-### 6.4 Local Provider (Alternative to Docker)
+### 6.4 Local Provider (Default)
 
-For CI/testing, the `local` provider skips Docker entirely:
+By default, the `local` provider runs each trial in an isolated temp workspace and skips Docker entirely:
 
 ```
 setup()    → cp -r taskPath /tmp/pathgrade-XXXXX/
@@ -753,7 +757,7 @@ Options:
   --trials=N          Override trial count
   --parallel=N        Run N trials concurrently
   --agent=NAME        gemini | claude | codex (override eval.yaml)
-  --provider=NAME     docker | local (override eval.yaml)
+  --provider=NAME     local | docker (override eval.yaml, default: local)
   --eval=NAME[,NAME]  Run specific tasks by name
   --grader=TYPE       Filter: deterministic | llm_rubric
   --output=DIR        Output directory (default: $TMPDIR/pathgrade)

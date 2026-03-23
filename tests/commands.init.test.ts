@@ -83,7 +83,7 @@ describe('getInlineTemplate', () => {
 
 defaults:
   agent: gemini
-  provider: docker
+  provider: local
   trials: 5
   timeout: 300
   threshold: 0.8
@@ -119,7 +119,7 @@ tasks:
   it('includes default configuration', () => {
     const template = getInlineTemplate();
     expect(template).toContain('agent: gemini');
-    expect(template).toContain('provider: docker');
+    expect(template).toContain('provider: local');
     expect(template).toContain('trials: 5');
     expect(template).toContain('timeout: 300');
     expect(template).toContain('threshold: 0.8');

@@ -8,7 +8,9 @@ See [examples/](examples/) — [superlint](examples/superlint/) (simple) and [an
 
 ## Quick Start
 
-**Prerequisites**: Node.js 20+, Docker
+**Prerequisites**: Node.js 20+
+
+Docker remains available as an optional compatibility override when you need container isolation, but Pathgrade runs locally by default.
 
 ```bash
 npm i -g @wix/pathgrade
@@ -33,6 +35,7 @@ GEMINI_API_KEY=your-key pathgrade --smoke
 ```
 
 The agent is auto-detected from your API key: `GEMINI_API_KEY` → Gemini, `ANTHROPIC_API_KEY` → Claude, `OPENAI_API_KEY` → Codex. Override with `--agent=claude`.
+Runs use the local provider by default. Add `--provider=docker` only when you specifically want the transitional Docker path.
 
 **4. Review**:
 
@@ -60,7 +63,7 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/`. Override with `-
 | `--trials=N` | Override trial count |
 | `--parallel=N` | Run trials concurrently |
 | `--agent=gemini\|claude\|codex` | Override agent (default: auto-detect from API key) |
-| `--provider=docker\|local` | Override provider |
+| `--provider=local\|docker` | Override provider (default: `local`) |
 | `--output=DIR` | Output directory (default: `$TMPDIR/pathgrade`) |
 | `--validate` | Verify graders using reference solutions |
 | `--ci` | CI mode: exit non-zero if below threshold |
@@ -77,16 +80,16 @@ version: "1"
 
 defaults:
   agent: gemini          # gemini | claude | codex
-  provider: docker       # docker | local
+  provider: local        # local | docker
   trials: 5
   timeout: 300           # seconds
   threshold: 0.8         # for --ci mode
   grader_model: gemini-3-flash-preview  # default LLM grader model
-  docker:
+  docker:                # optional Docker compatibility settings
     base: node:20-slim
     setup: |             # extra commands run during image build
       apt-get update && apt-get install -y jq
-  environment:           # container resource limits
+  environment:           # runtime resource limits
     cpus: 2
     memory_mb: 2048
 
@@ -95,7 +98,7 @@ tasks:
     instruction: |
       Use the superlint tool to fix coding standard violations in app.js.
 
-    workspace:                           # files copied into the container
+    workspace:                           # files copied into the trial workspace
       - src: fixtures/broken-app.js
         dest: app.js
       - src: bin/superlint
@@ -208,19 +211,19 @@ Final reward = `Σ (grader_score × weight) / Σ weight`
 
 ## CI Integration
 
-Use `--provider=local` in CI — the runner is already an ephemeral sandbox, so Docker adds overhead without benefit.
+Pathgrade is local-first in CI too, so the default path is usually the right one there as well.
 
 ```yaml
 # .github/workflows/pathgrade.yml
 - run: |
     npm i -g @wix/pathgrade
     cd skills/superlint
-    GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci --provider=local
+    GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci
 ```
 
 Exits with code 1 if pass rate falls below `--threshold` (default: 0.8).
 
-> **Tip**: Use `docker` (the default) for local development to protect your machine. In CI, `local` is faster and simpler.
+> **Tip**: Stay on the default local runtime unless you specifically need the transitional Docker compatibility path for extra isolation.
 
 ## Environment Variables
 

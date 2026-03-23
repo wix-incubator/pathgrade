@@ -29,12 +29,12 @@ This slice is complete when:
 
 ## Execution Checklist
 
-- [ ] Change config defaults from Docker-first to local-first.
+- [x] Change config defaults from Docker-first to local-first.
   - Update runtime defaults in the config loader.
   - Update template defaults in `templates/eval.yaml.template`.
   - Update example configs that still present Docker as the normal path.
 
-- [ ] Change the CLI surface to present local as the default.
+- [x] Change the CLI surface to present local as the default.
   - Update help text and command descriptions.
   - Update README and active architecture docs so local execution is the primary path.
   - Keep Docker mentions only where they are still true for transitional compatibility.
@@ -64,8 +64,8 @@ This slice is complete when:
 ## Done Criteria
 
 - [ ] The default mental model of the repo is local-first
-- [ ] The default config path uses `provider: local`
-- [ ] The CLI help no longer describes Docker as the default
+- [x] The default config path uses `provider: local`
+- [x] The CLI help no longer describes Docker as the default
 - [ ] Tests and build pass
 - [ ] One local example run has been verified
 

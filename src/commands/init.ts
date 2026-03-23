@@ -171,7 +171,7 @@ version: "1"
 
 defaults:
   agent: gemini
-  provider: docker
+  provider: local
   trials: 5
   timeout: 300
   threshold: 0.8
@@ -296,7 +296,7 @@ function getInlineTemplate(): string {
 
 defaults:
   agent: gemini
-  provider: docker
+  provider: local
   trials: 5
   timeout: 300
   threshold: 0.8

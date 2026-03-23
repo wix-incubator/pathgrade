@@ -14,7 +14,7 @@ version: "1"
 
 defaults:
   agent: gemini
-  provider: docker
+  provider: local
   trials: 5
   timeout: 600
   threshold: 0.6

@@ -18,7 +18,7 @@ import {
 
 const DEFAULT_CONFIG: EvalDefaults = {
     agent: 'gemini',
-    provider: 'docker',
+    provider: 'local',
     trials: 5,
     timeout: 300,
     threshold: 0.8,

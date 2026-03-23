@@ -143,7 +143,7 @@ tasks:
 
     const config = await loadEvalConfig('/test');
     expect(config.defaults.agent).toBe('gemini');
-    expect(config.defaults.provider).toBe('docker');
+    expect(config.defaults.provider).toBe('local');
     expect(config.defaults.trials).toBe(5);
     expect(config.defaults.timeout).toBe(300);
     expect(config.defaults.threshold).toBe(0.8);
