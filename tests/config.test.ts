@@ -93,6 +93,61 @@ tasks:
     });
   });
 
+  it('accepts conversation tasks with persona fallback and no scripted replies', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    const yaml = `version: "1"
+tasks:
+  - name: test-task
+    conversation:
+      opener: "Start here"
+      completion:
+        max_turns: 3
+      persona:
+        description: "You are a concise product manager."
+        facts:
+          - "The feature is for Wix Stores"
+          - "You do not know the implementation details"
+    graders:
+      - type: deterministic
+        run: "echo ok"
+`;
+    mockReadFile.mockResolvedValue(yaml as any);
+
+    const config = await loadEvalConfig('/test');
+    expect(config.tasks[0].instruction).toBeUndefined();
+    expect(config.tasks[0].conversation).toEqual({
+      opener: 'Start here',
+      completion: { max_turns: 3 },
+      persona: {
+        description: 'You are a concise product manager.',
+        facts: [
+          'The feature is for Wix Stores',
+          'You do not know the implementation details',
+        ],
+      },
+    });
+  });
+
+  it('rejects conversation tasks with neither scripted replies nor persona', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    const yaml = `version: "1"
+tasks:
+  - name: test-task
+    conversation:
+      opener: "Start here"
+      completion:
+        max_turns: 3
+    graders:
+      - type: deterministic
+        run: "echo ok"
+`;
+    mockReadFile.mockResolvedValue(yaml as any);
+
+    await expect(loadEvalConfig('/test')).rejects.toThrow(
+      'must include at least one of "replies" or "persona"'
+    );
+  });
+
   it('throws when task has no graders', async () => {
     mockPathExists.mockResolvedValue(true as any);
     const yaml = `version: "1"
@@ -458,6 +513,40 @@ describe('resolveTask', () => {
         { content: 'Reply from file' },
         { content: 'Inline fallback', when: 'goal' },
       ],
+    });
+  });
+
+  it('resolves conversation persona description from file', async () => {
+    const task: EvalTaskConfig = {
+      name: 'test-task',
+      conversation: {
+        opener: 'Opened inline',
+        completion: { max_turns: 4 },
+        persona: {
+          description: 'conversation/persona.md',
+          facts: ['The feature is for Wix Stores'],
+        },
+      },
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+    };
+
+    mockPathExists.mockImplementation(async (candidate: any) =>
+      String(candidate).includes('conversation/persona.md')
+    );
+    mockReadFile.mockImplementation(async (candidate: any) => {
+      const fullPath = String(candidate);
+      if (fullPath.includes('conversation/persona.md')) return 'Persona loaded from file';
+      return '';
+    });
+
+    const resolved = await resolveTask(task, defaults, '/base');
+    expect(resolved.conversation).toEqual({
+      opener: 'Opened inline',
+      completion: { max_turns: 4 },
+      persona: {
+        description: 'Persona loaded from file',
+        facts: ['The feature is for Wix Stores'],
+      },
     });
   });
 });

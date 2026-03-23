@@ -172,6 +172,176 @@ describe('EvalRunner', () => {
     expect(report.trials[0].session_log.filter(entry => entry.type === 'agent_result')).toHaveLength(2);
   });
 
+  it('falls back to persona replies after scripted replies are exhausted', async () => {
+    const provider = makeMockProvider();
+    const start = vi.fn().mockResolvedValue({
+      rawOutput: 'Turn one raw output',
+      assistantMessage: 'What are you building?',
+      exitCode: 0,
+    });
+    const reply = vi.fn()
+      .mockResolvedValueOnce({
+        rawOutput: 'Turn two raw output',
+        assistantMessage: 'Any technical constraints or repo links?',
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        rawOutput: 'Turn three raw output',
+        assistantMessage: 'Project brief created.',
+        exitCode: 0,
+      });
+    const createSession = vi.fn().mockResolvedValue({ start, reply });
+    const agent = { createSession } as unknown as BaseAgent;
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    let capturedBody: any;
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
+      capturedBody = JSON.parse(options.body);
+      return {
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: 'No repo links yet, and I do not know the implementation details.' }] } }],
+          usageMetadata: {
+            promptTokenCount: 111,
+            candidatesTokenCount: 22,
+            totalTokenCount: 133,
+          },
+        }),
+      } as any;
+    });
+
+    try {
+      const runner = new EvalRunner(provider);
+      const report = await runner.runEval(agent, '/task', [], makeEvalOpts({
+        instruction: undefined,
+        conversation: {
+          opener: 'Help me start a new project.',
+          completion: {
+            max_turns: 4,
+            done_phrase: 'brief created',
+          },
+          replies: [
+            { content: 'It is a gift card feature for Wix Stores.' },
+          ],
+          persona: {
+            description: 'You are a concise Wix product manager.',
+            facts: [
+              'The feature is for Wix Stores.',
+              'You do not know the technical implementation details.',
+            ],
+          },
+        },
+      }), 1, { GEMINI_API_KEY: 'test-key' });
+
+      expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+      expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        message: 'It is a gift card feature for Wix Stores.',
+        continueSession: true,
+      }));
+      expect(reply).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        message: 'No repo links yet, and I do not know the implementation details.',
+        continueSession: true,
+      }));
+      expect(report.trials[0].conversation).toEqual(expect.objectContaining({
+        total_turns: 3,
+        completion_reason: 'done_phrase',
+      }));
+      expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual([
+        'opener',
+        'scripted',
+        'persona_llm',
+      ]);
+      expect(report.trials[0].persona_input_tokens).toBe(111);
+      expect(report.trials[0].persona_output_tokens).toBe(22);
+
+      const prompt = capturedBody.contents[0].parts[0].text;
+      expect(prompt).toContain('## Who You Are');
+      expect(prompt).toContain('You are a concise Wix product manager.');
+      expect(prompt).toContain('The feature is for Wix Stores.');
+      expect(prompt).toContain('User: Help me start a new project.');
+      expect(prompt).toContain('Assistant: What are you building?');
+      expect(prompt).toContain("## Agent's Latest Message");
+      expect(prompt).toContain('Any technical constraints or repo links?');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('counts multi-turn agent tokens from user and assistant messages, not raw outputs', async () => {
+    const provider = makeMockProvider();
+    const start = vi.fn().mockResolvedValue({
+      rawOutput: 'This raw output is much longer than the assistant summary',
+      assistantMessage: 'Plan',
+      exitCode: 0,
+    });
+    const reply = vi.fn()
+      .mockResolvedValueOnce({
+        rawOutput: 'Another verbose raw output that should not drive token totals',
+        assistantMessage: 'Tech',
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        rawOutput: 'Final verbose raw output for completion',
+        assistantMessage: 'Done',
+        exitCode: 0,
+      });
+    const createSession = vi.fn().mockResolvedValue({ start, reply });
+    const agent = { createSession } as unknown as BaseAgent;
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: 'Repo' }] } }],
+        usageMetadata: {
+          promptTokenCount: 7,
+          candidatesTokenCount: 3,
+          totalTokenCount: 10,
+        },
+      }),
+    } as any);
+
+    try {
+      const runner = new EvalRunner(provider);
+      const report = await runner.runEval(agent, '/task', [], makeEvalOpts({
+        instruction: undefined,
+        conversation: {
+          opener: 'Idea',
+          completion: {
+            max_turns: 4,
+            done_phrase: 'Done',
+          },
+          replies: [
+            { content: 'Gift' },
+          ],
+          persona: {
+            description: 'Short persona',
+            facts: ['Fact'],
+          },
+        },
+      }), 1, { GEMINI_API_KEY: 'test-key' });
+
+      expect(report.trials[0].input_tokens).toBe(3);
+      expect(report.trials[0].output_tokens).toBe(3);
+      expect(report.trials[0].persona_input_tokens).toBe(7);
+      expect(report.trials[0].persona_output_tokens).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('handles agent errors gracefully', async () => {
     const provider = makeMockProvider();
     const agent = {

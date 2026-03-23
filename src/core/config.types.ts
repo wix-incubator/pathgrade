@@ -17,6 +17,12 @@ export interface ConversationReplyConfig {
     when?: string;
 }
 
+export interface ConversationPersonaConfig {
+    description: string;
+    facts: string[];
+    model?: string;
+}
+
 export interface ConversationCompletionConfig {
     max_turns: number;
     signal?: string;
@@ -27,7 +33,8 @@ export interface ConversationCompletionConfig {
 export interface ConversationConfig {
     opener: string;
     completion: ConversationCompletionConfig;
-    replies: ConversationReplyConfig[];
+    replies?: ConversationReplyConfig[];
+    persona?: ConversationPersonaConfig;
 }
 
 export interface ResolvedConversationReply {
@@ -38,7 +45,8 @@ export interface ResolvedConversationReply {
 export interface ResolvedConversation {
     opener: string;
     completion: ConversationCompletionConfig;
-    replies: ResolvedConversationReply[];
+    replies?: ResolvedConversationReply[];
+    persona?: ConversationPersonaConfig;
 }
 
 /** Grader definition */

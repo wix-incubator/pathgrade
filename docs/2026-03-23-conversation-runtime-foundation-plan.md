@@ -1,8 +1,8 @@
 # Pathgrade Conversation Runtime Foundation Plan
 
 **Date:** 2026-03-23
-**Status:** Phase 3 Foundation Complete (working tree)
-**Scope:** Runtime checkpoint after the conversation runner foundation slice.
+**Status:** Phase 3 Persona Fallback Complete (working tree)
+**Scope:** Runtime checkpoint after the persona-backed reply fallback slice.
 
 ## Goal
 
@@ -50,18 +50,23 @@ This slice implemented the smallest safe version of the conversation runner foun
 
 ## What Landed
 
-- Added `src/conversationRunner.ts` to orchestrate scripted multi-turn trials.
+- Added `src/conversationRunner.ts` persona fallback support after scripted reply matching and queue exhaustion.
 - Added conversation-aware config types and resolution for:
   - `conversation.opener`
   - `conversation.completion`
   - scripted `conversation.replies`
+  - `conversation.persona`
+- Added `src/persona.ts` persona prompt construction and reply generation.
+- Added `src/utils/llm.ts` shared LLM calling infrastructure used by persona replies and `llm_rubric`.
 - Updated `EvalRunner` to branch between single-turn and conversation execution.
 - Preserved the existing single-turn run path and grading flow.
 - Added transcript logging for:
   - opener and scripted user replies
+  - persona-generated user replies
   - per-turn assistant messages
   - turn-scoped command execution
   - conversation completion reason
+- Added separate persona token accounting in `TrialResult`.
 - Added completion handling for:
   - `signal`
   - `done_phrase`
@@ -76,15 +81,12 @@ This slice implemented the smallest safe version of the conversation runner foun
 
 The following items are still intentionally deferred after this slice:
 
-- [ ] `conversation.persona` fallback replies
 - [ ] `conversation.step_graders`
 - [ ] conversation-aware `--validate` support
 - [ ] richer report/viewer rendering for conversation summaries
-- [ ] separate persona token accounting in `TrialResult`
 
 Current behavior for deferred pieces:
 
-- `conversation.persona` is rejected during config validation
 - `conversation.step_graders` are rejected during config validation
 - `--validate` rejects conversation tasks
 
@@ -98,31 +100,29 @@ Verified before this checkpoint handoff:
 Result:
 
 - 16 test files passed
-- 167 tests passed
+- 173 tests passed
 - TypeScript build passed
 
 ## Recommended Next Slice
 
-Recommended next slice: **persona-backed reply fallback**.
+Recommended next slice: **step graders**.
 
 Order:
 
-1. Allow `conversation.persona` in config resolution
-2. Extract shared LLM calling infrastructure from `llm_rubric`
-3. Add persona prompt construction and reply generation
-4. Fall back from scripted replies to persona replies when the scripted pool is exhausted or unmatched
-5. Track persona token usage separately from agent token usage
-6. Extend tests for persona fallback and `no_replies` termination behavior
+1. Allow `conversation.step_graders` in config resolution
+2. Run configured grader sets after the requested turn numbers
+3. Persist step grader results in transcript/session logs and `TrialResult`
+4. Keep end-of-conversation graders and reward calculation working unchanged
+5. Extend tests for mid-conversation grading and failure reporting
 
 Rationale:
 
-- The scripted conversation loop now exists and is stable.
-- The next missing product capability is handling unscripted conversational branches without ending early.
-- Persona fallback is still Phase 3 work and unlocks more realistic evals before step graders.
+- Persona fallback is now in place, so the next product gap is checking workflow compliance before the final artifact exists.
+- Step graders are the next Phase 3 capability needed to verify conversational skills follow their intended turn-by-turn structure.
 
 ## Next Major Phase After That
 
-After persona fallback, the next major slices remain:
+After step graders, the next major slices remain:
 
 - step graders
 - deeper transcript/reporting support
@@ -151,8 +151,8 @@ For a fresh session, start with:
 1. Read this file.
 2. Read [docs/2026-03-23-wix-fork-proposal.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-wix-fork-proposal.md).
 3. Read the Phase 3 sections of [docs/2026-03-20-multi-turn-conversations-design.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-20-multi-turn-conversations-design.md).
-4. Continue with the persona fallback slice unless priorities have changed.
+4. Continue with the step grader slice unless priorities have changed.
 
 Suggested opener:
 
-`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file plus docs/2026-03-23-wix-fork-proposal.md and the Phase 3 persona simulation section of docs/2026-03-20-multi-turn-conversations-design.md, then implement persona fallback replies.`
+`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file plus docs/2026-03-23-wix-fork-proposal.md and the Phase 3 step grader section of docs/2026-03-20-multi-turn-conversations-design.md, then implement step graders.`

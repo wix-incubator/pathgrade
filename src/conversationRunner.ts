@@ -1,8 +1,8 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { ResolvedConversation } from './core/config.types';
+import { generatePersonaReply } from './persona';
 import {
-    AgentCommandRunner,
     BaseAgent,
     CommandExecutionOptions,
     ConversationReplySource,
@@ -29,6 +29,7 @@ interface ConversationRunOptions {
     agent: BaseAgent;
     conversation: ResolvedConversation;
     env?: Record<string, string>;
+    graderModel?: string;
     provider: EnvironmentProvider;
     runtime: EnvironmentHandle;
     timeoutSec: number;
@@ -39,6 +40,8 @@ export interface ConversationRunResult {
     commandCount: number;
     conversation: NonNullable<TrialResult['conversation']>;
     inputText: string;
+    personaInputTokens: number;
+    personaOutputTokens: number;
     sessionLog: LogEntry[];
 }
 
@@ -78,11 +81,12 @@ function withAbortTimeout<T>(
 }
 
 function createReplyPool(conversation: ResolvedConversation): ReplyPool {
+    const replies = conversation.replies ?? [];
     return {
-        orderedQueue: conversation.replies
+        orderedQueue: replies
             .filter((reply) => !reply.when)
             .map((reply) => reply.content),
-        patternReplies: conversation.replies
+        patternReplies: replies
             .filter((reply) => reply.when)
             .map((reply) => ({
                 content: reply.content,
@@ -97,30 +101,6 @@ function normalizeAssistantMessage(rawOutput: string, assistantMessage?: string)
         return normalized;
     }
     return rawOutput.trim();
-}
-
-function pickReply(
-    assistantMessage: string,
-    replyPool: ReplyPool
-): { content: string; source: ConversationReplySource } | null {
-    const patternIndex = replyPool.patternReplies.findIndex((reply) => reply.when.test(assistantMessage));
-    if (patternIndex >= 0) {
-        const [reply] = replyPool.patternReplies.splice(patternIndex, 1);
-        return {
-            content: reply.content,
-            source: 'scripted_pattern',
-        };
-    }
-
-    const orderedReply = replyPool.orderedQueue.shift();
-    if (orderedReply) {
-        return {
-            content: orderedReply,
-            source: 'scripted',
-        };
-    }
-
-    return null;
 }
 
 async function workspaceHasSignal(workspacePath: string, signal: string): Promise<boolean> {
@@ -177,6 +157,55 @@ async function checkCompletion(
     return { done: false };
 }
 
+async function pickReply(
+    assistantMessage: string,
+    replyPool: ReplyPool,
+    conversation: ResolvedConversation,
+    transcript: NonNullable<TrialResult['conversation']>['turns'],
+    env: Record<string, string> | undefined,
+    graderModel: string | undefined
+): Promise<{
+    content: string;
+    source: ConversationReplySource;
+    personaInputTokens?: number;
+    personaOutputTokens?: number;
+} | null> {
+    const patternIndex = replyPool.patternReplies.findIndex((reply) => reply.when.test(assistantMessage));
+    if (patternIndex >= 0) {
+        const [reply] = replyPool.patternReplies.splice(patternIndex, 1);
+        return {
+            content: reply.content,
+            source: 'scripted_pattern',
+        };
+    }
+
+    const orderedReply = replyPool.orderedQueue.shift();
+    if (orderedReply) {
+        return {
+            content: orderedReply,
+            source: 'scripted',
+        };
+    }
+
+    if (conversation.persona) {
+        const personaReply = await generatePersonaReply(
+            conversation.persona,
+            transcript,
+            assistantMessage,
+            env,
+            graderModel
+        );
+        return {
+            content: personaReply.content,
+            source: 'persona_llm',
+            personaInputTokens: personaReply.inputTokens,
+            personaOutputTokens: personaReply.outputTokens,
+        };
+    }
+
+    return null;
+}
+
 export async function runConversationTrial(opts: ConversationRunOptions): Promise<ConversationRunResult> {
     const sessionLog: LogEntry[] = [
         {
@@ -190,6 +219,8 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
     const inputMessages: string[] = [];
     const replyPool = createReplyPool(opts.conversation);
     const deadlineMs = Date.now() + (opts.timeoutSec * 1000);
+    let personaInputTokens = 0;
+    let personaOutputTokens = 0;
     let currentTurnNumber = 0;
     let currentTurnCommands: TurnCommand[] = [];
     let currentSignal: AbortSignal | undefined;
@@ -242,6 +273,8 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                     timeout_triggered_at_turn: turnNumber,
                 },
                 inputText: inputMessages.join('\n\n'),
+                personaInputTokens,
+                personaOutputTokens,
                 sessionLog,
             };
         }
@@ -312,11 +345,20 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                         completion_reason: completion.reason,
                     },
                     inputText: inputMessages.join('\n\n'),
+                    personaInputTokens,
+                    personaOutputTokens,
                     sessionLog,
                 };
             }
 
-            const reply = pickReply(assistantMessage, replyPool);
+            const reply = await pickReply(
+                assistantMessage,
+                replyPool,
+                opts.conversation,
+                turns,
+                opts.env,
+                opts.graderModel
+            );
             if (!reply) {
                 return {
                     commandCount,
@@ -326,10 +368,14 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                         completion_reason: 'no_replies',
                     },
                     inputText: inputMessages.join('\n\n'),
+                    personaInputTokens,
+                    personaOutputTokens,
                     sessionLog,
                 };
             }
 
+            personaInputTokens += reply.personaInputTokens ?? 0;
+            personaOutputTokens += reply.personaOutputTokens ?? 0;
             nextReply = reply;
         } catch (err: any) {
             const durationMs = Date.now() - turnStart;
@@ -364,6 +410,8 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                     timeout_triggered_at_turn: timedOut ? turnNumber : undefined,
                 },
                 inputText: inputMessages.join('\n\n'),
+                personaInputTokens,
+                personaOutputTokens,
                 sessionLog,
             };
         }

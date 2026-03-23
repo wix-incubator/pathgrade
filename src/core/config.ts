@@ -105,14 +105,22 @@ function validateConfig(raw: any): EvalConfig {
             if (typeof t.conversation.completion.max_turns !== 'number' || t.conversation.completion.max_turns < 1) {
                 throw new Error(`Task "${t.name}" conversation completion must include a positive "max_turns"`);
             }
-            if (t.conversation.persona !== undefined) {
-                throw new Error(`Task "${t.name}" conversation.persona is not supported yet`);
-            }
             if (t.conversation.step_graders !== undefined) {
                 throw new Error(`Task "${t.name}" conversation.step_graders are not supported yet`);
             }
-            if (!Array.isArray(t.conversation.replies) || t.conversation.replies.length === 0) {
-                throw new Error(`Task "${t.name}" conversation must include at least one scripted reply in "replies"`);
+            if (!Array.isArray(t.conversation.replies) && t.conversation.replies !== undefined) {
+                throw new Error(`Task "${t.name}" conversation.replies must be an array when provided`);
+            }
+            if (!t.conversation.persona && (!Array.isArray(t.conversation.replies) || t.conversation.replies.length === 0)) {
+                throw new Error(`Task "${t.name}" conversation must include at least one of "replies" or "persona"`);
+            }
+            if (t.conversation.persona !== undefined) {
+                if (!t.conversation.persona.description || typeof t.conversation.persona.description !== 'string') {
+                    throw new Error(`Task "${t.name}" conversation.persona must include a string "description"`);
+                }
+                if (!Array.isArray(t.conversation.persona.facts) || t.conversation.persona.facts.length === 0) {
+                    throw new Error(`Task "${t.name}" conversation.persona must include a non-empty "facts" array`);
+                }
             }
         }
 
@@ -138,7 +146,7 @@ function validateConfig(raw: any): EvalConfig {
                     done_phrase: t.conversation.completion.done_phrase,
                     timeout: t.conversation.completion.timeout,
                 },
-                replies: t.conversation.replies.map((reply: any) => {
+                replies: t.conversation.replies?.map((reply: any) => {
                     if (!reply?.content) {
                         throw new Error(`Task "${t.name}" conversation replies must include "content"`);
                     }
@@ -147,6 +155,11 @@ function validateConfig(raw: any): EvalConfig {
                         when: reply.when,
                     };
                 }),
+                persona: t.conversation.persona ? {
+                    description: t.conversation.persona.description,
+                    facts: t.conversation.persona.facts,
+                    model: t.conversation.persona.model,
+                } : undefined,
             } : undefined,
             workspace,
             graders: t.graders.map((g: any) => ({
@@ -241,12 +254,21 @@ async function resolveConversation(
     return {
         opener: await resolveFileOrInline(conversation.opener, baseDir),
         completion: conversation.completion,
-        replies: await Promise.all(
-            conversation.replies.map(async (reply) => ({
-                content: await resolveFileOrInline(reply.content, baseDir),
-                when: reply.when,
-            }))
-        ),
+        replies: conversation.replies
+            ? await Promise.all(
+                conversation.replies.map(async (reply) => ({
+                    content: await resolveFileOrInline(reply.content, baseDir),
+                    when: reply.when,
+                }))
+            )
+            : undefined,
+        persona: conversation.persona
+            ? {
+                description: await resolveFileOrInline(conversation.persona.description, baseDir),
+                facts: conversation.persona.facts,
+                model: conversation.persona.model,
+            }
+            : undefined,
     };
 }
 

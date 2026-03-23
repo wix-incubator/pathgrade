@@ -152,8 +152,10 @@ describe('LLMGrader', () => {
     // Remove env vars
     const origGemini = process.env.GEMINI_API_KEY;
     const origAnthropic = process.env.ANTHROPIC_API_KEY;
+    const origOpenAI = process.env.OPENAI_API_KEY;
     delete process.env.GEMINI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
 
     try {
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
@@ -162,6 +164,7 @@ describe('LLMGrader', () => {
     } finally {
       if (origGemini) process.env.GEMINI_API_KEY = origGemini;
       if (origAnthropic) process.env.ANTHROPIC_API_KEY = origAnthropic;
+      if (origOpenAI) process.env.OPENAI_API_KEY = origOpenAI;
     }
   });
 
@@ -311,6 +314,37 @@ describe('LLMGrader', () => {
       } finally {
         globalThis.fetch = originalFetch;
         if (origGemini) process.env.GEMINI_API_KEY = origGemini;
+      }
+    });
+
+    it('falls back to OpenAI when Gemini and Anthropic keys are missing', async () => {
+      mockPathExists.mockResolvedValue(true as any);
+      mockReadFile.mockResolvedValue('rubric content' as any);
+
+      const originalFetch = globalThis.fetch;
+      const origGemini = process.env.GEMINI_API_KEY;
+      const origAnthropic = process.env.ANTHROPIC_API_KEY;
+      delete process.env.GEMINI_API_KEY;
+      delete process.env.ANTHROPIC_API_KEY;
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({
+          choices: [{ message: { content: '{"score": 0.9, "reasoning": "openai ok"}' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      } as any);
+
+      try {
+        const provider = makeProvider('');
+        const env = { OPENAI_API_KEY: 'test-key' };
+        const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
+
+        expect(result.score).toBe(0.9);
+        expect(result.details).toBe('openai ok');
+      } finally {
+        globalThis.fetch = originalFetch;
+        if (origGemini) process.env.GEMINI_API_KEY = origGemini;
+        if (origAnthropic) process.env.ANTHROPIC_API_KEY = origAnthropic;
       }
     });
   });

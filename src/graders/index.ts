@@ -1,6 +1,7 @@
 import { GraderConfig, GraderResult, EnvironmentProvider, EnvironmentHandle } from '../types';
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import { callLLM } from '../utils/llm';
 
 export interface Grader {
     grade(
@@ -79,7 +80,7 @@ export class DeterministicGrader implements Grader {
 
 /**
  * Uses an LLM to evaluate the agent's session transcript against a rubric.
- * Requires GEMINI_API_KEY or ANTHROPIC_API_KEY in the environment.
+ * Requires a supported API key in the environment.
  */
 export class LLMGrader implements Grader {
     async grade(
@@ -166,68 +167,19 @@ ${transcript}
 
 Respond with ONLY a JSON object: {"score": <number>, "reasoning": "<brief explanation>"}`;
 
-        // Try Gemini API first, fall back to Anthropic
-        const apiKey = env?.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        const anthropicKey = env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-
-        if (apiKey) {
-            return this.callGemini(prompt, apiKey, config);
-        } else if (anthropicKey) {
-            return this.callAnthropic(prompt, anthropicKey, config);
-        }
-
-        return {
-            grader_type: 'llm_rubric',
-            score: 0,
-            weight: config.weight,
-            details: 'No API key available for LLM grading (set GEMINI_API_KEY or ANTHROPIC_API_KEY)'
-        };
-    }
-
-    private async callGemini(prompt: string, apiKey: string, config: GraderConfig): Promise<GraderResult> {
-        const model = config.model || 'gemini-3-flash-preview';
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0 }
-                })
+            const response = await callLLM(prompt, {
+                model: config.model,
+                env,
             });
-
-            const data = await response.json() as any;
-            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            return this.parseResponse(text, config);
-        } catch (e) {
-            return { grader_type: 'llm_rubric', score: 0, weight: config.weight, details: `Gemini API error: ${e}` };
-        }
-    }
-
-    private async callAnthropic(prompt: string, apiKey: string, config: GraderConfig): Promise<GraderResult> {
-        const model = config.model || 'claude-sonnet-4-20250514';
-        try {
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01'
-                },
-                body: JSON.stringify({
-                    model,
-                    max_tokens: 4096,
-                    messages: [{ role: 'user', content: prompt }]
-                })
-            });
-
-            const data = await response.json() as any;
-            const text = data?.content?.[0]?.text || '';
-            return this.parseResponse(text, config);
-        } catch (e) {
-            return { grader_type: 'llm_rubric', score: 0, weight: config.weight, details: `Anthropic API error: ${e}` };
+            return this.parseResponse(response.text, config);
+        } catch (error: any) {
+            return {
+                grader_type: 'llm_rubric',
+                score: 0,
+                weight: config.weight,
+                details: error?.message || String(error),
+            };
         }
     }
 

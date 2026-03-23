@@ -14,7 +14,7 @@ export interface TurnCommand extends CommandResult {
     command: string;
 }
 
-export type ConversationReplySource = 'opener' | 'scripted' | 'scripted_pattern';
+export type ConversationReplySource = 'opener' | 'scripted' | 'scripted_pattern' | 'persona_llm';
 
 export interface ConversationTurn {
     turn_number: number;
@@ -74,6 +74,8 @@ export interface TrialResult {
     n_commands: number;
     input_tokens: number;     // estimated from instruction length
     output_tokens: number;    // estimated from agent output
+    persona_input_tokens?: number;
+    persona_output_tokens?: number;
     session_log: LogEntry[];
     conversation?: {
         turns: ConversationTurn[];

@@ -214,6 +214,8 @@ export class EvalRunner {
         try {
             let inputText = '';
             let conversationData: TrialResult['conversation'];
+            let personaInputTokens: number | undefined;
+            let personaOutputTokens: number | undefined;
 
             if (opts.conversation) {
                 spinner.update('running conversation');
@@ -221,6 +223,7 @@ export class EvalRunner {
                     agent,
                     conversation: opts.conversation,
                     env,
+                    graderModel: opts.graderModel,
                     provider: this.provider,
                     runtime,
                     timeoutSec: opts.timeoutSec,
@@ -230,6 +233,8 @@ export class EvalRunner {
                 commandCount = conversationResult.commandCount;
                 conversationData = conversationResult.conversation;
                 inputText = conversationResult.inputText;
+                personaInputTokens = conversationResult.personaInputTokens;
+                personaOutputTokens = conversationResult.personaOutputTokens;
             } else {
                 if (!opts.instruction) {
                     throw new Error('EvalRunOptions must include instruction or conversation');
@@ -288,10 +293,14 @@ export class EvalRunner {
             });
 
             const duration_ms = Date.now() - startTime;
-            const input_tokens = estimateTokens(inputText);
-            const output_tokens = sessionLog
-                .filter((entry) => entry.type === 'agent_result' || entry.type === 'command')
-                .reduce((sum, entry) => sum + estimateTokens((entry.output || '') + (entry.stdout || '') + (entry.stderr || '')), 0);
+            const input_tokens = conversationData
+                ? conversationData.turns.reduce((sum, turn) => sum + estimateTokens(turn.user_message), 0)
+                : estimateTokens(inputText);
+            const output_tokens = conversationData
+                ? conversationData.turns.reduce((sum, turn) => sum + estimateTokens(turn.assistant_message), 0)
+                : sessionLog
+                    .filter((entry) => entry.type === 'agent_result' || entry.type === 'command')
+                    .reduce((sum, entry) => sum + estimateTokens((entry.output || '') + (entry.stdout || '') + (entry.stderr || '')), 0);
 
             const status = reward >= 0.5 ? fmt.pass('PASS') : fmt.fail('FAIL');
             spinner.stop(`${status}  ${fmt.bold(reward.toFixed(2))}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}  ${fmt.dim(commandCount + ' cmds')}`);
@@ -304,6 +313,8 @@ export class EvalRunner {
                 n_commands: commandCount,
                 input_tokens,
                 output_tokens,
+                persona_input_tokens: personaInputTokens,
+                persona_output_tokens: personaOutputTokens,
                 session_log: sessionLog,
                 conversation: conversationData,
             };
