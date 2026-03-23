@@ -101,8 +101,6 @@ skill: ./SKILL.md
 defaults:
   agent: claude
   trials: 10
-  docker:
-    base: ubuntu:22.04
 tasks:
   - name: test-task
     instruction: "install the app"
@@ -121,7 +119,6 @@ tasks:
     expect(config.skill).toBe('./SKILL.md');
     expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.trials).toBe(10);
-    expect(config.defaults.docker.base).toBe('ubuntu:22.04');
     expect(config.tasks).toHaveLength(1);
     expect(config.tasks[0].name).toBe('test-task');
     expect(config.tasks[0].graders).toHaveLength(2);
@@ -143,11 +140,65 @@ tasks:
 
     const config = await loadEvalConfig('/test');
     expect(config.defaults.agent).toBe('gemini');
-    expect(config.defaults.provider).toBe('local');
     expect(config.defaults.trials).toBe(5);
     expect(config.defaults.timeout).toBe(300);
     expect(config.defaults.threshold).toBe(0.8);
-    expect(config.defaults.docker.base).toBe('node:20-slim');
+    expect(config.defaults.environment).toEqual({ cpus: 2, memory_mb: 2048 });
+    expect(config.defaults).not.toHaveProperty('provider');
+    expect(config.defaults).not.toHaveProperty('docker');
+  });
+
+  it('rejects deprecated defaults.provider', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    const yaml = `version: "1"
+defaults:
+  provider: local
+tasks:
+  - name: test-task
+    instruction: do it
+    graders:
+      - type: deterministic
+        run: "echo ok"
+`;
+    mockReadFile.mockResolvedValue(yaml as any);
+
+    await expect(loadEvalConfig('/test')).rejects.toThrow('defaults.provider');
+  });
+
+  it('rejects deprecated defaults.docker', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    const yaml = `version: "1"
+defaults:
+  docker:
+    base: node:20-slim
+tasks:
+  - name: test-task
+    instruction: do it
+    graders:
+      - type: deterministic
+        run: "echo ok"
+`;
+    mockReadFile.mockResolvedValue(yaml as any);
+
+    await expect(loadEvalConfig('/test')).rejects.toThrow('defaults.docker');
+  });
+
+  it('rejects deprecated task-level provider and docker fields', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    const yaml = `version: "1"
+tasks:
+  - name: test-task
+    instruction: do it
+    provider: docker
+    docker:
+      base: node:20-slim
+    graders:
+      - type: deterministic
+        run: "echo ok"
+`;
+    mockReadFile.mockResolvedValue(yaml as any);
+
+    await expect(loadEvalConfig('/test')).rejects.toThrow('Task "test-task" uses deprecated');
   });
 
   it('handles workspace string shorthand', async () => {
@@ -212,11 +263,10 @@ tasks:
 describe('resolveTask', () => {
   const defaults: EvalDefaults = {
     agent: 'gemini',
-    provider: 'local',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
-    docker: { base: 'node:20-slim' },
+    environment: { cpus: 2, memory_mb: 2048 },
   };
 
   it('applies defaults when task has no overrides', async () => {
@@ -231,10 +281,9 @@ describe('resolveTask', () => {
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.agent).toBe('gemini');
-    expect(resolved.provider).toBe('local');
     expect(resolved.trials).toBe(5);
     expect(resolved.timeout).toBe(300);
-    expect(resolved.docker.base).toBe('node:20-slim');
+    expect(resolved.environment).toEqual({ cpus: 2, memory_mb: 2048 });
   });
 
   it('task overrides take precedence over defaults', async () => {
@@ -242,10 +291,9 @@ describe('resolveTask', () => {
       name: 'test-task',
       instruction: 'do it now',
       agent: 'claude',
-      provider: 'docker',
       trials: 10,
       timeout: 600,
-      docker: { base: 'ubuntu:22.04' },
+      environment: { memory_mb: 4096 },
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
     };
 
@@ -253,10 +301,9 @@ describe('resolveTask', () => {
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.agent).toBe('claude');
-    expect(resolved.provider).toBe('docker');
     expect(resolved.trials).toBe(10);
     expect(resolved.timeout).toBe(600);
-    expect(resolved.docker.base).toBe('ubuntu:22.04');
+    expect(resolved.environment).toEqual({ cpus: 2, memory_mb: 4096 });
   });
 
   it('resolves instruction from file when it exists', async () => {

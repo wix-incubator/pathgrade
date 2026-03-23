@@ -99,7 +99,6 @@ async function main() {
         threshold: getFlag('threshold') ? parseFloat(getFlag('threshold')!) : undefined,
         preset,
         agent: getFlag('agent'),
-        provider: getFlag('provider'),
         grader: getFlag('grader'),
         output: outputDir,
     });
@@ -130,7 +129,6 @@ function printHelp() {
     --trials=N         Override trial count (overrides preset)
     --parallel=N       Run trials concurrently
     --agent=gemini|claude|codex   Override agent (default: auto-detect from API key)
-    --provider=local|docker Override provider (default: local)
     --output=DIR       Output directory for reports and temp files
                        Default: $TMPDIR/pathgrade
     --validate         Verify graders using reference solutions

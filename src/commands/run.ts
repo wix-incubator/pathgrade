@@ -25,7 +25,6 @@ interface RunOptions {
     threshold?: number;
     preset?: 'smoke' | 'reliable' | 'regression';
     agent?: string;      // override agent (gemini|claude)
-    provider?: string;   // deprecated runtime override; local is always used
     output?: string;     // output directory for reports and temp files
     grader?: string;     // filter graders by type (deterministic|llm_rubric)
 }
@@ -106,12 +105,6 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const trials = opts.trials ?? resolved.trials;
         const parallel = opts.parallel ?? 1;
 
-        if (opts.provider && opts.provider !== 'local') {
-            console.error(`  ${fmt.red('warning')}  ignoring provider override "${opts.provider}"; pathgrade run uses the local runtime`);
-        } else if (resolved.provider && resolved.provider !== 'local') {
-            console.error(`  ${fmt.red('warning')}  ignoring task provider "${resolved.provider}" for "${resolved.name}"; pathgrade run uses the local runtime`);
-        }
-
         // Create a local task bundle for this run
         const tmpTaskDir = path.join(outputDir, 'tmp', resolved.name);
         await prepareTempTaskDir(resolved, dir, tmpTaskDir);
@@ -176,7 +169,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
             const agent = createAgent(agentName);
 
             header(resolved.name);
-            console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('provider')} local  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
+            console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('runtime')} local  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
             console.log();
 
             try {
@@ -218,7 +211,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
 /**
  * Create a temp task directory for runtime execution.
- * Contains shared workspace files, grader scripts, prompts, and optional Docker assets.
+ * Contains shared workspace files and grader scripts for the local runtime.
  * No longer writes task.toml or instruction.md — those are passed directly.
  */
 async function prepareTempTaskDir(

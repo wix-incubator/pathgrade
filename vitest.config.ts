@@ -14,7 +14,6 @@ export default defineConfig({
         'src/cli.ts',
         'src/skill-eval.ts',
         'src/analytics/analyze.ts',
-        'src/providers/docker.ts',
         'src/reporters/browser.ts',
         'src/core/config.types.ts',
         'src/types.ts',

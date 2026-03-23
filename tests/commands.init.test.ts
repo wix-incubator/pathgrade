@@ -83,12 +83,9 @@ describe('getInlineTemplate', () => {
 
 defaults:
   agent: gemini
-  provider: local
   trials: 5
   timeout: 300
   threshold: 0.8
-  docker:
-    base: node:20-slim
 
 tasks:
   - name: {{TASK_NAME}}
@@ -119,10 +116,11 @@ tasks:
   it('includes default configuration', () => {
     const template = getInlineTemplate();
     expect(template).toContain('agent: gemini');
-    expect(template).toContain('provider: local');
     expect(template).toContain('trials: 5');
     expect(template).toContain('timeout: 300');
     expect(template).toContain('threshold: 0.8');
+    expect(template).not.toContain('provider: local');
+    expect(template).not.toContain('docker:');
   });
 
   it('includes both grader types', () => {

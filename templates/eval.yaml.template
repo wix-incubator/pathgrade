@@ -12,14 +12,12 @@ version: "1"
 
 defaults:
   agent: gemini          # gemini | claude
-  provider: local        # local | docker (docker remains optional)
   trials: 5              # number of independent runs per task
   timeout: 300           # seconds before agent is killed
   threshold: 0.8         # minimum pass rate for --ci mode
-  docker:
-    base: node:20-slim   # base Docker image
-    # setup: |            # extra setup commands (uncomment if needed)
-    #   apt-get update && apt-get install -y <packages>
+  environment:
+    cpus: 2
+    memory_mb: 2048
 
 tasks:
   - name: {{TASK_NAME}}

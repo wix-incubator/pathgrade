@@ -61,10 +61,9 @@ describe('resolvedToTaskConfig', () => {
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 0.7 }],
       agent: 'gemini',
-      provider: 'local',
       trials: 5,
       timeout: 300,
-      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
     };
 
     const config = resolvedToTaskConfig(resolved);
@@ -80,10 +79,9 @@ describe('resolvedToTaskConfig', () => {
       workspace: [],
       graders: [{ type: 'llm_rubric', rubric: 'check quality', weight: 0.3 }],
       agent: 'gemini',
-      provider: 'local',
       trials: 5,
       timeout: 300,
-      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
     };
 
     const config = resolvedToTaskConfig(resolved);
@@ -99,10 +97,9 @@ describe('resolvedToTaskConfig', () => {
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
       agent: 'gemini',
-      provider: 'local',
       trials: 5,
       timeout: 600,
-      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
     };
 
     const config = resolvedToTaskConfig(resolved);
@@ -116,10 +113,9 @@ describe('resolvedToTaskConfig', () => {
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
       agent: 'gemini',
-      provider: 'local',
       trials: 5,
       timeout: 300,
-      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
     };
 
     const config = resolvedToTaskConfig(resolved);
@@ -139,10 +135,9 @@ describe('resolvedToTaskConfig', () => {
         { type: 'llm_rubric', rubric: 'quality criteria', weight: 0.3 },
       ],
       agent: 'gemini',
-      provider: 'local',
       trials: 5,
       timeout: 300,
-      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
     };
 
     const config = resolvedToTaskConfig(resolved);
@@ -158,10 +153,9 @@ describe('resolvedToTaskConfig', () => {
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
       agent: 'gemini',
-      provider: 'local',
       trials: 5,
       timeout: 300,
-      docker: { base: 'node:20-slim' },
+      environment: { cpus: 2, memory_mb: 2048 },
     };
 
     const config = resolvedToTaskConfig(resolved);

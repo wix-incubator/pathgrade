@@ -1,14 +1,12 @@
 import { BaseAgent } from '../src/types';
 import { LocalProvider } from '../src/providers/local';
-import { DockerProvider } from '../src/providers/docker';
 import { EvalRunner, loadTaskConfig } from '../src/evalRunner';
 import * as path from 'path';
-import { execSync } from 'child_process';
 import * as fs from 'fs-extra';
 
-async function runTest(useDocker: boolean, numTrials: number = 1, logDir?: string) {
-    console.log(`\n--- Testing with ${useDocker ? 'Docker' : 'Local'} Provider (${numTrials} trials, logDir: ${logDir || 'none'}) ---`);
-    const provider = useDocker ? new DockerProvider() : new LocalProvider();
+async function runTest(numTrials: number = 1, logDir?: string) {
+    console.log(`\n--- Testing with Local Runtime (${numTrials} trials, logDir: ${logDir || 'none'}) ---`);
+    const provider = new LocalProvider();
     const runner = new EvalRunner(provider, logDir);
 
     const solvingAgent = {
@@ -70,7 +68,7 @@ async function runTest(useDocker: boolean, numTrials: number = 1, logDir?: strin
         process.exit(1);
     }
 
-    console.log(`\nSUCCESS: ${useDocker ? 'Docker' : 'Local'} multi-trial implementation verified!`);
+    console.log('\nSUCCESS: Local multi-trial implementation verified!');
 
     if (logDir) {
         const files = await fs.readdir(logDir);
@@ -92,25 +90,16 @@ async function main() {
         console.log('Starting bootstrap tests...');
 
         // Test 1: Local Single Trial
-        await runTest(false, 1);
+        await runTest(1);
 
         // Test 2: Local Multi-Trial
-        await runTest(false, 3);
+        await runTest(3);
 
         // Test 3: Local with Persistence
         if (fs.existsSync(testLogDir)) await fs.remove(testLogDir);
-        await runTest(false, 1, testLogDir);
+        await runTest(1, testLogDir);
 
-        // Test 4: Docker
-        try {
-            console.log('Checking for Docker...');
-            execSync('docker ps', { stdio: 'ignore' });
-            await runTest(true, 1);
-        } catch (e) {
-            console.warn('Docker not available or failed check, skipping Docker test.');
-        }
-
-        // Test 5: Secret Injection & Sanitization
+        // Test 4: Secret Injection & Sanitization
         console.log('\n--- Testing Secret Injection & Sanitization ---');
         if (fs.existsSync(secretLogDir)) await fs.remove(secretLogDir);
 

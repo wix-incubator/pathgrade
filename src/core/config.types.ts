@@ -5,10 +5,10 @@
  * create to define evaluation tasks for their skills.
  */
 
-/** Workspace file mapping: copy a local file into the container */
+/** Workspace file mapping: copy a local file into the trial workspace */
 export interface WorkspaceMapping {
     src: string;        // relative to eval.yaml
-    dest: string;       // path in container (relative = in /workspace, absolute = absolute)
+    dest: string;       // path in the trial workspace
     chmod?: string;     // e.g. "+x"
 }
 
@@ -20,12 +20,6 @@ export interface EvalGraderConfig {
     rubric?: string;    // inline rubric or file path (llm_rubric)
     model?: string;     // LLM model override (e.g. 'gemini-2.0-flash', 'claude-sonnet-4-20250514')
     weight: number;
-}
-
-/** Docker configuration */
-export interface DockerConfig {
-    base: string;       // base Docker image
-    setup?: string;     // extra RUN commands for Dockerfile
 }
 
 /** Environment resource limits */
@@ -44,23 +38,19 @@ export interface EvalTaskConfig {
 
     // Per-task overrides
     agent?: string;
-    provider?: string;
     trials?: number;
     timeout?: number;
     grader_model?: string;
-    docker?: DockerConfig;
     environment?: Partial<EnvironmentConfig>;
 }
 
 /** Top-level defaults */
 export interface EvalDefaults {
     agent: string;      // 'gemini' | 'claude' | 'codex'
-    provider: string;   // 'docker' | 'local'
     trials: number;
     timeout: number;
     threshold: number;  // for --ci mode
     grader_model?: string;  // default LLM grader model
-    docker: DockerConfig;
     environment: EnvironmentConfig;
 }
 
@@ -80,11 +70,9 @@ export interface ResolvedTask {
     graders: ResolvedGrader[];
     solution?: string;      // resolved file path
     agent: string;
-    provider: string;
     trials: number;
     timeout: number;
     grader_model?: string;  // inherited default model for LLM graders
-    docker: DockerConfig;
     environment: EnvironmentConfig;
 }
 

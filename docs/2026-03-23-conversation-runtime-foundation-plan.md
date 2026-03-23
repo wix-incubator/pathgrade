@@ -1,7 +1,7 @@
 # Pathgrade Conversation Runtime Foundation Plan
 
 **Date:** 2026-03-23
-**Status:** In Progress
+**Status:** Phase 2 Complete (working tree)
 **Scope:** Phase 2 checkpoint after the local-first slice.
 
 ## Goal
@@ -37,7 +37,7 @@ This slice did **not** add the conversation runner, scripted replies, completion
 
 ## Current Working Tree Progress
 
-Additional Phase 2 work has been completed in the current worktree after commit `8c6f45f`:
+Additional Phase 2 work has been completed in the current worktree after commits `8c6f45f` and `cd1d75c`:
 
 - [x] Remove Docker/provider branching from the main run path in `src/commands/run.ts`
 - [x] Remove Docker-specific staging from `prepareTempTaskDir()`
@@ -46,8 +46,12 @@ Additional Phase 2 work has been completed in the current worktree after commit 
   - Gemini uses transcript accumulation fallback
   - Codex uses transcript accumulation fallback
 - [x] Make local command execution abortable so agent timeouts can terminate child processes
+- [x] Remove the remaining Docker CLI/docs/config surface
+- [x] Reject deprecated `provider` and `docker` fields in `eval.yaml`
+- [x] Remove `dockerode`, `tar-stream`, and `src/providers/docker.ts`
+- [x] Rewrite the active architecture and setup docs around the local-only runtime
 
-This work is verified in the working tree and ready for the next commit.
+This completes the planned Phase 2 runtime cleanup in the current worktree.
 
 ## Verification Evidence
 
@@ -73,9 +77,20 @@ Result:
 - 158 tests passed
 - TypeScript build passed
 
+Verified again after the final Docker cleanup and local-only config/doc updates:
+
+- `npm test`
+- `npm run build`
+
+Result:
+
+- 16 test files passed
+- 160 tests passed
+- TypeScript build passed
+
 ## Remaining Phase 2 Checklist
 
-These are the remaining steps to fully close the Phase 2 runtime checkpoint described in the design doc:
+These were the remaining steps needed to fully close the Phase 2 runtime checkpoint described in the design doc:
 
 - [x] Remove Docker/provider branching from the main run path in `src/commands/run.ts`
 - [x] Remove Docker-specific staging and remaining Docker-first assumptions from runtime setup
@@ -83,29 +98,29 @@ These are the remaining steps to fully close the Phase 2 runtime checkpoint desc
   - Claude native continuation first
   - transcript fallback for agents without reliable native continuation
 - [x] Make local command execution abortable so runtime timeouts can stop child processes cleanly
-- [ ] Remove Docker dependencies and leftover Docker surface area if no longer needed
-- [ ] Verify the local-only runtime remains CI-safe after the Docker removal work
+- [x] Remove Docker dependencies and leftover Docker surface area if no longer needed
+- [x] Verify the local-only runtime remains CI-safe after the Docker removal work
 
 ## Recommended Next Slice
 
-Recommended next slice: **finish Docker cleanup before starting the conversation runner**.
+Recommended next slice: **start the Phase 3 conversation runner**.
 
 Order:
 
-1. Remove the remaining Docker CLI/docs surface
-2. Remove `dockerode` and related package dependencies
-3. Remove `src/providers/docker.ts` if nothing still depends on it
-4. Re-verify `npm test` and `npm run build`
-5. Confirm the checkpoint doc reflects the landing commit and final Phase 2 state
+1. Introduce `conversationRunner` for multi-turn tasks
+2. Add reply dispatch and transcript persistence across turns
+3. Add completion checking and termination rules
+4. Branch between single-turn and conversation task execution
+5. Extend tests around scripted multi-turn fixtures before adding step graders
 
 Rationale:
 
-- The runtime behavior is already local-only, but the public surface still advertises transitional Docker paths.
-- Finishing that cleanup keeps docs, CLI help, and dependencies aligned with the actual runtime before Phase 3 begins.
+- The runtime foundation and cleanup work are now aligned around one local-only execution model.
+- The next meaningful risk is no longer runtime drift; it is the conversation loop itself.
 
 ## Next Major Phase After That
 
-After the remaining Phase 2 items are done, the next major slice is:
+After Phase 2, the next major slice is:
 
 - `conversationRunner`
 - reply dispatch
@@ -135,8 +150,8 @@ For a fresh session, start with:
 1. Read this file.
 2. Read [docs/2026-03-23-wix-fork-proposal.md](/Users/nadavlac/projects/pathgrade/.worktrees/conversation-runtime-foundation/docs/2026-03-23-wix-fork-proposal.md).
 3. Read the Phase 2 and Phase 3 sections of [docs/2026-03-20-multi-turn-conversations-design.md](/Users/nadavlac/projects/pathgrade/.worktrees/conversation-runtime-foundation/docs/2026-03-20-multi-turn-conversations-design.md).
-4. Execute the next unchecked item in order.
+4. Start the Phase 3 `conversationRunner` slice.
 
 Suggested opener:
 
-`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file plus docs/2026-03-23-wix-fork-proposal.md and the Phase 2/3 sections of docs/2026-03-20-multi-turn-conversations-design.md, then execute the next unchecked item.`
+`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file plus docs/2026-03-23-wix-fork-proposal.md and the Phase 3 sections of docs/2026-03-20-multi-turn-conversations-design.md, then implement the conversationRunner slice.`

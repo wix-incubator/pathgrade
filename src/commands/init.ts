@@ -171,12 +171,9 @@ version: "1"
 
 defaults:
   agent: gemini
-  provider: local
   trials: 5
   timeout: 300
   threshold: 0.8
-  docker:
-    base: node:20-slim
 
 tasks:
   - name: <descriptive-task-name>
@@ -296,12 +293,9 @@ function getInlineTemplate(): string {
 
 defaults:
   agent: gemini
-  provider: local
   trials: 5
   timeout: 300
   threshold: 0.8
-  docker:
-    base: node:20-slim
 
 tasks:
   - name: {{TASK_NAME}}

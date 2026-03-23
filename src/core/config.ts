@@ -18,13 +18,9 @@ import {
 
 const DEFAULT_CONFIG: EvalDefaults = {
     agent: 'gemini',
-    provider: 'local',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
-    docker: {
-        base: 'node:20-slim',
-    },
     environment: {
         cpus: 2,
         memory_mb: 2048,
@@ -62,14 +58,17 @@ function validateConfig(raw: any): EvalConfig {
         throw new Error('eval.yaml must be a YAML object');
     }
 
+    if (raw.defaults?.provider !== undefined) {
+        throw new Error('eval.yaml no longer supports defaults.provider; pathgrade runs locally only');
+    }
+    if (raw.defaults?.docker !== undefined) {
+        throw new Error('eval.yaml no longer supports defaults.docker; pathgrade runs locally only');
+    }
+
     const version = raw.version || '1';
     const defaults: EvalDefaults = {
         ...DEFAULT_CONFIG,
         ...(raw.defaults || {}),
-        docker: {
-            ...DEFAULT_CONFIG.docker,
-            ...(raw.defaults?.docker || {}),
-        },
         environment: {
             ...DEFAULT_CONFIG.environment,
             ...(raw.defaults?.environment || {}),
@@ -85,6 +84,9 @@ function validateConfig(raw: any): EvalConfig {
         if (!t.instruction) throw new Error(`Task "${t.name}" is missing an "instruction"`);
         if (!t.graders || !Array.isArray(t.graders) || t.graders.length === 0) {
             throw new Error(`Task "${t.name}" must have at least one grader`);
+        }
+        if (t.provider !== undefined || t.docker !== undefined) {
+            throw new Error(`Task "${t.name}" uses deprecated provider/docker fields; pathgrade runs locally only`);
         }
 
         const workspace: WorkspaceMapping[] = (t.workspace || []).map((w: any) => {
@@ -112,10 +114,10 @@ function validateConfig(raw: any): EvalConfig {
             })),
             solution: t.solution,
             agent: t.agent,
-            provider: t.provider,
             trials: t.trials,
             timeout: t.timeout,
-            docker: t.docker,
+            grader_model: t.grader_model,
+            environment: t.environment,
         };
     });
 
@@ -132,13 +134,8 @@ export async function resolveTask(
 ): Promise<ResolvedTask> {
     // Merge defaults with task overrides
     const agent = task.agent || defaults.agent;
-    const provider = task.provider || defaults.provider;
     const trials = task.trials ?? defaults.trials;
     const timeout = task.timeout ?? defaults.timeout;
-    const docker = {
-        ...defaults.docker,
-        ...(task.docker || {}),
-    };
     const environment: EnvironmentConfig = {
         ...defaults.environment,
         ...(task.environment || {}),
@@ -179,11 +176,9 @@ export async function resolveTask(
         graders,
         solution,
         agent,
-        provider,
         trials,
         timeout,
         grader_model,
-        docker,
         environment,
     };
 }

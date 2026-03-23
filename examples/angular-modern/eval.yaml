@@ -14,12 +14,12 @@ version: "1"
 
 defaults:
   agent: gemini
-  provider: local
   trials: 5
   timeout: 600
   threshold: 0.6
-  docker:
-    base: node:20-slim
+  environment:
+    cpus: 2
+    memory_mb: 2048
 
 tasks:
   - name: modernize-component

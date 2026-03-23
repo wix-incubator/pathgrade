@@ -10,14 +10,12 @@ version: "1"
 
 defaults:
   agent: gemini
-  provider: local
   trials: 5
   timeout: 600
   threshold: 0.7
-  docker:
-    base: node:20-slim
-    setup: |
-      npm i -g js-yaml 2>/dev/null
+  environment:
+    cpus: 2
+    memory_mb: 2048
 
 tasks:
   # ── Task 1: Create eval.yaml from a SKILL.md ──────────────

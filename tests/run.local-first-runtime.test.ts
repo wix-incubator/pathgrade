@@ -13,7 +13,6 @@ const {
   detectSkillsMock,
   createAgentMock,
   localProviderCtor,
-  dockerProviderCtor,
   runEvalMock,
 } = vi.hoisted(() => ({
   mockEnsureDir: vi.fn(),
@@ -28,7 +27,6 @@ const {
   detectSkillsMock: vi.fn(),
   createAgentMock: vi.fn(),
   localProviderCtor: vi.fn(),
-  dockerProviderCtor: vi.fn(),
   runEvalMock: vi.fn(),
 }));
 
@@ -64,26 +62,17 @@ vi.mock('../src/providers/local', () => ({
   },
 }));
 
-vi.mock('../src/providers/docker', () => ({
-  DockerProvider: class DockerProviderMock {
-    constructor(...args: unknown[]) {
-      dockerProviderCtor(...args);
-      return { kind: 'docker-provider' };
-    }
-  },
-}));
-
 vi.mock('../src/evalRunner', () => ({
-  EvalRunner: vi.fn().mockImplementation(() => ({
-    runEval: runEvalMock,
-  })),
+  EvalRunner: class EvalRunnerMock {
+    runEval = runEvalMock;
+  },
 }));
 
 import { runEvals } from '../src/commands/run';
 
 describe('runEvals local-first runtime path', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -120,11 +109,9 @@ describe('runEvals local-first runtime path', () => {
     loadEvalConfigMock.mockResolvedValue({
       defaults: {
         agent: 'gemini',
-        provider: 'local',
         trials: 1,
         timeout: 300,
         threshold: 0.8,
-        docker: { base: 'node:20-slim' },
         environment: { cpus: 2, memory_mb: 2048 },
       },
       tasks: [{ name: 'test-task' }],
@@ -136,10 +123,8 @@ describe('runEvals local-first runtime path', () => {
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
       agent: 'gemini',
-      provider: 'local',
       trials: 1,
       timeout: 300,
-      docker: { base: 'node:20-slim' },
       environment: { cpus: 2, memory_mb: 2048 },
     });
   });
@@ -148,7 +133,6 @@ describe('runEvals local-first runtime path', () => {
     await runEvals('/repo', {});
 
     expect(localProviderCtor).toHaveBeenCalledTimes(1);
-    expect(dockerProviderCtor).not.toHaveBeenCalled();
   });
 
   it('does not write a Dockerfile when running locally by default', async () => {
@@ -158,47 +142,33 @@ describe('runEvals local-first runtime path', () => {
     expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(false);
   });
 
-  it('keeps the runtime local even when Docker is requested explicitly', async () => {
+  it('passes resolved local-only task settings through to the runner', async () => {
     resolveTaskMock.mockResolvedValueOnce({
       name: 'test-task',
       instruction: 'do it',
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
-      agent: 'gemini',
-      provider: 'docker',
-      trials: 1,
-      timeout: 300,
-      docker: { base: 'node:20-slim' },
+      agent: 'claude',
+      trials: 3,
+      timeout: 120,
       environment: { cpus: 2, memory_mb: 2048 },
     });
 
-    await runEvals('/repo', { provider: 'docker' });
+    await runEvals('/repo', { parallel: 2, agent: 'claude' });
 
-    const writtenPaths = mockWriteFile.mock.calls.map(call => String(call[0]));
-    expect(localProviderCtor).toHaveBeenCalledTimes(1);
-    expect(dockerProviderCtor).not.toHaveBeenCalled();
-    expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(false);
-  });
-
-  it('keeps the runtime local even when the task config says docker', async () => {
-    resolveTaskMock.mockResolvedValueOnce({
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
-      agent: 'gemini',
-      provider: 'docker',
-      trials: 1,
-      timeout: 300,
-      docker: { base: 'node:20-slim' },
-      environment: { cpus: 2, memory_mb: 2048 },
-    });
-
-    await runEvals('/repo', {});
-
-    const writtenPaths = mockWriteFile.mock.calls.map(call => String(call[0]));
-    expect(localProviderCtor).toHaveBeenCalledTimes(1);
-    expect(dockerProviderCtor).not.toHaveBeenCalled();
-    expect(writtenPaths.some(filePath => filePath.includes('environment/Dockerfile'))).toBe(false);
+    expect(createAgentMock).toHaveBeenCalledWith('claude');
+    expect(runEvalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ run: expect.any(Function) }),
+      expect.stringContaining('/pathgrade/repo/tmp/test-task'),
+      [],
+      expect.objectContaining({
+        instruction: 'do it',
+        timeoutSec: 120,
+        environment: { cpus: 2, memory_mb: 2048 },
+      }),
+      3,
+      expect.any(Object),
+      2,
+    );
   });
 });

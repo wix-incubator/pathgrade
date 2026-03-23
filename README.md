@@ -2,7 +2,7 @@
 
 Pathgrade evaluates whether AI agents correctly discover and use your skills.
 
-See [examples/](examples/) — [superlint](examples/superlint/) (simple) and [angular-modern](examples/angular-modern/) (TypeScript grader).
+See [examples/](examples/) for working evals, including [superlint](examples/superlint/) and [angular-modern](examples/angular-modern/).
 
 ![Browser Preview](assets/browser-preview.png)
 
@@ -10,41 +10,42 @@ See [examples/](examples/) — [superlint](examples/superlint/) (simple) and [an
 
 **Prerequisites**: Node.js 20+
 
-Docker remains available as an optional compatibility override when you need container isolation, but Pathgrade runs locally by default.
+Pathgrade runs locally. Each trial gets its own isolated workspace, home, XDG, and temp directories.
 
 ```bash
 npm i -g @wix/pathgrade
 ```
 
-**1. Initialize** — go to your skill directory (must have `SKILL.md`) and scaffold:
+Initialize from a skill directory:
 
 ```bash
 cd my-skill/
-GEMINI_API_KEY=your-key pathgrade init    # or ANTHROPIC_API_KEY / OPENAI_API_KEY
+GEMINI_API_KEY=your-key pathgrade init
 # Use --force to overwrite an existing eval.yaml
 ```
 
-Generates `eval.yaml` with AI-powered tasks and graders. Without an API key, creates a well-commented template.
-
-**2. Edit** — customize `eval.yaml` for your skill (see [eval.yaml Reference](#evalyaml-reference)).
-
-**3. Run**:
+Run your evals:
 
 ```bash
 GEMINI_API_KEY=your-key pathgrade --smoke
 ```
 
-The agent is auto-detected from your API key: `GEMINI_API_KEY` → Gemini, `ANTHROPIC_API_KEY` → Claude, `OPENAI_API_KEY` → Codex. Override with `--agent=claude`.
-Runs use the local provider by default. Add `--provider=docker` only when you specifically want the transitional Docker path.
+The agent is auto-detected from your API key:
 
-**4. Review**:
+- `GEMINI_API_KEY` -> Gemini
+- `ANTHROPIC_API_KEY` -> Claude
+- `OPENAI_API_KEY` -> Codex
+
+Override the agent explicitly with `--agent=claude`, `--agent=gemini`, or `--agent=codex`.
+
+Review results:
 
 ```bash
-pathgrade preview          # CLI report
-pathgrade preview browser  # web UI → http://localhost:3847
+pathgrade preview
+pathgrade preview browser
 ```
 
-Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/`. Override with `--output=DIR`.
+Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/` by default. Override with `--output=DIR`.
 
 ## Presets
 
@@ -58,47 +59,41 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/`. Override with `-
 
 | Flag | Description |
 |------|-------------|
-| `--eval=NAME[,NAME]` | Run specific evals by name (comma-separated) |
-| `--grader=TYPE` | Run only graders of a type (`deterministic` or `llm_rubric`) |
+| `--eval=NAME[,NAME]` | Run specific evals by name |
+| `--grader=TYPE` | Run only `deterministic` or `llm_rubric` graders |
 | `--trials=N` | Override trial count |
 | `--parallel=N` | Run trials concurrently |
-| `--agent=gemini\|claude\|codex` | Override agent (default: auto-detect from API key) |
-| `--provider=local\|docker` | Override provider (default: `local`) |
-| `--output=DIR` | Output directory (default: `$TMPDIR/pathgrade`) |
-| `--validate` | Verify graders using reference solutions |
-| `--ci` | CI mode: exit non-zero if below threshold |
-| `--threshold=0.8` | Pass rate threshold for CI mode |
-| `--preview` | Show CLI results after running |
+| `--agent=gemini\|claude\|codex` | Override agent selection |
+| `--output=DIR` | Output directory for reports and temp files |
+| `--validate` | Verify graders with a reference solution |
+| `--ci` | Exit non-zero if pass rate falls below threshold |
+| `--threshold=0.8` | Pass rate threshold for `--ci` |
+| `--preview` | Show the CLI preview after the run |
 
-## eval.yaml Reference
+## `eval.yaml` Reference
 
 ```yaml
 version: "1"
 
-# Optional: explicit path to skill directory (defaults to auto-detecting SKILL.md)
+# Optional: explicit path to the skill directory
 # skill: path/to/my-skill
 
 defaults:
-  agent: gemini          # gemini | claude | codex
-  provider: local        # local | docker
+  agent: gemini
   trials: 5
-  timeout: 300           # seconds
-  threshold: 0.8         # for --ci mode
-  grader_model: gemini-3-flash-preview  # default LLM grader model
-  docker:                # optional Docker compatibility settings
-    base: node:20-slim
-    setup: |             # extra commands run during image build
-      apt-get update && apt-get install -y jq
-  environment:           # runtime resource limits
+  timeout: 300
+  threshold: 0.8
+  grader_model: gemini-3-flash-preview
+  environment:
     cpus: 2
     memory_mb: 2048
 
 tasks:
   - name: fix-linting-errors
     instruction: |
-      Use the superlint tool to fix coding standard violations in app.js.
+      Use the provided tool to fix coding-standard violations in app.js.
 
-    workspace:                           # files copied into the trial workspace
+    workspace:
       - src: fixtures/broken-app.js
         dest: app.js
       - src: bin/superlint
@@ -107,33 +102,33 @@ tasks:
 
     graders:
       - type: deterministic
-        setup: npm install typescript    # grader-specific deps (optional)
+        setup: npm install typescript
         run: npx ts-node graders/check.ts
         weight: 0.7
       - type: llm_rubric
         rubric: |
-          Did the agent follow the check → fix → verify workflow?
-        model: gemini-2.0-flash          # optional model override
+          Did the agent follow the expected workflow and solve the task cleanly?
+        model: gemini-2.0-flash
         weight: 0.3
 
-    # Per-task overrides (optional)
     agent: claude
     trials: 10
     timeout: 600
 ```
 
-String values (`instruction`, `rubric`, `run`) support **file references** — if the value is a valid file path, its contents are read automatically:
+Pathgrade no longer supports `provider` or `docker` fields in `eval.yaml`.
+
+String values for `instruction`, `rubric`, and `run` support file references:
 
 ```yaml
 instruction: instructions/fix-linting.md
 rubric: rubrics/workflow-quality.md
+run: graders/check.sh
 ```
 
 ## Graders
 
-### Deterministic
-
-Runs a command and parses JSON from stdout:
+Deterministic graders execute a command and parse JSON from stdout:
 
 ```yaml
 - type: deterministic
@@ -141,116 +136,62 @@ Runs a command and parses JSON from stdout:
   weight: 0.7
 ```
 
-Output format:
+Expected output:
 
 ```json
 {
   "score": 0.67,
   "details": "2/3 checks passed",
   "checks": [
-    {"name": "file-created", "passed": true, "message": "Output file exists"},
-    {"name": "content-correct", "passed": false, "message": "Missing expected output"}
+    { "name": "file-created", "passed": true, "message": "Output file exists" },
+    { "name": "content-correct", "passed": false, "message": "Missing expected output" }
   ]
 }
 ```
 
-`score` (0.0–1.0) and `details` are required. `checks` is optional.
+Use `awk` for floating-point arithmetic in shell graders.
 
-**Bash example:**
-
-```bash
-#!/bin/bash
-passed=0; total=2
-c1_pass=false c1_msg="File missing"
-c2_pass=false c2_msg="Content wrong"
-
-if test -f output.txt; then
-  passed=$((passed + 1)); c1_pass=true; c1_msg="File exists"
-fi
-if grep -q "expected" output.txt 2>/dev/null; then
-  passed=$((passed + 1)); c2_pass=true; c2_msg="Content correct"
-fi
-
-score=$(awk "BEGIN {printf \"%.2f\", $passed/$total}")
-echo "{\"score\":$score,\"details\":\"$passed/$total passed\",\"checks\":[{\"name\":\"file\",\"passed\":$c1_pass,\"message\":\"$c1_msg\"},{\"name\":\"content\",\"passed\":$c2_pass,\"message\":\"$c2_msg\"}]}"
-```
-
-> Use `awk` for arithmetic — `bc` is not available in `node:20-slim`.
-
-### LLM Rubric
-
-Evaluates the agent's session transcript against qualitative criteria:
+Rubric graders score qualitative behavior from the session transcript:
 
 ```yaml
 - type: llm_rubric
   rubric: |
     Workflow Compliance (0-0.5):
-    - Did the agent follow the mandatory 3-step workflow?
+    - Did the agent follow the expected steps?
 
     Efficiency (0-0.5):
-    - Completed in ≤5 commands?
+    - Did it avoid unnecessary commands?
   weight: 0.3
-  model: gemini-2.0-flash    # optional, auto-detected from API key
 ```
 
-Uses Gemini or Anthropic based on available API key. Override with the `model` field.
+## CI
 
-### Combining Graders
-
-```yaml
-graders:
-  - type: deterministic
-    run: bash graders/check.sh
-    weight: 0.7      # 70% — did it work?
-  - type: llm_rubric
-    rubric: rubrics/quality.md
-    weight: 0.3      # 30% — was the approach good?
-```
-
-Final reward = `Σ (grader_score × weight) / Σ weight`
-
-## CI Integration
-
-Pathgrade is local-first in CI too, so the default path is usually the right one there as well.
+Pathgrade is local-first in CI too:
 
 ```yaml
-# .github/workflows/pathgrade.yml
 - run: |
     npm i -g @wix/pathgrade
     cd skills/superlint
     GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci
 ```
 
-Exits with code 1 if pass rate falls below `--threshold` (default: 0.8).
-
-> **Tip**: Stay on the default local runtime unless you specifically need the transitional Docker compatibility path for extra isolation.
-
 ## Environment Variables
 
 | Variable | Used by |
 |----------|---------|
-| `GEMINI_API_KEY` | Agent execution, LLM grading, `pathgrade init` |
-| `ANTHROPIC_API_KEY` | Agent execution, LLM grading, `pathgrade init` |
-| `OPENAI_API_KEY` | Agent execution (Codex), `pathgrade init` |
+| `GEMINI_API_KEY` | Gemini agent execution, rubric grading, `pathgrade init` |
+| `ANTHROPIC_API_KEY` | Claude agent execution, rubric grading, `pathgrade init` |
+| `OPENAI_API_KEY` | Codex agent execution, `pathgrade init` |
 
-Variables are also loaded from `.env` in the skill directory. Shell values override `.env`. All values are **redacted** from persisted session logs.
+Pathgrade also loads `.env` from the skill directory. Persisted logs redact these values automatically.
 
 ## Best Practices
 
-- **Grade outcomes, not steps.** Check that the file was fixed, not that the agent ran a specific command.
-- **Instructions must name output files.** If the grader checks for `output.html`, the instruction must tell the agent to save as `output.html`.
-- **Validate graders first.** Use `--validate` with a reference solution before running real evals.
-- **Start small.** 3–5 well-designed tasks beat 50 noisy ones.
-
-For a comprehensive guide on writing high-quality skills, check out [skills-best-practices](https://github.com/mgechev/skills-best-practices/). You can also install the skill creator skill to help author skills:
-
-```bash
-npx skills add mgechev/skills-best-practices
-```
+- Grade outcomes, not implementation trivia.
+- Name expected output files in the instruction if a grader checks for them.
+- Validate graders with `--validate` before trusting eval results.
+- Start with a few clear tasks before scaling out.
 
 ## License
 
 MIT
-
----
-*Inspired by [SkillsBench](https://arxiv.org/html/2602.12670v1) and [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents).*
