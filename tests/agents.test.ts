@@ -179,6 +179,33 @@ describe('ClaudeAgent', () => {
 });
 
 describe('CodexAgent', () => {
+  it('seeds isolated Codex auth from OPENAI_API_KEY before exec', async () => {
+    const originalKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'sk-test-key';
+
+    try {
+      const agent = new CodexAgent();
+      const commands: string[] = [];
+      const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+        commands.push(cmd);
+        return { stdout: 'output', stderr: '', exitCode: 0 };
+      });
+
+      await agent.run('Test instruction', '/workspace', mockRunCommand);
+
+      expect(commands).toHaveLength(3);
+      expect(commands[0]).toContain('codex login --with-api-key');
+      expect(commands[1]).toContain('base64');
+      expect(commands[2]).toContain('codex exec');
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = originalKey;
+      }
+    }
+  });
+
   it('writes instruction via base64 and runs codex exec with non-git workspace support', async () => {
     const agent = new CodexAgent();
     const commands: string[] = [];
@@ -189,12 +216,13 @@ describe('CodexAgent', () => {
 
     const result = await agent.run('Test instruction', '/workspace', mockRunCommand);
 
-    expect(commands).toHaveLength(2);
-    expect(commands[0]).toContain('base64');
-    expect(commands[0]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
-    expect(commands[1]).toContain('codex exec');
-    expect(commands[1]).toContain('--full-auto');
-    expect(commands[1]).toContain('--skip-git-repo-check');
+    expect(commands).toHaveLength(3);
+    expect(commands[0]).toContain('codex login --with-api-key');
+    expect(commands[1]).toContain('base64');
+    expect(commands[1]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
+    expect(commands[2]).toContain('codex exec');
+    expect(commands[2]).toContain('--full-auto');
+    expect(commands[2]).toContain('--skip-git-repo-check');
     expect(result).toContain('output');
   });
 
@@ -219,10 +247,12 @@ describe('CodexAgent', () => {
     await session.start({ message: 'First user message' });
     await session.reply({ message: 'Second user message', continueSession: true });
 
-    expect(commands[1]).toContain('codex exec');
-    expect(commands[3]).toContain('codex exec');
+    expect(commands[0]).toContain('codex login --with-api-key');
+    expect(commands[2]).toContain('codex exec');
+    expect(commands[3]).toContain('codex login --with-api-key');
+    expect(commands[5]).toContain('codex exec');
 
-    const secondPrompt = decodePromptWriteCommand(commands[2]);
+    const secondPrompt = decodePromptWriteCommand(commands[4]);
     expect(secondPrompt).toContain('First user message');
     expect(secondPrompt).toContain('assistant one');
     expect(secondPrompt).toContain('Second user message');

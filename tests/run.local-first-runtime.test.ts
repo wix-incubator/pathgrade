@@ -171,4 +171,40 @@ describe('runEvals local-first runtime path', () => {
       2,
     );
   });
+
+  it('propagates OPENAI_BASE_URL to the runner environment', async () => {
+    const originalBaseUrl = process.env.OPENAI_BASE_URL;
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_BASE_URL = 'https://www.wixapis.com/openai/v1';
+    process.env.OPENAI_API_KEY = 'sk-test';
+
+    try {
+      await runEvals('/repo', {});
+
+      expect(runEvalMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(String),
+        expect.any(Array),
+        expect.any(Object),
+        1,
+        expect.objectContaining({
+          OPENAI_API_KEY: 'sk-test',
+          OPENAI_BASE_URL: 'https://www.wixapis.com/openai/v1',
+        }),
+        1,
+      );
+    } finally {
+      if (originalBaseUrl === undefined) {
+        delete process.env.OPENAI_BASE_URL;
+      } else {
+        process.env.OPENAI_BASE_URL = originalBaseUrl;
+      }
+
+      if (originalApiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
 });

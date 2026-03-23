@@ -39,6 +39,10 @@ export class CodexAgent extends BaseAgent {
     ): Promise<AgentTurnResult> {
         const promptPath = '"${TMPDIR:-/tmp}/.pathgrade-prompt.md"';
 
+        // Pathgrade isolates HOME per trial, so Codex cannot rely on the user's
+        // normal ChatGPT login state. Seed API-key auth when OPENAI_API_KEY is available.
+        await runCommand('if [ -n "${OPENAI_API_KEY:-}" ]; then printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null 2>&1; fi');
+
         // Write instruction to a temp file to avoid shell escaping issues with long prompts
         const b64 = Buffer.from(instruction).toString('base64');
         await runCommand(`mkdir -p "\${TMPDIR:-/tmp}" && echo '${b64}' | base64 -d > ${promptPath}`);
