@@ -1,19 +1,39 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import * as os from 'os';
 import { spawn } from 'child_process';
-import { EnvironmentProvider, EnvironmentSetupOpts, CommandResult } from '../types';
+import {
+    EnvironmentProvider,
+    EnvironmentSetupOpts,
+    CommandResult,
+    EnvironmentHandle,
+    TrialRuntime,
+    getRuntimeEnv,
+    getRuntimeHandle,
+    getWorkspacePath,
+} from '../types';
 
 export class LocalProvider implements EnvironmentProvider {
-    async setup(taskPath: string, skillsPaths: string[], _opts: EnvironmentSetupOpts, env?: Record<string, string>): Promise<string> {
-        const tempDir = path.join('/tmp', `pathgrade-${Math.random().toString(36).substring(7)}`);
-        await fs.ensureDir(tempDir);
-        await fs.copy(taskPath, tempDir);
+    async setup(taskPath: string, skillsPaths: string[], _opts: EnvironmentSetupOpts, _env?: Record<string, string>): Promise<TrialRuntime> {
+        const rootDir = path.join(os.tmpdir(), `pathgrade-${Math.random().toString(36).substring(7)}`);
+        const workspacePath = path.join(rootDir, 'workspace');
+        const homePath = path.join(rootDir, 'home');
+        const xdgPath = path.join(rootDir, 'xdg');
+        const xdgStatePath = path.join(xdgPath, 'state');
+        const xdgCachePath = path.join(xdgPath, 'cache');
+        const tmpPath = path.join(rootDir, 'tmp');
 
-        // Inject skills into agent discovery paths
-        // Gemini: .agents/skills/  |  Claude: .claude/skills/
+        await fs.ensureDir(workspacePath);
+        await fs.ensureDir(homePath);
+        await fs.ensureDir(xdgStatePath);
+        await fs.ensureDir(xdgCachePath);
+        await fs.ensureDir(tmpPath);
+        await fs.copy(taskPath, workspacePath);
+
+        // Inject skills into agent discovery paths inside the isolated workspace.
         const discoveryDirs = [
-            path.join(tempDir, '.agents', 'skills'),
-            path.join(tempDir, '.claude', 'skills'),
+            path.join(workspacePath, '.agents', 'skills'),
+            path.join(workspacePath, '.claude', 'skills'),
         ];
 
         for (const skillsDir of discoveryDirs) {
@@ -24,21 +44,44 @@ export class LocalProvider implements EnvironmentProvider {
             }
         }
 
-        return tempDir;
+        return {
+            handle: rootDir,
+            workspacePath,
+            env: {
+                HOME: homePath,
+                XDG_CONFIG_HOME: xdgPath,
+                XDG_STATE_HOME: xdgStatePath,
+                XDG_CACHE_HOME: xdgCachePath,
+                TMPDIR: tmpPath,
+                TMP: tmpPath,
+                TEMP: tmpPath,
+            },
+            paths: {
+                root: rootDir,
+                workspace: workspacePath,
+                home: homePath,
+                xdg: xdgPath,
+                xdgState: xdgStatePath,
+                xdgCache: xdgCachePath,
+                tmp: tmpPath,
+            },
+        };
     }
 
-    async cleanup(workspacePath: string): Promise<void> {
-        if (await fs.pathExists(workspacePath)) {
-            await fs.remove(workspacePath);
+    async cleanup(runtime: EnvironmentHandle): Promise<void> {
+        const cleanupPath = getRuntimeHandle(runtime);
+        if (await fs.pathExists(cleanupPath)) {
+            await fs.remove(cleanupPath);
         }
     }
 
-    async runCommand(workspacePath: string, command: string, env?: Record<string, string>): Promise<CommandResult> {
+    async runCommand(runtime: EnvironmentHandle, command: string, env?: Record<string, string>): Promise<CommandResult> {
+        const workspacePath = getWorkspacePath(runtime);
         return new Promise((resolve) => {
             const child = spawn(command, {
                 shell: true,
                 cwd: workspacePath,
-                env: { ...process.env, ...env }
+                env: { ...process.env, ...env, ...getRuntimeEnv(runtime) }
             });
 
             let stdout = '';

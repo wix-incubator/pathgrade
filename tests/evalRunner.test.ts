@@ -16,6 +16,17 @@ import * as fs from 'fs-extra';
 import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
 import { BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
 
+const mockRuntime = {
+  handle: '/trial',
+  workspacePath: '/workspace',
+  env: {
+    HOME: '/trial/home',
+    XDG_CONFIG_HOME: '/trial/xdg',
+    XDG_STATE_HOME: '/trial/xdg/state',
+    TMPDIR: '/trial/tmp',
+  },
+};
+
 const mockEnsureDir = vi.mocked(fs.ensureDir);
 const mockWriteJSON = vi.mocked(fs.writeJSON);
 
@@ -41,7 +52,7 @@ describe('EvalRunner', () => {
   function makeMockProvider(): EnvironmentProvider {
     return {
       prepare: vi.fn().mockResolvedValue('image-1'),
-      setup: vi.fn().mockResolvedValue('/workspace'),
+      setup: vi.fn().mockResolvedValue(mockRuntime),
       cleanup: vi.fn().mockResolvedValue(undefined),
       teardown: vi.fn().mockResolvedValue(undefined),
       runCommand: vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
@@ -83,6 +94,34 @@ describe('EvalRunner', () => {
     expect(provider.setup).toHaveBeenCalled();
     expect(provider.cleanup).toHaveBeenCalled();
     expect(provider.teardown).toHaveBeenCalled();
+  });
+
+  it('uses a session-capable agent when available', async () => {
+    const provider = makeMockProvider();
+    const start = vi.fn().mockResolvedValue({
+      rawOutput: 'Session raw output',
+      assistantMessage: 'Assistant summary',
+      exitCode: 0,
+    });
+    const createSession = vi.fn().mockResolvedValue({
+      start,
+      reply: vi.fn(),
+    });
+    const agent = { createSession } as unknown as BaseAgent;
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
+      }),
+    });
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(start).toHaveBeenCalledWith({ message: 'Do something' });
+    expect(report.trials[0].session_log.some(entry => entry.output === 'Session raw output')).toBe(true);
   });
 
   it('handles agent errors gracefully', async () => {
@@ -227,7 +266,7 @@ describe('EvalRunner', () => {
 
   it('handles provider without prepare and teardown', async () => {
     const provider: EnvironmentProvider = {
-      setup: vi.fn().mockResolvedValue('/workspace'),
+      setup: vi.fn().mockResolvedValue(mockRuntime),
       cleanup: vi.fn().mockResolvedValue(undefined),
       runCommand: vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
     };

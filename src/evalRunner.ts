@@ -2,7 +2,8 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import {
     BaseAgent, EnvironmentProvider,
-    LogEntry, TrialResult, EvalReport, GraderResult
+    LogEntry, TrialResult, EvalReport, GraderResult,
+    EnvironmentHandle, AgentCommandRunner, AgentSession,
 } from './types';
 import { ResolvedGrader } from './core/config.types';
 import { getGrader } from './graders';
@@ -45,6 +46,35 @@ function calculatePassPowK(n: number, c: number, k: number): number {
 /** Estimate token count from text (~4 chars per token) */
 function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
+}
+
+async function createAgentSession(
+    agent: BaseAgent,
+    runtime: EnvironmentHandle,
+    runCommand: AgentCommandRunner
+): Promise<AgentSession> {
+    if (typeof (agent as any).createSession === 'function') {
+        return await (agent as any).createSession(runtime, runCommand);
+    }
+
+    if (typeof (agent as any).run === 'function') {
+        const legacyRun = async (message: string) => {
+            const workspacePath = typeof runtime === 'string' ? runtime : runtime.workspacePath;
+            const rawOutput = await (agent as any).run(message, workspacePath, runCommand);
+            return {
+                rawOutput,
+                assistantMessage: rawOutput,
+                exitCode: 0,
+            };
+        };
+
+        return {
+            start: async ({ message }) => legacyRun(message),
+            reply: async ({ message }) => legacyRun(message),
+        };
+    }
+
+    throw new Error('Agent must implement createSession() or run()');
 }
 
 /** Options for running an eval */
@@ -171,7 +201,7 @@ export class EvalRunner {
         const startTime = Date.now();
 
         const spinner = new Spinner(`${index + 1}/${total}`, 'setting up environment');
-        const workspace = await this.provider.setup(taskPath, skillsPaths, opts, env);
+        const runtime = await this.provider.setup(taskPath, skillsPaths, opts, env);
 
         try {
             const instruction = opts.instruction;
@@ -184,7 +214,7 @@ export class EvalRunner {
 
             spinner.update('running agent');
             const loggedRunCommand = async (cmd: string) => {
-                const result = await this.provider.runCommand(workspace, cmd, env);
+                const result = await this.provider.runCommand(runtime, cmd, env);
                 commandCount++;
                 sessionLog.push({
                     type: 'command',
@@ -198,8 +228,9 @@ export class EvalRunner {
             };
 
             const agentTimeoutMs = opts.timeoutSec * 1000;
-            const agentLogs = await withTimeout(
-                agent.run(instruction, workspace, loggedRunCommand),
+            const session = await createAgentSession(agent, runtime, loggedRunCommand);
+            const turnResult = await withTimeout(
+                session.start({ message: instruction }),
                 agentTimeoutMs,
                 `Agent (limit: ${opts.timeoutSec}s)`
             );
@@ -207,7 +238,7 @@ export class EvalRunner {
             sessionLog.push({
                 type: 'agent_result',
                 timestamp: this.timestamp(),
-                output: agentLogs
+                output: turnResult.rawOutput
             });
 
             // Run all graders
@@ -236,7 +267,7 @@ export class EvalRunner {
 
                 const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
                 const result = await withTimeout(
-                    grader.grade(workspace, this.provider, graderConfig, taskPath, sessionLog, env),
+                    grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env),
                     graderTimeoutMs,
                     `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
                 );
@@ -290,7 +321,7 @@ export class EvalRunner {
             let diagnostics = '';
             if (this.provider.diagnose) {
                 try {
-                    diagnostics = await this.provider.diagnose(workspace);
+                    diagnostics = await this.provider.diagnose(runtime);
                     console.log(diagnostics);
                 } catch (e) {
                     diagnostics = `(diagnostics failed: ${e})`;
@@ -315,7 +346,7 @@ export class EvalRunner {
                 session_log: sessionLog
             };
         } finally {
-            await this.provider.cleanup(workspace);
+            await this.provider.cleanup(runtime);
         }
     }
 

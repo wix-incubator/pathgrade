@@ -21,7 +21,7 @@ describe('GeminiAgent', () => {
 
     expect(commands).toHaveLength(2);
     expect(commands[0]).toContain('base64');
-    expect(commands[0]).toContain('/tmp/.prompt.md');
+    expect(commands[0]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
     expect(commands[1]).toContain('gemini');
     expect(commands[1]).toContain('-y');
     expect(commands[1]).toContain('--sandbox=none');
@@ -79,7 +79,7 @@ describe('ClaudeAgent', () => {
 
     expect(commands).toHaveLength(2);
     expect(commands[0]).toContain('base64');
-    expect(commands[0]).toContain('/tmp/.prompt.md');
+    expect(commands[0]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
     expect(commands[1]).toContain('claude');
     expect(commands[1]).toContain('-p');
     expect(commands[1]).toContain('--dangerously-skip-permissions');
@@ -136,7 +136,7 @@ describe('CodexAgent', () => {
 
     expect(commands).toHaveLength(2);
     expect(commands[0]).toContain('base64');
-    expect(commands[0]).toContain('/tmp/.prompt.md');
+    expect(commands[0]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
     expect(commands[1]).toContain('codex exec');
     expect(commands[1]).toContain('--full-auto');
     expect(commands[1]).toContain('--skip-git-repo-check');

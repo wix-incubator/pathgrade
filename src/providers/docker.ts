@@ -2,7 +2,13 @@ import Docker from 'dockerode';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tar from 'tar-stream';
-import { EnvironmentProvider, EnvironmentSetupOpts, CommandResult } from '../types';
+import {
+    EnvironmentProvider,
+    EnvironmentSetupOpts,
+    CommandResult,
+    EnvironmentHandle,
+    getRuntimeHandle,
+} from '../types';
 
 export class DockerProvider implements EnvironmentProvider {
     private docker: Docker;
@@ -115,8 +121,8 @@ export class DockerProvider implements EnvironmentProvider {
      * Per-trial cleanup: kill and remove the container only.
      * The image is preserved for reuse.
      */
-    async cleanup(containerId: string): Promise<void> {
-        const container = this.docker.getContainer(containerId);
+    async cleanup(containerId: EnvironmentHandle): Promise<void> {
+        const container = this.docker.getContainer(getRuntimeHandle(containerId));
 
         try {
             await container.kill().catch(() => { });
@@ -174,8 +180,8 @@ export class DockerProvider implements EnvironmentProvider {
         return files;
     }
 
-    async runCommand(containerId: string, command: string, env?: Record<string, string>): Promise<CommandResult> {
-        const container = this.docker.getContainer(containerId);
+    async runCommand(containerId: EnvironmentHandle, command: string, env?: Record<string, string>): Promise<CommandResult> {
+        const container = this.docker.getContainer(getRuntimeHandle(containerId));
         const envPairs = env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : [];
 
         const exec = await container.exec({
@@ -212,8 +218,8 @@ export class DockerProvider implements EnvironmentProvider {
         };
     }
 
-    async diagnose(containerId: string): Promise<string> {
-        const container = this.docker.getContainer(containerId);
+    async diagnose(containerId: EnvironmentHandle): Promise<string> {
+        const container = this.docker.getContainer(getRuntimeHandle(containerId));
         const lines: string[] = ['=== Docker Container Diagnostics ==='];
 
         const runDiag = async (label: string, cmd: string) => {

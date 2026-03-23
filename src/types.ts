@@ -52,11 +52,75 @@ export interface EvalReport {
     skills_used: string[];
 }
 
+export interface TrialPaths {
+    root: string;
+    workspace: string;
+    home: string;
+    xdg: string;
+    xdgState: string;
+    xdgCache: string;
+    tmp: string;
+}
+
+export interface TrialRuntime {
+    handle: string;
+    workspacePath: string;
+    env: Record<string, string>;
+    paths?: TrialPaths;
+}
+
+export type EnvironmentHandle = string | TrialRuntime;
+export type AgentCommandRunner = (cmd: string) => Promise<CommandResult>;
+
+export interface AgentTurnInput {
+    message: string;
+    continueSession?: boolean;
+}
+
+export interface AgentTurnResult {
+    rawOutput: string;
+    assistantMessage: string;
+    exitCode: number;
+}
+
+export interface AgentSession {
+    start(input: AgentTurnInput): Promise<AgentTurnResult>;
+    reply(input: AgentTurnInput): Promise<AgentTurnResult>;
+}
+
+export function getWorkspacePath(handle: EnvironmentHandle): string {
+    return typeof handle === 'string' ? handle : handle.workspacePath;
+}
+
+export function getRuntimeHandle(handle: EnvironmentHandle): string {
+    return typeof handle === 'string' ? handle : handle.handle;
+}
+
+export function getRuntimeEnv(handle: EnvironmentHandle): Record<string, string> {
+    return typeof handle === 'string' ? {} : handle.env;
+}
+
 export abstract class BaseAgent {
+    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+        const runTurn = async (message: string): Promise<AgentTurnResult> => {
+            const rawOutput = await this.run(message, getWorkspacePath(runtime), runCommand);
+            return {
+                rawOutput,
+                assistantMessage: rawOutput,
+                exitCode: 0,
+            };
+        };
+
+        return {
+            start: async ({ message }) => runTurn(message),
+            reply: async ({ message }) => runTurn(message),
+        };
+    }
+
     abstract run(
         instruction: string,
         workspacePath: string,
-        runCommand: (cmd: string) => Promise<CommandResult>
+        runCommand: AgentCommandRunner
     ): Promise<string>;
 }
 
@@ -73,11 +137,11 @@ export interface EnvironmentProvider {
     /** One-time setup: build image, inject skills. Returns reusable handle. */
     prepare?(taskPath: string, skillsPaths: string[], opts: EnvironmentSetupOpts, env?: Record<string, string>): Promise<string>;
     /** Per-trial setup: create isolated workspace. */
-    setup(taskPath: string, skillsPaths: string[], opts: EnvironmentSetupOpts, env?: Record<string, string>): Promise<string>;
+    setup(taskPath: string, skillsPaths: string[], opts: EnvironmentSetupOpts, env?: Record<string, string>): Promise<EnvironmentHandle>;
     /** Per-trial cleanup. */
-    cleanup(workspacePath: string): Promise<void>;
+    cleanup(workspacePath: EnvironmentHandle): Promise<void>;
     /** One-time teardown. */
     teardown?(): Promise<void>;
-    runCommand(workspacePath: string, command: string, env?: Record<string, string>): Promise<CommandResult>;
-    diagnose?(workspacePath: string): Promise<string>;
+    runCommand(workspacePath: EnvironmentHandle, command: string, env?: Record<string, string>): Promise<CommandResult>;
+    diagnose?(workspacePath: EnvironmentHandle): Promise<string>;
 }

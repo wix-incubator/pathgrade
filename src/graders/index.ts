@@ -1,10 +1,10 @@
-import { GraderConfig, GraderResult, EnvironmentProvider } from '../types';
+import { GraderConfig, GraderResult, EnvironmentProvider, EnvironmentHandle } from '../types';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 
 export interface Grader {
     grade(
-        workspace: string,
+        workspace: EnvironmentHandle,
         provider: EnvironmentProvider,
         config: GraderConfig,
         taskPath: string,
@@ -25,7 +25,7 @@ export interface Grader {
  */
 export class DeterministicGrader implements Grader {
     async grade(
-        workspace: string,
+        workspace: EnvironmentHandle,
         provider: EnvironmentProvider,
         config: GraderConfig,
         _taskPath: string,
@@ -83,7 +83,7 @@ export class DeterministicGrader implements Grader {
  */
 export class LLMGrader implements Grader {
     async grade(
-        _workspace: string,
+        _workspace: EnvironmentHandle,
         _provider: EnvironmentProvider,
         config: GraderConfig,
         taskPath: string,

@@ -6,11 +6,13 @@ export class ClaudeAgent extends BaseAgent {
         _workspacePath: string,
         runCommand: (cmd: string) => Promise<CommandResult>
     ): Promise<string> {
+        const promptPath = '"${TMPDIR:-/tmp}/.pathgrade-prompt.md"';
+
         // Write instruction to a temp file to avoid shell escaping issues with long prompts
         const b64 = Buffer.from(instruction).toString('base64');
-        await runCommand(`echo '${b64}' | base64 -d > /tmp/.prompt.md`);
+        await runCommand(`mkdir -p "\${TMPDIR:-/tmp}" && echo '${b64}' | base64 -d > ${promptPath}`);
 
-        const command = `claude -p --dangerously-skip-permissions "$(cat /tmp/.prompt.md)"`;
+        const command = `claude -p --dangerously-skip-permissions "$(cat ${promptPath})"`;
         const result = await runCommand(command);
 
         if (result.exitCode !== 0) {

@@ -32,12 +32,19 @@ describe('LocalProvider', () => {
         environment: { build_timeout_sec: 180, cpus: 2, memory_mb: 2048, storage_mb: 500 },
       };
 
-      const workspace = await provider.setup(taskDir, [], taskConfig);
-      tempDirs.push(workspace);
+      const runtime = await provider.setup(taskDir, [], taskConfig);
+      tempDirs.push(runtime.handle);
 
-      expect(workspace).toContain('pathgrade-');
-      expect(await fsExtra.pathExists(workspace)).toBe(true);
-      expect(await fsExtra.pathExists(path.join(workspace, 'task.toml'))).toBe(true);
+      expect(runtime.handle).toContain('pathgrade-');
+      expect(runtime.workspacePath).toBe(path.join(runtime.handle, 'workspace'));
+      expect(runtime.paths?.home).toBe(path.join(runtime.handle, 'home'));
+      expect(runtime.paths?.xdg).toBe(path.join(runtime.handle, 'xdg'));
+      expect(runtime.paths?.tmp).toBe(path.join(runtime.handle, 'tmp'));
+      expect(await fsExtra.pathExists(runtime.workspacePath)).toBe(true);
+      expect(await fsExtra.pathExists(path.join(runtime.workspacePath, 'task.toml'))).toBe(true);
+      expect(await fsExtra.pathExists(runtime.paths!.home)).toBe(true);
+      expect(await fsExtra.pathExists(runtime.paths!.xdg)).toBe(true);
+      expect(await fsExtra.pathExists(runtime.paths!.tmp)).toBe(true);
     });
 
     it('injects skills into discovery directories', async () => {
@@ -56,16 +63,16 @@ describe('LocalProvider', () => {
         environment: { build_timeout_sec: 180, cpus: 2, memory_mb: 2048, storage_mb: 500 },
       };
 
-      const workspace = await provider.setup(taskDir, [skillDir], taskConfig);
-      tempDirs.push(workspace);
+      const runtime = await provider.setup(taskDir, [skillDir], taskConfig);
+      tempDirs.push(runtime.handle);
 
       const skillName = path.basename(skillDir);
       // Check Gemini discovery path
-      const geminiPath = path.join(workspace, '.agents', 'skills', skillName, 'SKILL.md');
+      const geminiPath = path.join(runtime.workspacePath, '.agents', 'skills', skillName, 'SKILL.md');
       expect(await fsExtra.pathExists(geminiPath)).toBe(true);
 
       // Check Claude discovery path
-      const claudePath = path.join(workspace, '.claude', 'skills', skillName, 'SKILL.md');
+      const claudePath = path.join(runtime.workspacePath, '.claude', 'skills', skillName, 'SKILL.md');
       expect(await fsExtra.pathExists(claudePath)).toBe(true);
     });
   });
@@ -76,23 +83,35 @@ describe('LocalProvider', () => {
       await fsExtra.ensureDir(tempDir);
       await fsExtra.writeFile(path.join(tempDir, 'file.txt'), 'test');
 
-      await provider.cleanup(tempDir);
+      await provider.cleanup({ handle: tempDir, workspacePath: path.join(tempDir, 'workspace'), env: {} });
       expect(await fsExtra.pathExists(tempDir)).toBe(false);
     });
 
     it('handles non-existent directory gracefully', async () => {
       // Should not throw
-      await provider.cleanup('/tmp/nonexistent-dir-' + Date.now());
+      await provider.cleanup({
+        handle: '/tmp/nonexistent-dir-' + Date.now(),
+        workspacePath: '/tmp/nonexistent-dir-' + Date.now() + '/workspace',
+        env: {},
+      });
     });
   });
 
   describe('runCommand', () => {
+    function makeRuntime(tempDir: string) {
+      return {
+        handle: tempDir,
+        workspacePath: tempDir,
+        env: {},
+      };
+    }
+
     it('executes a command and captures stdout', async () => {
       const tempDir = path.join(os.tmpdir(), `pathgrade-cmd-test-${Date.now()}`);
       await fsExtra.ensureDir(tempDir);
       tempDirs.push(tempDir);
 
-      const result = await provider.runCommand(tempDir, 'echo "hello world"');
+      const result = await provider.runCommand(makeRuntime(tempDir), 'echo "hello world"');
       expect(result.stdout.trim()).toBe('hello world');
       expect(result.exitCode).toBe(0);
     });
@@ -102,7 +121,7 @@ describe('LocalProvider', () => {
       await fsExtra.ensureDir(tempDir);
       tempDirs.push(tempDir);
 
-      const result = await provider.runCommand(tempDir, 'echo "error" >&2');
+      const result = await provider.runCommand(makeRuntime(tempDir), 'echo "error" >&2');
       expect(result.stderr.trim()).toBe('error');
     });
 
@@ -111,7 +130,7 @@ describe('LocalProvider', () => {
       await fsExtra.ensureDir(tempDir);
       tempDirs.push(tempDir);
 
-      const result = await provider.runCommand(tempDir, 'exit 42');
+      const result = await provider.runCommand(makeRuntime(tempDir), 'exit 42');
       expect(result.exitCode).toBe(42);
     });
 
@@ -120,7 +139,7 @@ describe('LocalProvider', () => {
       await fsExtra.ensureDir(tempDir);
       tempDirs.push(tempDir);
 
-      const result = await provider.runCommand(tempDir, 'echo $TEST_VAR', { TEST_VAR: 'test_value' });
+      const result = await provider.runCommand(makeRuntime(tempDir), 'echo $TEST_VAR', { TEST_VAR: 'test_value' });
       expect(result.stdout.trim()).toBe('test_value');
     });
 
@@ -129,9 +148,35 @@ describe('LocalProvider', () => {
       await fsExtra.ensureDir(tempDir);
       tempDirs.push(tempDir);
 
-      const result = await provider.runCommand(tempDir, 'pwd');
+      const result = await provider.runCommand(makeRuntime(tempDir), 'pwd');
       // The path might have /private prefix on macOS
       expect(result.stdout.trim()).toContain(path.basename(tempDir));
+    });
+
+    it('applies isolated HOME, XDG, and TMPDIR paths from the trial runtime', async () => {
+      const taskDir = path.join(os.tmpdir(), `pathgrade-isolation-task-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.writeFile(path.join(taskDir, 'task.toml'), 'version = "1"');
+      tempDirs.push(taskDir);
+
+      const runtime = await provider.setup(taskDir, [], {
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+      });
+      tempDirs.push(runtime.handle);
+
+      const result = await provider.runCommand(
+        runtime,
+        'printf "%s\\n%s\\n%s\\n%s\\n%s\\n" "$(basename "$PWD")" "$(basename "$HOME")" "$(basename "$XDG_CONFIG_HOME")" "$(basename "$XDG_STATE_HOME")" "$(basename "${TMPDIR%/}")"'
+      );
+
+      expect(result.stdout.trim().split('\n')).toEqual([
+        'workspace',
+        'home',
+        'xdg',
+        'state',
+        'tmp',
+      ]);
     });
   });
 });
