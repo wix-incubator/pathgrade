@@ -1,5 +1,5 @@
 /**
- * `skillgrade init` command.
+ * `pathgrade init` command.
  *
  * Detects skills in the current directory and generates an eval.yaml template.
  * With an API key, uses an LLM to generate intelligent eval tasks.
@@ -22,7 +22,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
     }
   }
 
-  console.log('\nskillgrade init\n');
+  console.log('\npathgrade init\n');
 
   // Detect skills
   const skills = await detectSkills(dir);
@@ -63,7 +63,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
       const config = await generateWithLLM(skills, llmApiKey, llmProvider);
       await fs.writeFile(evalPath, config, 'utf-8');
       spinner.stop(fmt.green('created eval.yaml'));
-      console.log(`     Review and edit the file, then run: skillgrade\n`);
+      console.log(`     Review and edit the file, then run: pathgrade\n`);
       return;
     } catch (err: any) {
       spinner.stop(fmt.red(`AI generation failed: ${err.message}`));
@@ -97,7 +97,7 @@ async function writeTemplate(evalPath: string, taskName: string, instruction: st
 
   await fs.writeFile(evalPath, result, 'utf-8');
   console.log(`  Created eval.yaml.`);
-  console.log(`     Edit the file to define your eval tasks, then run: skillgrade\n`);
+  console.log(`     Edit the file to define your eval tasks, then run: pathgrade\n`);
 }
 
 /**

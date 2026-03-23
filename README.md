@@ -1,24 +1,24 @@
-# Skillgrade
+# Pathgrade
 
-The easiest way to evaluate your [Agent Skills](https://agentskills.io/home). Tests that AI agents correctly discover and use your skills.
+Pathgrade evaluates whether AI agents correctly discover and use your skills.
 
 See [examples/](examples/) — [superlint](examples/superlint/) (simple) and [angular-modern](examples/angular-modern/) (TypeScript grader).
 
-![Browser Preview](https://raw.githubusercontent.com/mgechev/skillgrade/main/assets/browser-preview.png)
+![Browser Preview](assets/browser-preview.png)
 
 ## Quick Start
 
 **Prerequisites**: Node.js 20+, Docker
 
 ```bash
-npm i -g skillgrade
+npm i -g @wix/pathgrade
 ```
 
 **1. Initialize** — go to your skill directory (must have `SKILL.md`) and scaffold:
 
 ```bash
 cd my-skill/
-GEMINI_API_KEY=your-key skillgrade init    # or ANTHROPIC_API_KEY / OPENAI_API_KEY
+GEMINI_API_KEY=your-key pathgrade init    # or ANTHROPIC_API_KEY / OPENAI_API_KEY
 # Use --force to overwrite an existing eval.yaml
 ```
 
@@ -29,7 +29,7 @@ Generates `eval.yaml` with AI-powered tasks and graders. Without an API key, cre
 **3. Run**:
 
 ```bash
-GEMINI_API_KEY=your-key skillgrade --smoke
+GEMINI_API_KEY=your-key pathgrade --smoke
 ```
 
 The agent is auto-detected from your API key: `GEMINI_API_KEY` → Gemini, `ANTHROPIC_API_KEY` → Claude, `OPENAI_API_KEY` → Codex. Override with `--agent=claude`.
@@ -37,11 +37,11 @@ The agent is auto-detected from your API key: `GEMINI_API_KEY` → Gemini, `ANTH
 **4. Review**:
 
 ```bash
-skillgrade preview          # CLI report
-skillgrade preview browser  # web UI → http://localhost:3847
+pathgrade preview          # CLI report
+pathgrade preview browser  # web UI → http://localhost:3847
 ```
 
-Reports are saved to `$TMPDIR/skillgrade/<skill-name>/results/`. Override with `--output=DIR`.
+Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/`. Override with `--output=DIR`.
 
 ## Presets
 
@@ -61,7 +61,7 @@ Reports are saved to `$TMPDIR/skillgrade/<skill-name>/results/`. Override with `
 | `--parallel=N` | Run trials concurrently |
 | `--agent=gemini\|claude\|codex` | Override agent (default: auto-detect from API key) |
 | `--provider=docker\|local` | Override provider |
-| `--output=DIR` | Output directory (default: `$TMPDIR/skillgrade`) |
+| `--output=DIR` | Output directory (default: `$TMPDIR/pathgrade`) |
 | `--validate` | Verify graders using reference solutions |
 | `--ci` | CI mode: exit non-zero if below threshold |
 | `--threshold=0.8` | Pass rate threshold for CI mode |
@@ -211,11 +211,11 @@ Final reward = `Σ (grader_score × weight) / Σ weight`
 Use `--provider=local` in CI — the runner is already an ephemeral sandbox, so Docker adds overhead without benefit.
 
 ```yaml
-# .github/workflows/skillgrade.yml
+# .github/workflows/pathgrade.yml
 - run: |
-    npm i -g skillgrade
+    npm i -g @wix/pathgrade
     cd skills/superlint
-    GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} skillgrade --regression --ci --provider=local
+    GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci --provider=local
 ```
 
 Exits with code 1 if pass rate falls below `--threshold` (default: 0.8).
@@ -226,9 +226,9 @@ Exits with code 1 if pass rate falls below `--threshold` (default: 0.8).
 
 | Variable | Used by |
 |----------|---------|
-| `GEMINI_API_KEY` | Agent execution, LLM grading, `skillgrade init` |
-| `ANTHROPIC_API_KEY` | Agent execution, LLM grading, `skillgrade init` |
-| `OPENAI_API_KEY` | Agent execution (Codex), `skillgrade init` |
+| `GEMINI_API_KEY` | Agent execution, LLM grading, `pathgrade init` |
+| `ANTHROPIC_API_KEY` | Agent execution, LLM grading, `pathgrade init` |
+| `OPENAI_API_KEY` | Agent execution (Codex), `pathgrade init` |
 
 Variables are also loaded from `.env` in the skill directory. Shell values override `.env`. All values are **redacted** from persisted session logs.
 

@@ -1,9 +1,9 @@
 ---
-name: skillgrade-graders
-description: Authors deterministic and LLM rubric graders for skillgrade evaluations. Use when creating scoring scripts, writing evaluation rubrics, or combining multiple graders with weighted scoring. Don't use for setting up eval pipelines, configuring eval.yaml defaults, or general test writing.
+name: pathgrade-graders
+description: Authors deterministic and LLM rubric graders for pathgrade evaluations. Use when creating scoring scripts, writing evaluation rubrics, or combining multiple graders with weighted scoring. Don't use for setting up eval pipelines, configuring eval.yaml defaults, or general test writing.
 ---
 
-# Skillgrade Grader Authoring
+# Pathgrade Grader Authoring
 
 ## Procedures
 
@@ -62,10 +62,10 @@ description: Authors deterministic and LLM rubric graders for skillgrade evaluat
 
 **Step 5: Validate Graders**
 1. Create a reference solution script that produces the expected output.
-2. Run `skillgrade --validate` to verify graders score the reference solution correctly.
-3. Test only deterministic graders: `skillgrade --grader=deterministic` (skips LLM calls, faster iteration).
-4. Test only LLM rubric graders: `skillgrade --grader=llm_rubric`.
-5. Run a specific eval with a specific grader type: `skillgrade --eval=my-eval --grader=deterministic`.
+2. Run `pathgrade --validate` to verify graders score the reference solution correctly.
+3. Test only deterministic graders: `pathgrade --grader=deterministic` (skips LLM calls, faster iteration).
+4. Test only LLM rubric graders: `pathgrade --grader=llm_rubric`.
+5. Run a specific eval with a specific grader type: `pathgrade --eval=my-eval --grader=deterministic`.
 6. If a grader returns unexpected scores, inspect the script output and adjust scoring logic.
 
 ## Error Handling

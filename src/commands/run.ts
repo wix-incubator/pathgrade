@@ -1,5 +1,5 @@
 /**
- * `skillgrade` (run) command.
+ * `pathgrade` (run) command.
  *
  * Reads eval.yaml, resolves tasks, and executes evals.
  */
@@ -39,7 +39,7 @@ async function loadEnvFile(filePath: string): Promise<Record<string, string>> {
 }
 
 export async function runEvals(dir: string, opts: RunOptions) {
-    console.log(`\n${fmt.bold('skillgrade')}\n`);
+    console.log(`\n${fmt.bold('pathgrade')}\n`);
 
     // Load eval.yaml
     const config = await loadEvalConfig(dir);
@@ -90,7 +90,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
     }
 
     // Output directory
-    const outputBase = opts.output || path.join(os.tmpdir(), 'skillgrade');
+    const outputBase = opts.output || path.join(os.tmpdir(), 'pathgrade');
     const skillName = path.basename(dir);
     const outputDir = path.join(outputBase, skillName);
     const resultsDir = path.join(outputDir, 'results');

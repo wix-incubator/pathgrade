@@ -45,5 +45,5 @@ graders:
 ## Run
 
 ```bash
-GEMINI_API_KEY=your-key skillgrade --smoke
+GEMINI_API_KEY=your-key pathgrade --smoke
 ```

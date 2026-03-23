@@ -1,6 +1,6 @@
-# Skillgrade - Architecture Guide
+# Pathgrade - Architecture Guide
 
-**Skillgrade** is a CLI tool that evaluates whether AI agents (Gemini, Claude, Codex) correctly discover and use Agent Skills. It runs trials in isolated Docker containers and grades the results using deterministic tests and LLM rubrics.
+**Pathgrade** is a CLI tool that evaluates whether AI agents (Gemini, Claude, Codex) correctly discover and use Agent Skills. It runs trials in isolated Docker containers and grades the results using deterministic tests and LLM rubrics.
 
 ---
 
@@ -26,7 +26,7 @@
 │                                                                  │
 │   1. Write a SKILL.md (your agent skill)                         │
 │   2. Write eval.yaml (test scenarios for that skill)             │
-│   3. Run: skillgrade                                             │
+│   3. Run: pathgrade                                             │
 └──────────────────────┬───────────────────────────────────────────┘
                        │
                        ▼
@@ -63,7 +63,7 @@
 
 **What "evaluating a skill" means concretely:**
 
-You have a skill (e.g., a linting tool). You want to know: "If I give an AI agent a task that requires this skill, will the agent find and use it correctly?" Skillgrade answers this by running the agent many times in clean environments and grading the results.
+You have a skill (e.g., a linting tool). You want to know: "If I give an AI agent a task that requires this skill, will the agent find and use it correctly?" Pathgrade answers this by running the agent many times in clean environments and grading the results.
 
 ---
 
@@ -71,7 +71,7 @@ You have a skill (e.g., a linting tool). You want to know: "If I give an AI agen
 
 ```
 src/
-├── skillgrade.ts           ← CLI entry point: parses args, routes to commands
+├── pathgrade.ts           ← CLI entry point: parses args, routes to commands
 │
 ├── commands/
 │   ├── run.ts              ← Main command: loads config, builds Docker, runs trials
@@ -116,7 +116,7 @@ src/
 **How the files connect:**
 
 ```
-skillgrade.ts ──parse args──→ commands/run.ts
+pathgrade.ts ──parse args──→ commands/run.ts
                                   │
                     ┌─────────────┼──────────────┐
                     ▼             ▼               ▼
@@ -259,7 +259,7 @@ instruction: |                                       → inline (has newlines)
 version: "1"
 
 # Optional: explicit path to the skill being tested.
-# If omitted, skillgrade auto-detects SKILL.md files in:
+# If omitted, pathgrade auto-detects SKILL.md files in:
 #   ./SKILL.md, ./skills/*, ./.agents/skills/*, ./.claude/skills/*
 skill: ./skills/superlint
 
@@ -352,15 +352,15 @@ defaults:                    task override:           resolved result:
 
 ## 5. End-to-End Execution Flow
 
-### 5.1 `skillgrade run` — The Main Flow
+### 5.1 `pathgrade run` — The Main Flow
 
 ```
-$ skillgrade --trials 5 --agent gemini
+$ pathgrade --trials 5 --agent gemini
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ Phase 1: LOAD                                                   │
 │                                                                 │
-│ skillgrade.ts                                                   │
+│ pathgrade.ts                                                   │
 │   │  parse CLI args (--trials=5, --agent=gemini, etc.)          │
 │   ▼                                                             │
 │ commands/run.ts: runEvals()                                     │
@@ -392,7 +392,7 @@ $ skillgrade --trials 5 --agent gemini
 │   │  inject skills into .agents/skills/ and .claude/skills/     │
 │   │  docker commit → prepared image (reused for all trials)     │
 │   ▼                                                             │
-│ Result: Docker image "skillgrade-fix-linting-ready"             │
+│ Result: Docker image "pathgrade-fix-linting-ready"             │
 │                                                                 │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
@@ -457,7 +457,7 @@ $ skillgrade --trials 5 --agent gemini
 │   pass^k   = P(all k succeed)      → e.g., 0.33               │
 │                                                                 │
 │ Sanitize: redact API keys from session logs                     │
-│ Save: $TMPDIR/skillgrade/<skill>/results/<task>_<timestamp>.json│
+│ Save: $TMPDIR/pathgrade/<skill>/results/<task>_<timestamp>.json│
 │                                                                 │
 │ DockerProvider.teardown()                                       │
 │   → docker rmi (remove prepared image)                          │
@@ -541,7 +541,7 @@ tmp/fix-linting/                       ┌────────────�
                                        │  3. TAR + copy each skill    │
                                        │     into both directories    │
                                        │  4. docker commit            │
-                                       │     → "skillgrade-*-ready"   │
+                                       │     → "pathgrade-*-ready"   │
                                        │  5. Remove temp container    │
                                        └──────────┬───────────────────┘
                                                   │
@@ -591,17 +591,17 @@ Different AI agents look for skills in different places:
 /workspace/.claude/skills/superlint/SKILL.md   ← Claude looks here
 ```
 
-Skillgrade copies skills into **both** directories so the same image works regardless of which agent is being tested.
+Pathgrade copies skills into **both** directories so the same image works regardless of which agent is being tested.
 
 ### 6.4 Local Provider (Alternative to Docker)
 
 For CI/testing, the `local` provider skips Docker entirely:
 
 ```
-setup()    → cp -r taskPath /tmp/skillgrade-XXXXX/
+setup()    → cp -r taskPath /tmp/pathgrade-XXXXX/
              cp -r skills into .agents/skills/ and .claude/skills/
 run()      → spawn child process with shell: true, cwd = tempDir
-cleanup()  → rm -rf /tmp/skillgrade-XXXXX/
+cleanup()  → rm -rf /tmp/pathgrade-XXXXX/
 ```
 
 No image build, no containers. Everything runs directly on the host.
@@ -741,10 +741,10 @@ pass^k = (successes / n) ^ k
 
 ## 8. CLI Commands & Flags
 
-### 8.1 `skillgrade` (default = run)
+### 8.1 `pathgrade` (default = run)
 
 ```
-skillgrade [options]
+pathgrade [options]
 
 Options:
   --smoke              5 trials (quick check)
@@ -756,7 +756,7 @@ Options:
   --provider=NAME     docker | local (override eval.yaml)
   --eval=NAME[,NAME]  Run specific tasks by name
   --grader=TYPE       Filter: deterministic | llm_rubric
-  --output=DIR        Output directory (default: $TMPDIR/skillgrade)
+  --output=DIR        Output directory (default: $TMPDIR/pathgrade)
   --validate          Run reference solution to verify graders work
   --ci                Exit non-zero if below threshold
   --threshold=N       Pass rate threshold for --ci (default: from eval.yaml)
@@ -767,28 +767,28 @@ Options:
 
 ```bash
 # Quick smoke test with Gemini
-skillgrade --smoke
+pathgrade --smoke
 
 # Full regression test with Claude, 30 trials
-skillgrade --regression --agent claude
+pathgrade --regression --agent claude
 
 # Run only the "fix-linting" task, 10 trials in parallel
-skillgrade --eval fix-linting --trials 10 --parallel 4
+pathgrade --eval fix-linting --trials 10 --parallel 4
 
 # CI mode: fail pipeline if pass rate < 90%
-skillgrade --reliable --ci --threshold 0.9
+pathgrade --reliable --ci --threshold 0.9
 
 # Validate that your graders work (runs reference solution)
-skillgrade --validate
+pathgrade --validate
 
 # Test only deterministic graders (skip expensive LLM calls)
-skillgrade --smoke --grader deterministic
+pathgrade --smoke --grader deterministic
 ```
 
-### 8.2 `skillgrade init`
+### 8.2 `pathgrade init`
 
 ```
-skillgrade init [--force]
+pathgrade init [--force]
 
 Scaffolds an eval.yaml by:
 1. Detecting SKILL.md files in standard locations
@@ -796,11 +796,11 @@ Scaffolds an eval.yaml by:
 3. Falling back to a template if no API key available
 ```
 
-### 8.3 `skillgrade preview`
+### 8.3 `pathgrade preview`
 
 ```
-skillgrade preview           # CLI table of latest results
-skillgrade preview browser   # Web UI at http://localhost:3847
+pathgrade preview           # CLI table of latest results
+pathgrade preview browser   # Web UI at http://localhost:3847
 ```
 
 ---
@@ -810,7 +810,7 @@ skillgrade preview browser   # Web UI at http://localhost:3847
 ### 9.1 Output Directory Structure
 
 ```
-$TMPDIR/skillgrade/<skill-name>/
+$TMPDIR/pathgrade/<skill-name>/
 ├── results/
 │   ├── fix-linting_2026-03-19T10-30-00-000Z.json
 │   ├── fix-linting_2026-03-19T11-00-00-000Z.json
@@ -907,9 +907,9 @@ After:  "stdout": "Using key [REDACTED]..."
 
 | Variable | Used By | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | Agent (Gemini), LLM grader, `skillgrade init` | Gemini API access |
-| `ANTHROPIC_API_KEY` | Agent (Claude), LLM grader, `skillgrade init` | Anthropic API access |
-| `OPENAI_API_KEY` | Agent (Codex), `skillgrade init` | OpenAI API access |
+| `GEMINI_API_KEY` | Agent (Gemini), LLM grader, `pathgrade init` | Gemini API access |
+| `ANTHROPIC_API_KEY` | Agent (Claude), LLM grader, `pathgrade init` | Anthropic API access |
+| `OPENAI_API_KEY` | Agent (Codex), `pathgrade init` | OpenAI API access |
 | `NO_COLOR` | CLI formatting | Disable ANSI colors |
 
 Can be set via process environment or a `.env` file in the project root.

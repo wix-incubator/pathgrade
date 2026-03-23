@@ -41,7 +41,7 @@ export async function runBrowserPreview(resultsDir: string, port: number = 3847)
     server.listen(port, () => {
         const addr = server.address() as any;
         const actualPort = typeof addr === 'object' ? addr.port : port;
-        console.log(`\nskillgrade preview`);
+        console.log(`\npathgrade preview`);
         console.log(`\n  url       http://localhost:${actualPort}`);
         console.log(`  results   ${resolved}\n`);
     });

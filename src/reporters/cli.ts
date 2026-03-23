@@ -14,7 +14,7 @@ export async function runCliPreview(resultsDir: string) {
         return;
     }
 
-    console.log(`\n${fmt.bold('skillgrade preview')}  ${fmt.dim(`${files.length} reports from ${resolved}`)}\n`);
+    console.log(`\n${fmt.bold('pathgrade preview')}  ${fmt.dim(`${files.length} reports from ${resolved}`)}\n`);
 
     for (const file of files) {
         let report: any;

@@ -1,10 +1,10 @@
-# Skillgrade Self-Evaluation
+# Pathgrade Self-Evaluation
 #
 # Dogfooding: evaluates whether agents can correctly use
-# the skillgrade-setup and skillgrade-graders skills.
+# the pathgrade-setup and pathgrade-graders skills.
 #
 # Run:
-#   GEMINI_API_KEY=your-key skillgrade --smoke
+#   GEMINI_API_KEY=your-key pathgrade --smoke
 
 version: "1"
 
@@ -21,7 +21,7 @@ defaults:
 
 tasks:
   # ── Task 1: Create eval.yaml from a SKILL.md ──────────────
-  # Tests whether the agent can follow the skillgrade-setup skill
+  # Tests whether the agent can follow the pathgrade-setup skill
   # to produce a valid eval configuration.
   - name: create-eval-config
     instruction: |
@@ -66,11 +66,11 @@ tasks:
         weight: 0.3
 
   # ── Task 2: Write a deterministic grader ───────────────────
-  # Tests whether the agent can follow the skillgrade-graders skill
+  # Tests whether the agent can follow the pathgrade-graders skill
   # to produce a working deterministic grader script.
   - name: write-deterministic-grader
     instruction: |
-      Write a deterministic grader script for a skillgrade evaluation.
+      Write a deterministic grader script for a pathgrade evaluation.
 
       The grader should verify that a file called `output.txt` was created
       and contains the text "Hello, World!".

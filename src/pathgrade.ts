@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * skillgrade CLI
+ * pathgrade CLI
  *
  * Usage:
- *   skillgrade                     Run all eval tasks from eval.yaml
- *   skillgrade init                Generate eval.yaml from detected skills
- *   skillgrade preview [browser]   View results (CLI default, or browser)
- *   skillgrade <task-name>         Run a specific eval
+ *   pathgrade                     Run all eval tasks from eval.yaml
+ *   pathgrade init                Generate eval.yaml from detected skills
+ *   pathgrade preview [browser]   View results (CLI default, or browser)
+ *   pathgrade <task-name>         Run a specific eval
  *
  * Options:
  *   --trials=N         Override trial count
@@ -52,7 +52,7 @@ async function main() {
 
     if (command === 'preview') {
         const mode = args[1] === 'browser' ? 'browser' : 'cli';
-        const outputDir = getFlag('output') || path.join(os.tmpdir(), 'skillgrade');
+        const outputDir = getFlag('output') || path.join(os.tmpdir(), 'pathgrade');
         await runPreview(cwd, mode, outputDir);
         return;
     }
@@ -88,7 +88,7 @@ async function main() {
         evalFilter = taskName;
     }
 
-    const outputDir = getFlag('output') || path.join(os.tmpdir(), 'skillgrade');
+    const outputDir = getFlag('output') || path.join(os.tmpdir(), 'pathgrade');
 
     await runEvals(cwd, {
         eval: evalFilter,
@@ -111,13 +111,13 @@ async function main() {
 
 function printHelp() {
     console.log(`
-  skillgrade - The easiest way to evaluate your Agent Skills
+  pathgrade - The easiest way to evaluate your Agent Skills
 
   Usage:
-    skillgrade                     Run all evals from eval.yaml
-    skillgrade init [--force]      Generate eval.yaml (--force to overwrite)
-    skillgrade preview [browser]   View results (CLI default, or browser)
-    skillgrade <eval-name>         Run a specific eval
+    pathgrade                     Run all evals from eval.yaml
+    pathgrade init [--force]      Generate eval.yaml (--force to overwrite)
+    pathgrade preview [browser]   View results (CLI default, or browser)
+    pathgrade <eval-name>         Run a specific eval
 
   Presets:
     --smoke            Quick smoke test (5 trials, reports pass@k)
@@ -132,21 +132,21 @@ function printHelp() {
     --agent=gemini|claude|codex   Override agent (default: auto-detect from API key)
     --provider=docker|local Override provider (default: docker)
     --output=DIR       Output directory for reports and temp files
-                       Default: $TMPDIR/skillgrade
+                       Default: $TMPDIR/pathgrade
     --validate         Verify graders using reference solutions
     --ci               CI mode: exit non-zero if below threshold
     --threshold=0.8    Pass rate threshold for CI mode
     --preview          Open CLI results after running
 
   Examples:
-    skillgrade init                # scaffold eval.yaml
-    skillgrade init --force        # overwrite existing eval.yaml
-    skillgrade                     # run all evals
-    skillgrade --smoke             # quick 5-trial smoke test
-    skillgrade --eval=fix-linting  # run a specific eval
-    skillgrade --eval=foo,bar      # run multiple evals
-    skillgrade --regression --ci   # CI regression with 30 trials
-    skillgrade preview browser     # open web UI
+    pathgrade init                # scaffold eval.yaml
+    pathgrade init --force        # overwrite existing eval.yaml
+    pathgrade                     # run all evals
+    pathgrade --smoke             # quick 5-trial smoke test
+    pathgrade --eval=fix-linting  # run a specific eval
+    pathgrade --eval=foo,bar      # run multiple evals
+    pathgrade --regression --ci   # CI regression with 30 trials
+    pathgrade preview browser     # open web UI
 `);
 }
 

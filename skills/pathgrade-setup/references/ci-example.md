@@ -19,15 +19,15 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install skillgrade
-        run: npm i -g skillgrade
+      - name: Install Pathgrade
+        run: npm i -g @wix/pathgrade
 
       - name: Run evaluations
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           cd skills/my-skill
-          skillgrade --regression --ci
+          pathgrade --regression --ci
 ```
 
 ## Key Flags for CI
@@ -46,6 +46,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: skillgrade-reports
+          name: pathgrade-reports
           path: skills/my-skill/results/
 ```

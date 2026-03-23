@@ -2,11 +2,11 @@
 # Edit the tasks below to define evaluations for your skill.
 #
 # Usage:
-#   skillgrade          Run all tasks
-#   skillgrade --validate   Verify graders using reference solutions
-#   skillgrade --preview    Open web UI for results
+#   pathgrade          Run all tasks
+#   pathgrade --validate   Verify graders using reference solutions
+#   pathgrade --preview    Open web UI for results
 #
-# Documentation: https://github.com/mgechev/skillgrade#readme
+# Documentation: see the Pathgrade README bundled with this package.
 
 version: "1"
 
