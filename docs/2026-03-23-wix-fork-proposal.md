@@ -54,13 +54,14 @@ Why:
 
 The new repo should define the product as:
 
-> A local-first evaluation runner for agent skills, optimized for multi-turn conversations and typed configuration.
+> A local-first evaluation runner for agent skills, optimized for multi-turn conversations, typed configuration, and secure employee-machine usage.
 
 That means:
-- local execution only in v1
+- local agent execution and local workspaces in v1
 - isolated per-trial homes and workspaces
 - session-aware agent adapters
 - conversation-native grading and logging
+- optional host-scoped remote LLM services for persona simulation and rubric grading when employee machines do not have provider API keys
 
 ## Proposed Directory Layout
 
@@ -281,12 +282,21 @@ Success condition:
 Success condition:
 - deterministic multi-turn eval passes for `ck-new`
 
-### Phase 3: Add quality features
+### Phase 3: Secure LLM-backed features for employee usage
 
-1. Add persona-backed simulated replies
-2. Add step graders
-3. Improve transcript viewer and browser report
-4. Add migration command from `eval.yaml` to `eval.ts`
+1. Introduce a host-scoped remote LLM backend for persona-backed replies and `llm_rubric`.
+2. Invoke remote tools deterministically via `mcp-s-cli`.
+3. Ship an employee entrypoint or onboarding path that enables secure mode by default for employee usage.
+4. Keep explicit local fallback for CI and controlled environments.
+
+Success condition:
+- employee machines can run persona-backed and `llm_rubric` evals without local provider API keys
+
+### Phase 4: Add quality features
+
+1. Add step graders
+2. Improve transcript viewer and browser report
+3. Add migration command from `eval.yaml` to `eval.ts`
 
 Success condition:
 - conversation reports explain turn-by-turn behavior, not just final reward
@@ -323,7 +333,7 @@ Trying to remain too compatible with upstream will slow the architecture cleanup
 
 Mitigation:
 - keep file-level reuse, not behavior-level compatibility promises
-- explicitly declare local-only, TS-first, multi-turn-first scope in the new repo README
+- explicitly declare local-first, TS-first, multi-turn-first scope in the new repo README
 
 ## Recommended First Slice
 

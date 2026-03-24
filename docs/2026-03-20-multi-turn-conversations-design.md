@@ -1601,21 +1601,43 @@ Core logic:
 - `CompletionChecker` — evaluates completion conditions after each turn using `assistant_message`
 - Integration with existing `EvalRunner` — `runSingleTrial` creates a fresh agent instance and delegates when `conversation` is present
 
-### Phase 4: Step Grading + LLM Transcript Integration (est. scope: medium)
+### Phase 4: Secure Remote LLM Backend for Persona + Rubric Features (est. scope: medium)
+
+**Files changed:**
+- `src/utils/llm.ts` — add a backend-aware LLM boundary with trial-scoped execution context
+- `src/persona.ts` — route persona-backed replies through the new LLM boundary with explicit remote model selection
+- `src/graders/index.ts` — route `llm_rubric` through the new LLM boundary with explicit remote model selection
+- `src/evalRunner.ts` — create one LLM execution context per trial and thread it through grading
+- `src/conversationRunner.ts` — reuse the trial LLM execution context for persona generations
+- `src/types.ts` — add LLM execution context and any required session-log metadata
+- `src/commands/run.ts` — honor host-scoped backend selection and secure-mode onboarding expectations
+- new `src/utils/mcpS.ts` — deterministic `mcp-s-cli` client with host-auth handling, stdin-only transport, timeout handling, and response parsing
+
+Goals:
+- remove provider API key requirements from employee machines for persona-backed replies and `llm_rubric`
+- keep the main agent loop local
+- preserve local fallback for CI and explicit local mode
+- use host-scoped secure mode rather than trial-scoped auth state
+
+Reference docs:
+- [docs/2026-03-23-mcp-s-remote-llm-prd.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-prd.md)
+- [docs/2026-03-23-mcp-s-remote-llm-spec.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-spec.md)
+
+### Phase 5: Step Grading + LLM Transcript Integration (est. scope: medium)
 
 **Files changed:**
 - `src/conversationRunner.ts` — call step graders at appropriate points in the loop and address their staged asset paths
 - `src/evalRunner.ts` — merge step grader results into TrialResult
 - `src/graders/index.ts` — build multi-turn transcripts from all turns using `assistant_message` + command logs, not just the first `agent_result`
 
-### Phase 5: Reporting & Output (est. scope: small)
+### Phase 6: Reporting & Output (est. scope: small)
 
 **Files changed:**
 - `src/reporters/cli.ts` — display conversation turn count, completion reason
 - `src/reporters/browser.ts` — render conversation transcript in web UI
 - `src/evalRunner.ts` — include conversation data in saved JSON reports
 
-### Phase 6: ck-new Example Eval (est. scope: small)
+### Phase 7: ck-new Example Eval (est. scope: small)
 
 **New files:**
 - `examples/ck-new/eval.yaml` — updated with `conversation:` config
@@ -1625,10 +1647,10 @@ Core logic:
 ### Dependency Order
 
 ```
-Phase 1 (types) → Phase 2 (agents) → Phase 3 (runner) → Phase 4 (grading) → Phase 5 (reporting) → Phase 6 (example)
+Phase 1 (types) → Phase 2 (agents) → Phase 3 (runner) → Phase 4 (remote llm backend) → Phase 5 (grading) → Phase 6 (reporting) → Phase 7 (example)
 ```
 
-Phase 1 and 2 can be developed in parallel. Phase 3 depends on both. Phases 4-6 depend on Phase 3.
+Phase 1 and 2 can be developed in parallel. Phase 3 depends on both. Phase 4 depends on Phase 3 because persona-backed replies and `llm_rubric` already exist there. Phases 5-7 depend on Phase 3, but Phase 4 is intentionally sequenced before Phase 5 because employee-machine secure execution is now a blocker for broader usage.
 
 ---
 
@@ -1639,7 +1661,7 @@ Phase 1 and 2 can be developed in parallel. Phase 3 depends on both. Phases 4-6 
 | Limitation | Rationale | Workaround |
 |-----------|-----------|------------|
 | No `after_turn: "last"` in step_graders | Total turns unknown ahead of time. Specific turn numbers keep behavior deterministic. | Use end-of-conversation graders for final-state checks. |
-| Local-only execution requires host-installed CLIs and grader dependencies | Docker is removed, so environment provisioning is no longer containerized. | Document prerequisites clearly and keep eval dependencies lightweight. |
+| Local-first execution still requires host-installed agent CLIs and deterministic grader dependencies | Docker is removed, so environment provisioning is no longer containerized. Secure employee mode may remove provider API keys for persona and `llm_rubric`, but the main agent/runtime is still local. | Document prerequisites clearly and keep eval dependencies lightweight. |
 | No hard CPU/memory isolation in local mode | Without Docker, resource isolation is weaker. | Run evals on trusted machines and keep tasks bounded by timeout. |
 | No reply `delay_ms` | Real users don't respond instantly, but adding delays increases trial time without clear testing value. | Agent behavior shouldn't depend on reply timing. If it does, that's a bug in the agent. |
 | Persona transcript not truncated | For long conversations (10-15 turns), the full transcript sent to the persona LLM can get large. | Keep `max_turns` reasonable (≤15). Typical conversations are 5-10 turns. Future enhancement: summarize early turns if transcript exceeds a token threshold. |

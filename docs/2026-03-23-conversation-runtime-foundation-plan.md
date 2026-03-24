@@ -81,12 +81,16 @@ This slice implemented the smallest safe version of the conversation runner foun
 
 The following items are still intentionally deferred after this slice:
 
+- [ ] Secure Remote LLM Backend for persona replies and `llm_rubric`
 - [ ] `conversation.step_graders`
 - [ ] conversation-aware `--validate` support
 - [ ] richer report/viewer rendering for conversation summaries
 
 Current behavior for deferred pieces:
 
+- Remote LLM support is documented separately in:
+  - [docs/2026-03-23-mcp-s-remote-llm-prd.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-prd.md)
+  - [docs/2026-03-23-mcp-s-remote-llm-spec.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-spec.md)
 - `conversation.step_graders` are rejected during config validation
 - `--validate` rejects conversation tasks
 
@@ -105,24 +109,25 @@ Result:
 
 ## Recommended Next Slice
 
-Recommended next slice: **step graders**.
+Recommended next slice: **Secure Remote LLM Backend**.
 
 Order:
 
-1. Allow `conversation.step_graders` in config resolution
-2. Run configured grader sets after the requested turn numbers
-3. Persist step grader results in transcript/session logs and `TrialResult`
-4. Keep end-of-conversation graders and reward calculation working unchanged
-5. Extend tests for mid-conversation grading and failure reporting
+1. Thread one trial-scoped LLM execution context through `EvalRunner`, `ConversationRunner`, persona calls, and `llm_rubric`
+2. Add a backend-aware `callLLM(...)` boundary for `persona_reply` and `llm_rubric`
+3. Implement a host-scoped `mcp-s-cli` client with stdin-only transport, host-auth resolution, version checks, and timeouts
+4. Keep the main agent loop local while preserving explicit local fallback for CI and controlled environments
+5. Ship the employee secure-mode entrypoint/onboarding path and extend tests around backend selection, remote response parsing, and host-env behavior
 
 Rationale:
 
-- Persona fallback is now in place, so the next product gap is checking workflow compliance before the final artifact exists.
-- Step graders are the next Phase 3 capability needed to verify conversational skills follow their intended turn-by-turn structure.
+- Persona fallback is now in place, and it already depends on shared LLM infrastructure.
+- The new security constraint changes priority: employee-machine usage is blocked until persona replies and `llm_rubric` stop requiring local provider API keys.
+- The remote backend is the next slice that unblocks broader adoption without redesigning the local agent runtime.
 
 ## Next Major Phase After That
 
-After step graders, the next major slices remain:
+After the remote backend slice, the next major slices remain:
 
 - step graders
 - deeper transcript/reporting support
@@ -150,9 +155,11 @@ For a fresh session, start with:
 
 1. Read this file.
 2. Read [docs/2026-03-23-wix-fork-proposal.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-wix-fork-proposal.md).
-3. Read the Phase 3 sections of [docs/2026-03-20-multi-turn-conversations-design.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-20-multi-turn-conversations-design.md).
-4. Continue with the step grader slice unless priorities have changed.
+3. Read [docs/2026-03-23-mcp-s-remote-llm-prd.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-prd.md).
+4. Read [docs/2026-03-23-mcp-s-remote-llm-spec.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-spec.md).
+5. Read the Phase 4 and 5 sections of [docs/2026-03-20-multi-turn-conversations-design.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-20-multi-turn-conversations-design.md).
+6. Continue with the remote backend slice unless priorities have changed.
 
 Suggested opener:
 
-`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file plus docs/2026-03-23-wix-fork-proposal.md and the Phase 3 step grader section of docs/2026-03-20-multi-turn-conversations-design.md, then implement step graders.`
+`Continue Pathgrade migration from docs/2026-03-23-conversation-runtime-foundation-plan.md. Read that file, docs/2026-03-23-wix-fork-proposal.md, docs/2026-03-23-mcp-s-remote-llm-prd.md, docs/2026-03-23-mcp-s-remote-llm-spec.md, and the Phase 4/5 sections of docs/2026-03-20-multi-turn-conversations-design.md, then implement the Remote LLM Backend slice.`
