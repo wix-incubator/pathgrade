@@ -265,6 +265,16 @@ Expected failure classes:
 - CLI can solve with host auth but bridge attempt fails
 - CLI behavior is too interactive or flaky to trust
 
+Canonical `failure_code` values for the POC:
+
+- `not_installed`
+- `not_authenticated`
+- `output_unparseable`
+- `workspace_write_failed`
+- `bridge_failed`
+- `interactive_or_flaky`
+- `unexpected_error`
+
 The revised architecture should only respond to failures that actually signal architectural constraints.
 
 ## File Layout
@@ -296,8 +306,7 @@ The implementation plan should branch based on proven capabilities.
 
 Conditions:
 
-- at least one target CLI passes `host_judge`
-- at least one target CLI passes `host_solver`
+- at least one target CLI passes both `host_judge` and `host_solver`
 - judge outputs are automation-friendly enough for `llm_rubric`, persona, or init
 
 Implication:
@@ -308,7 +317,8 @@ Implication:
 
 Conditions:
 
-- judge probes succeed
+- at least one target CLI passes `host_judge`
+- no target CLI cleanly passes both `host_judge` and `host_solver`
 - solver probes are mixed or inconclusive
 
 Implication:
@@ -357,6 +367,8 @@ This design phase is successful if it produces:
 - Which CLIs can act on a temporary workspace while using host login state?
 - Does any CLI support a safe and repeatable isolated-home bridge?
 - If CLIs differ materially, should Pathgrade expose capability-based routing instead of a single uniform local backend?
+
+The last question is explicitly a post-POC architecture decision. The POC harness itself does not need to solve routing design.
 
 ## Recommendation
 
