@@ -13,7 +13,8 @@ Explore whether Pathgrade can revise its local LLM-backed behavior so local runs
 Pathgrade currently uses two different local execution models:
 
 - The main eval agent runs inside a per-trial isolated runtime with a temporary workspace and temporary `HOME` / `XDG_*` directories.
-- `llm_rubric`, persona generation, and `pathgrade init` use direct provider API calls through `src/utils/llm.ts`.
+- `llm_rubric` and persona generation use direct provider API calls through `src/utils/llm.ts`.
+- `pathgrade init` has its own provider-specific `fetch()` implementation in `src/commands/init.ts`.
 
 That means:
 
@@ -34,6 +35,17 @@ The main uncertainty is not prompt construction. It is auth and runtime boundari
 - Local CLIs may depend on host login state that is not visible inside Pathgrade's isolated trial runtime.
 
 Before revising the architecture or implementation plan, Pathgrade needs direct evidence about what each CLI can and cannot do.
+
+## Current Local LLM Call Surfaces
+
+The current local LLM-backed surfaces that matter for this exploration are:
+
+- solver agent CLI invocations in `src/agents/*.ts`
+- rubric grading in `src/graders/index.ts` via `src/utils/llm.ts`
+- persona generation in `src/persona.ts` via `src/utils/llm.ts`
+- eval initialization in `src/commands/init.ts` via provider-specific `fetch()` calls
+
+The POC and any later decision gates must account for each surface explicitly. A positive result for rubric grading alone is not enough to claim that local CLI-first behavior can replace the entire current local API-backed model.
 
 ## Terms
 
@@ -147,15 +159,43 @@ Before revising Pathgrade's main implementation plan, build a standalone CLI-by-
 
 This POC should remain outside the production runtime.
 
+## Per-CLI Auth Characterization
+
+Each CLI must be characterized before any behavioral probe runs.
+
+The characterization step is mandatory and must document:
+
+- binary name and resolved path
+- CLI version from `--version`
+- available auth commands such as `claude auth status` or `codex login status`
+- working hypothesis for the CLI's auth model
+- what "keyless" means for that CLI
+- which environment variables must be unset
+- which environment variables must be preserved
+- which auth or session artifacts are present before probing
+- whether a trial-side bridge is even coherent for that CLI
+- which exact flags will be used for each probe
+
+Initial expectations must stay grounded in observed behavior:
+
+- Claude exposes `claude auth status`; `--bare` must not be used for auth characterization because its help text explicitly disables OAuth and keychain reads.
+- Codex exposes `codex login status` and `codex login --with-api-key`; the current Pathgrade adapter already re-seeds Codex auth from `OPENAI_API_KEY`, so "keyless" support for Codex is unproven and must be demonstrated rather than assumed.
+- Gemini is conditional. A Gemini probe only enters scope after the actual installed CLI binary name, auth surface, and local auth mechanism are identified on the machine under test.
+
 ## POC Scope
 
 The first POC must cover both judge and solver behavior.
 
 ### In scope
 
-- Claude, Codex, and Gemini if installed
-- host-authenticated judge-style execution
+- per-CLI auth characterization before any behavior probe
+- Claude and Codex on machines where they are installed
+- Gemini only after its concrete CLI binary and auth model are identified
+- host-authenticated rubric-style execution
+- host-authenticated persona-style execution
+- host-authenticated init-style generation
 - host-authenticated solver execution against a temporary workspace
+- mandatory isolated-home auth smoke testing
 - targeted inspection of local CLI state if needed
 - trial-bridge experiments only when justified by earlier probe results
 - repeatable machine-readable results
@@ -170,27 +210,115 @@ The first POC must cover both judge and solver behavior.
 
 ## POC Probe Design
 
-Each CLI gets the same conceptual probes.
+Each CLI gets the same probe stages, but the exact auth expectations and flag selections come from that CLI's characterization step.
 
-### Probe 1: `host_judge`
+### Probe 0: `auth_characterization`
 
 Purpose:
 
-- verify that the CLI can handle judge-style prompt-in / text-out work from the host environment without provider API keys
+- document the auth model and exact probe contract for the CLI under test before any capability claim is made
+
+Method:
+
+- record CLI path and version
+- inspect supported auth commands
+- inventory relevant auth and session artifacts without reading secret contents
+- record which provider key env vars are present as booleans only
+- define exact probe flags for this CLI
+- define whether "keyless" is a coherent expectation for this CLI
+
+Pass criteria:
+
+- the auth model, keyless hypothesis, env handling, and probe flags are explicit enough that later probe results are interpretable
+
+### Consumer fixtures
+
+Behavior probes must target actual Pathgrade consumer schemas, not generic "valid JSON."
+
+- `rubric_schema`
+  - exact target shape: `{"score": <number>, "reasoning": "<string>"}`
+- `persona_text`
+  - exact target shape: a single plain-text reply with no tool chatter
+- `init_yaml`
+  - exact target shape: parseable YAML with `version`, `defaults`, and `tasks`
+- `solver_workspace`
+  - exact target shape: one precise file edit in a temporary workspace
+
+### Probe 1: `host_rubric`
+
+Purpose:
+
+- verify that the CLI can handle `llm_rubric`-style prompt-in / structured-output work from the host environment without provider API keys
 
 Method:
 
 - run from the real host environment
-- unset provider API key env vars for the subprocess
-- send a tight prompt that must return a tiny JSON object and nothing else
+- apply CLI-specific env handling from characterization
+- send a rubric-style prompt that must satisfy the exact `rubric_schema`
 
 Pass criteria:
 
 - command succeeds
-- response is parseable automatically
-- no provider API key is needed
+- response satisfies the exact `rubric_schema`
+- no provider API key values were available to the subprocess
+- auth artifact inventory is recorded alongside the result
 
-### Probe 2: `host_solver`
+### Probe 2: `host_persona`
+
+Purpose:
+
+- verify that the CLI can handle persona-style plain-text generation from the host environment without provider API keys
+
+Method:
+
+- run from the real host environment
+- apply CLI-specific env handling from characterization
+- send a persona-style prompt that must produce plain text only
+
+Pass criteria:
+
+- command succeeds
+- output is plain text with no tool transcript or protocol framing
+- no provider API key values were available to the subprocess
+- auth artifact inventory is recorded alongside the result
+
+### Probe 3: `host_init`
+
+Purpose:
+
+- verify that the CLI can replace `src/commands/init.ts` style generation instead of leaving init as a hidden API-key dependency
+
+Method:
+
+- run from the real host environment
+- apply CLI-specific env handling from characterization
+- send an init-style prompt that must return parseable YAML with the `init_yaml` shape
+
+Pass criteria:
+
+- command succeeds
+- output parses as YAML
+- output contains `version`, `defaults`, and `tasks`
+- no provider API key values were available to the subprocess
+- auth artifact inventory is recorded alongside the result
+
+### Probe 4: `isolated_home_smoke`
+
+Purpose:
+
+- answer the most important architectural question early: what happens to CLI auth when `HOME`, `XDG_*`, `TMPDIR`, `TMP`, and `TEMP` are overridden
+
+Method:
+
+- run a reduced rubric-style probe
+- override `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `TMPDIR`, `TMP`, and `TEMP`
+- do not stage any bridge material yet
+
+Pass criteria:
+
+- result clearly shows whether auth survives or fails under overridden home-state conditions
+
+### Probe 5: `host_solver`
 
 Purpose:
 
@@ -200,15 +328,17 @@ Method:
 
 - create a temporary workspace with a small fixture file
 - run the CLI with `cwd` set to that workspace
+- apply CLI-specific solver flags from characterization
 - ask it to make one precise file change and emit a short completion message
 
 Pass criteria:
 
 - command succeeds
 - expected file change happens in the temporary workspace
-- no provider API key is needed
+- no provider API key values were available to the subprocess
+- auth artifact inventory is recorded alongside the result
 
-### Probe 3: `trial_bridge`
+### Probe 6: `trial_bridge`
 
 Purpose:
 
@@ -216,33 +346,52 @@ Purpose:
 
 Method:
 
-- only run if `host_judge` and `host_solver` succeed
-- create a trial-like temp root with isolated `HOME`, `XDG_*`, and `TMPDIR`
-- use a CLI-specific staging strategy to copy or link only the minimum candidate auth/session material
-- rerun a reduced judge probe and solver probe
+- only run if characterization suggests a bridge is coherent and the earlier probes justify deeper testing
+- create a trial-like temp root with isolated `HOME`, `XDG_*`, `TMPDIR`, `TMP`, and `TEMP`
+- stage only the minimum candidate auth/session material for that CLI
+- rerun reduced rubric and solver probes
 
 Pass criteria:
 
-- isolated-home judge probe succeeds
-- isolated-home solver probe succeeds
+- isolated-home rubric probe succeeds
 - no provider API key is needed
+- isolated-home solver probe succeeds
+- staged artifacts are cleaned up reliably afterward
 
 ## Output Contract
 
-The POC harness must write a machine-readable result matrix per CLI with at least these fields:
+The POC harness must write a machine-readable result object per CLI with top-level metadata plus per-probe result objects.
+
+Top-level fields:
 
 - `cli`
-- `installed`
-- `host_auth_available`
-- `judge_ok`
-- `solver_ok`
-- `bridge_attempted`
-- `bridge_ok`
-- `failure_code`
-- `failure_reason`
+- `binary_path`
+- `cli_version`
+- `auth_characterization`
+- `aggregate`
 - `notes`
 
-Each probe should also preserve evidence:
+Each probe result must be its own object with at least:
+
+- `ok`
+- `failure_code`
+- `failure_reason`
+- `timeout_sec`
+- `command`
+- `env_observation`
+- `auth_artifact_inventory`
+- `evidence`
+
+Required probe result keys:
+
+- `host_rubric`
+- `host_persona`
+- `host_init`
+- `isolated_home_smoke`
+- `host_solver`
+- `trial_bridge` when attempted
+
+Probe evidence should preserve:
 
 - command line used
 - sanitized env diff
@@ -252,9 +401,21 @@ Each probe should also preserve evidence:
 - filesystem assertions for solver probes
 - notes about any auth artifacts touched during bridge attempts
 
+The sanitized env diff must use an allowlist. It should include:
+
+- `HOME`
+- `XDG_CONFIG_HOME`
+- `XDG_STATE_HOME`
+- `XDG_CACHE_HOME`
+- `TMPDIR`
+- `TMP`
+- `TEMP`
+- `PATH`
+- boolean presence flags only for `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and any other provider-key variables relevant to the CLI under test
+
 ## Failure Classification
 
-The POC must classify failures instead of collapsing them into a generic failure bucket.
+The POC must classify failures per probe instead of collapsing them into a generic failure bucket.
 
 Expected failure classes:
 
@@ -277,6 +438,103 @@ Canonical `failure_code` values for the POC:
 
 The revised architecture should only respond to failures that actually signal architectural constraints.
 
+### Probe timeouts
+
+Timeouts are mandatory.
+
+- `auth_characterization`: 15 seconds
+- `host_rubric`: 30 seconds
+- `host_persona`: 30 seconds
+- `host_init`: 60 seconds
+- `isolated_home_smoke`: 30 seconds
+- `host_solver`: 120 seconds
+- `trial_bridge`: 120 seconds
+
+If a process is still running at timeout, record `interactive_or_flaky`.
+
+## Initial CLI Probe Commands
+
+The characterization step owns the final command lines, but the first implementation should start from these explicit defaults.
+
+### Claude
+
+- `host_rubric`
+  - `claude -p --output-format json --json-schema <schema-file> --tools "" --no-session-persistence`
+- `host_persona`
+  - `claude -p --output-format text --tools "" --no-session-persistence`
+- `host_init`
+  - `claude -p --output-format text --tools "" --no-session-persistence`
+- `isolated_home_smoke`
+  - same as `host_rubric`, but with overridden `HOME`, `XDG_*`, `TMPDIR`, `TMP`, and `TEMP`
+- `host_solver`
+  - `claude -p --dangerously-skip-permissions --no-session-persistence`
+
+Notes:
+
+- do not use `--bare` for these probes because Claude's help text says it disables OAuth and keychain reads
+- do not use `--dangerously-skip-permissions` for judge-style probes
+
+### Codex
+
+- `host_rubric`
+  - `codex exec --ephemeral --sandbox read-only --skip-git-repo-check --output-schema <schema-file> -o <output-file> -C <temp-dir> -`
+- `host_persona`
+  - `codex exec --ephemeral --sandbox read-only --skip-git-repo-check -o <output-file> -C <temp-dir> -`
+- `host_init`
+  - `codex exec --ephemeral --sandbox read-only --skip-git-repo-check -o <output-file> -C <temp-dir> -`
+- `isolated_home_smoke`
+  - same as `host_rubric`, but with overridden `HOME`, `XDG_*`, `TMPDIR`, `TMP`, and `TEMP`
+- `host_solver`
+  - `codex exec --ephemeral --full-auto --skip-git-repo-check -C <workspace-dir> -`
+
+Notes:
+
+- `codex login status` is mandatory during characterization
+- Codex only counts as keyless-supported if the probe succeeds with provider key vars absent
+
+### Gemini
+
+Do not define probe commands until the actual CLI binary, auth surface, and flag semantics are characterized on a machine where the Gemini CLI is installed.
+
+## Trial Bridge Safety Requirements
+
+Any bridge attempt is a credential operation and must follow explicit safety rules.
+
+- create bridge directories with `0700` permissions
+- prefer copies over symlinks
+- never stage an entire home directory
+- never record secret contents in evidence
+- always clean staged material in a `finally` block, even after failure
+
+## Integration Feasibility
+
+The current judge-style flows are in-process HTTP calls, not CLI subprocesses. Replacing them with subprocess execution changes:
+
+- cold-start latency
+- stdout parsing fragility
+- connection reuse behavior
+- session persistence behavior
+
+The POC must therefore record timing and output stability for:
+
+- rubric-style output
+- persona-style output
+- init-style YAML generation
+
+A successful capability probe is necessary but not sufficient. The later implementation plan must still decide whether a given call site is practical to move to a CLI subprocess path.
+
+## Host-Auth Passthrough
+
+Host-auth passthrough is a concrete fallback architecture, not just a phrase.
+
+Definition:
+
+- run the CLI subprocess with host authentication intact
+- keep the working directory pointed at a temporary workspace
+- do not copy auth into the trial home
+
+This is what `host_solver` measures. If `host_solver` works and `trial_bridge` fails, the later implementation plan should treat host-auth passthrough as the primary solver architecture candidate rather than inventing a generic bridge.
+
 ## File Layout
 
 Keep the POC clearly outside the production runtime.
@@ -287,7 +545,7 @@ Proposed layout:
 - `scripts/cli-poc/types.ts`
 - `scripts/cli-poc/probes/claude.ts`
 - `scripts/cli-poc/probes/codex.ts`
-- `scripts/cli-poc/probes/gemini.ts`
+- `scripts/cli-poc/probes/gemini.ts` only after Gemini CLI characterization confirms a real target
 - `scripts/cli-poc/fixtures/solver-workspace/*`
 - `tests/cli-poc.test.ts`
 - `docs/cli-poc/2026-03-24-cli-auth-findings.md`
@@ -306,8 +564,9 @@ The implementation plan should branch based on proven capabilities.
 
 Conditions:
 
-- at least one target CLI passes both `host_judge` and `host_solver`
-- judge outputs are automation-friendly enough for `llm_rubric`, persona, or init
+- at least one target CLI passes `host_rubric`, `host_persona`, `host_init`, and `host_solver`
+- the mandatory `isolated_home_smoke` result is recorded for that CLI
+- rubric output satisfies the exact score-and-reasoning schema used by `llm_rubric`
 
 Implication:
 
@@ -317,8 +576,9 @@ Implication:
 
 Conditions:
 
-- at least one target CLI passes `host_judge`
-- no target CLI cleanly passes both `host_judge` and `host_solver`
+- at least one target CLI passes `host_rubric`
+- persona or init either pass or are explicitly excluded from the first implementation revision
+- no target CLI cleanly passes the full green-light set
 - solver probes are mixed or inconclusive
 
 Implication:
