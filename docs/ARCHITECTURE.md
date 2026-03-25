@@ -1,6 +1,6 @@
 # Pathgrade Architecture Guide
 
-Pathgrade is a local-first evaluation runner for agent skills. It executes agent trials in isolated local workspaces, supports both single-turn and conversation tasks, grades results with deterministic and rubric-based graders, and is moving toward a hybrid model where some LLM-backed features can use a host-scoped remote backend for secure employee-machine usage.
+Pathgrade is a local-first evaluation runner for agent skills. It runs trials in isolated local workspaces by default, supports both single-turn and conversation tasks, grades results with deterministic and rubric-based graders, and is moving toward a hybrid model where some LLM-backed features can use a host-scoped remote backend for secure employee-machine usage.
 
 ## Current Product Boundary
 
@@ -168,7 +168,7 @@ Runtime backend settings for the future remote LLM path are intentionally not pa
 
 ### CLI
 
-`src/pathgrade.ts` parses flags, dispatches commands, and keeps the public CLI surface aligned with the local-first runtime.
+`src/pathgrade.ts` parses flags, dispatches commands, and keeps the public CLI surface aligned with the local-only runtime.
 
 ### Config Resolution
 
