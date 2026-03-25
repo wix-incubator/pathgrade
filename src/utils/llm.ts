@@ -1,20 +1,25 @@
+import { isClaudeCliAvailable, callClaudeCli } from './cli-llm';
+
 export interface LLMCallOptions {
     model?: string;
     env?: Record<string, string>;
     temperature?: number;
+    /** When set, use --json-schema for structured output via CLI. */
+    jsonSchema?: string;
 }
 
 export interface LLMCallResult {
     text: string;
     inputTokens?: number;
     outputTokens?: number;
-    provider: 'gemini' | 'anthropic' | 'openai';
+    provider: 'gemini' | 'anthropic' | 'openai' | 'cli';
     model: string;
 }
 
-type LLMProvider = LLMCallResult['provider'];
+/** Providers that use API keys (excludes 'cli' which uses OAuth). */
+type ApiKeyProvider = 'gemini' | 'anthropic' | 'openai';
 
-function getApiKeys(env?: Record<string, string>): Record<LLMProvider, string | undefined> {
+function getApiKeys(env?: Record<string, string>): Record<ApiKeyProvider, string | undefined> {
     return {
         gemini: env?.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
         anthropic: env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
@@ -22,7 +27,7 @@ function getApiKeys(env?: Record<string, string>): Record<LLMProvider, string | 
     };
 }
 
-function inferProviderFromModel(model?: string): LLMProvider | undefined {
+function inferProviderFromModel(model?: string): ApiKeyProvider | undefined {
     const normalized = model?.trim().toLowerCase();
     if (!normalized) {
         return undefined;
@@ -45,7 +50,7 @@ function inferProviderFromModel(model?: string): LLMProvider | undefined {
     return undefined;
 }
 
-function getDefaultModel(provider: LLMProvider): string {
+function getDefaultModel(provider: ApiKeyProvider): string {
     switch (provider) {
         case 'gemini':
             return 'gemini-3-flash-preview';
@@ -56,7 +61,7 @@ function getDefaultModel(provider: LLMProvider): string {
     }
 }
 
-function getProviderSequence(model: string | undefined, env?: Record<string, string>): LLMProvider[] {
+function getProviderSequence(model: string | undefined, env?: Record<string, string>): ApiKeyProvider[] {
     const keys = getApiKeys(env);
     const requestedProvider = inferProviderFromModel(model);
     if (requestedProvider) {
@@ -66,7 +71,7 @@ function getProviderSequence(model: string | undefined, env?: Record<string, str
         return [requestedProvider];
     }
 
-    const fallbackOrder: LLMProvider[] = ['gemini', 'anthropic', 'openai'];
+    const fallbackOrder: ApiKeyProvider[] = ['gemini', 'anthropic', 'openai'];
     const availableProviders = fallbackOrder.filter((provider) => !!keys[provider]);
     if (availableProviders.length === 0) {
         throw new Error('No API key available for LLM calls (set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)');
@@ -178,8 +183,43 @@ async function callOpenAI(
 }
 
 export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promise<LLMCallResult> {
-    const providers = getProviderSequence(opts.model, opts.env);
     const keys = getApiKeys(opts.env);
+    const hasExplicitKey = Object.values(keys).some(Boolean);
+
+    // CLI-first: when no API keys are available, try Claude CLI.
+    // This must fire BEFORE getProviderSequence(), because getProviderSequence
+    // throws when a model is explicitly requested (e.g., "claude-3-5-sonnet")
+    // but no matching key exists. In keyless CLI mode, that throw is wrong —
+    // the CLI handles auth via OAuth, not via API key env vars.
+    if (!hasExplicitKey && await isClaudeCliAvailable()) {
+        // Guard: if opts.model specifies a non-Claude model, don't silently
+        // substitute Claude. The user explicitly asked for a different provider.
+        const requestedProvider = inferProviderFromModel(opts.model);
+        if (requestedProvider && requestedProvider !== 'anthropic') {
+            // Non-Claude model requested but no API key for it — throw
+            // rather than silently using Claude CLI.
+            throw new Error(
+                `No API key for model "${opts.model}". ` +
+                `CLI fallback only supports Claude models. ` +
+                `Set ${requestedProvider === 'gemini' ? 'GEMINI_API_KEY' : requestedProvider === 'openai' ? 'OPENAI_API_KEY' : 'the appropriate API key'}.`
+            );
+        }
+
+        // Build CLI options — forward model and jsonSchema
+        const cliOpts: Record<string, string | undefined> = {};
+        if (opts.model) cliOpts.model = opts.model;
+        if (opts.jsonSchema) cliOpts.jsonSchema = opts.jsonSchema;
+
+        const cliResult = await callClaudeCli(prompt, cliOpts);
+        return {
+            text: cliResult.text,
+            provider: 'cli',
+            model: cliResult.model,
+        };
+    }
+
+    // Existing API-key path (CI, explicit provider keys)
+    const providers = getProviderSequence(opts.model, opts.env);
     const temperature = opts.temperature ?? 0;
 
     for (const provider of providers) {
@@ -199,5 +239,7 @@ export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promis
         return await callOpenAI(prompt, apiKey, model, temperature, opts.env);
     }
 
-    throw new Error('No API key available for LLM calls (set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)');
+    throw new Error(
+        'No LLM backend available. Install Claude CLI (claude.ai) or set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY.'
+    );
 }

@@ -8,6 +8,12 @@ vi.mock('fs-extra', () => ({
   readFile: vi.fn(),
 }));
 
+// Mock CLI so callLLM doesn't try real subprocess in keyless tests
+vi.mock('../src/utils/cli-llm', () => ({
+  isClaudeCliAvailable: vi.fn().mockResolvedValue(false),
+  callClaudeCli: vi.fn(),
+}));
+
 import * as fs from 'fs-extra';
 
 const mockPathExists = vi.mocked(fs.pathExists);
