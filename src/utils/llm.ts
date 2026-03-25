@@ -74,7 +74,7 @@ function getProviderSequence(model: string | undefined, env?: Record<string, str
     const fallbackOrder: ApiKeyProvider[] = ['gemini', 'anthropic', 'openai'];
     const availableProviders = fallbackOrder.filter((provider) => !!keys[provider]);
     if (availableProviders.length === 0) {
-        throw new Error('No API key available for LLM calls (set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)');
+        throw new Error('No LLM backend available. Install Claude CLI (claude.ai) or set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY.');
     }
     return availableProviders;
 }

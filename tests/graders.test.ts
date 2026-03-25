@@ -166,7 +166,7 @@ describe('LLMGrader', () => {
     try {
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
       expect(result.score).toBe(0);
-      expect(result.details).toContain('No API key');
+      expect(result.details).toContain('No LLM backend available');
     } finally {
       if (origGemini) process.env.GEMINI_API_KEY = origGemini;
       if (origAnthropic) process.env.ANTHROPIC_API_KEY = origAnthropic;
