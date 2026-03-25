@@ -14,20 +14,7 @@ import {
     WorkspaceMapping,
     EnvironmentConfig,
 } from './config.types';
-
-// We use a simple YAML parser — js-yaml is the standard
-// For now, we'll use a lightweight approach: JSON-compatible YAML subset
-
-const DEFAULT_CONFIG: EvalDefaults = {
-    agent: 'gemini',
-    trials: 5,
-    timeout: 300,
-    threshold: 0.8,
-    environment: {
-        cpus: 2,
-        memory_mb: 2048,
-    },
-};
+import { DEFAULT_CONFIG } from './defaults';
 
 /**
  * Load and parse eval.yaml from a directory.
@@ -53,18 +40,19 @@ export async function loadEvalConfig(dir: string): Promise<EvalConfig> {
 }
 
 /**
- * Validate raw parsed YAML into a typed EvalConfig.
+ * Validate raw config into a typed EvalConfig.
+ * Works for both YAML-parsed and TypeScript-defined configs.
  */
-function validateConfig(raw: any): EvalConfig {
+export function validateConfig(raw: any): EvalConfig {
     if (!raw || typeof raw !== 'object') {
-        throw new Error('eval.yaml must be a YAML object');
+        throw new Error('Config must be an object');
     }
 
     if (raw.defaults?.provider !== undefined) {
-        throw new Error('eval.yaml no longer supports defaults.provider; pathgrade runs locally only');
+        throw new Error('Config no longer supports defaults.provider; pathgrade runs locally only');
     }
     if (raw.defaults?.docker !== undefined) {
-        throw new Error('eval.yaml no longer supports defaults.docker; pathgrade runs locally only');
+        throw new Error('Config no longer supports defaults.docker; pathgrade runs locally only');
     }
 
     const version = raw.version || '1';
@@ -78,7 +66,7 @@ function validateConfig(raw: any): EvalConfig {
     };
 
     if (!raw.tasks || !Array.isArray(raw.tasks) || raw.tasks.length === 0) {
-        throw new Error('eval.yaml must have at least one task in the "tasks" array');
+        throw new Error('Config must have at least one task in the "tasks" array');
     }
 
     const tasks: EvalTaskConfig[] = raw.tasks.map((t: any, i: number) => {

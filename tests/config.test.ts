@@ -26,7 +26,7 @@ describe('loadEvalConfig', () => {
   it('throws when YAML is not an object', async () => {
     mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('just a string' as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('must be a YAML object');
+    await expect(loadEvalConfig('/test')).rejects.toThrow('must be an object');
   });
 
   it('throws when tasks array is missing', async () => {
