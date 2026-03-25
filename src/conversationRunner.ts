@@ -1,6 +1,7 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { ResolvedConversation } from './core/config.types';
+import { getGrader } from './graders';
 import { generatePersonaReply } from './persona';
 import {
     BaseAgent,
@@ -8,12 +9,14 @@ import {
     ConversationReplySource,
     EnvironmentHandle,
     EnvironmentProvider,
+    GraderResult,
     LogEntry,
     TrialResult,
     TurnCommand,
     createAgentSession,
     getWorkspacePath,
 } from './types';
+import { withAbortTimeout } from './utils/timeout';
 
 interface CompiledReply {
     content: string;
@@ -32,6 +35,7 @@ interface ConversationRunOptions {
     graderModel?: string;
     provider: EnvironmentProvider;
     runtime: EnvironmentHandle;
+    taskPath: string;
     timeoutSec: number;
     timestamp: () => string;
 }
@@ -43,41 +47,6 @@ export interface ConversationRunResult {
     personaInputTokens: number;
     personaOutputTokens: number;
     sessionLog: LogEntry[];
-}
-
-function withAbortTimeout<T>(
-    run: (signal: AbortSignal) => Promise<T>,
-    timeoutMs: number,
-    label: string
-): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const controller = new AbortController();
-        let timedOut = false;
-
-        const timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-        }, timeoutMs);
-
-        run(controller.signal).then(
-            (val) => {
-                clearTimeout(timer);
-                if (timedOut || controller.signal.aborted) {
-                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-                    return;
-                }
-                resolve(val);
-            },
-            (err) => {
-                clearTimeout(timer);
-                if (timedOut || controller.signal.aborted) {
-                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-                    return;
-                }
-                reject(err);
-            }
-        );
-    });
 }
 
 function createReplyPool(conversation: ResolvedConversation): ReplyPool {
@@ -157,6 +126,50 @@ async function checkCompletion(
     return { done: false };
 }
 
+async function runStepGraders(
+    turnNumber: number,
+    opts: ConversationRunOptions,
+    sessionLog: LogEntry[]
+): Promise<GraderResult[]> {
+    const stepGraders = opts.conversation.step_graders;
+    if (!stepGraders) return [];
+
+    const results: GraderResult[] = [];
+    for (const sg of stepGraders) {
+        if (sg.after_turn !== turnNumber) continue;
+        for (let graderIdx = 0; graderIdx < sg.graders.length; graderIdx++) {
+            const graderDef = sg.graders[graderIdx];
+            const grader = getGrader(graderDef.type);
+
+            const graderConfig = {
+                type: graderDef.type,
+                command: graderDef.type === 'deterministic'
+                    ? `bash tests/steps/turn_${turnNumber}_${graderIdx}.sh`
+                    : undefined,
+                rubric: graderDef.type === 'llm_rubric'
+                    ? `prompts/steps/turn_${turnNumber}_${graderIdx}.md`
+                    : undefined,
+                model: graderDef.model || opts.graderModel,
+                weight: graderDef.weight,
+            };
+
+            const result = await grader.grade(
+                opts.runtime, opts.provider, graderConfig,
+                opts.taskPath, sessionLog, opts.env
+            );
+            results.push(result);
+            sessionLog.push({
+                type: 'step_grader',
+                timestamp: opts.timestamp(),
+                turn_number: turnNumber,
+                step_grader_key: `turn_${turnNumber}_${graderIdx}`,
+                grader_result: result,
+            });
+        }
+    }
+    return results;
+}
+
 async function pickReply(
     assistantMessage: string,
     replyPool: ReplyPool,
@@ -188,19 +201,28 @@ async function pickReply(
     }
 
     if (conversation.persona) {
-        const personaReply = await generatePersonaReply(
-            conversation.persona,
-            transcript,
-            assistantMessage,
-            env,
-            graderModel
-        );
-        return {
-            content: personaReply.content,
-            source: 'persona_llm',
-            personaInputTokens: personaReply.inputTokens,
-            personaOutputTokens: personaReply.outputTokens,
-        };
+        // Retry once on failure (design Section 16), then return null to end conversation
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                const personaReply = await generatePersonaReply(
+                    conversation.persona,
+                    transcript,
+                    assistantMessage,
+                    env,
+                    graderModel
+                );
+                return {
+                    content: personaReply.content,
+                    source: 'persona_llm',
+                    personaInputTokens: personaReply.inputTokens,
+                    personaOutputTokens: personaReply.outputTokens,
+                };
+            } catch (err) {
+                if (attempt === 0) continue;
+                // Second failure — fall through to return null
+            }
+        }
+        return null;
     }
 
     return null;
@@ -336,6 +358,13 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                 opts.runtime,
                 turnNumber
             );
+
+            // Run step graders after checkCompletion, before pickReply
+            const stepResults = await runStepGraders(turnNumber, opts, sessionLog);
+            if (stepResults.length > 0) {
+                turns[turns.length - 1].step_grader_results = stepResults;
+            }
+
             if (completion.done) {
                 return {
                     commandCount,

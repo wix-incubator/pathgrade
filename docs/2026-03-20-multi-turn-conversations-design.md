@@ -1652,33 +1652,39 @@ Goals achieved:
 - `src/evalRunner.ts` — changed `runEval()`, `runTrialsParallel()`, and `runSingleTrial()` signatures from `agent: BaseAgent` to `agentFactory: () => BaseAgent`; factory called inside `runSingleTrial()`
 - `src/commands/run.ts` — passes `() => createAgent(agentName)` instead of `createAgent(agentName)`
 
-### Phase 5: Step Grading + Cleanup (est. scope: medium)
+### Phase 5: Step Grading + Cleanup (est. scope: medium) — COMPLETE
 
-**Status:** Not started. Next implementation target.
+**Status:** Implemented.
 
 **5a. Step grader types and config**
 
 **Files changed:**
-- `src/core/config.types.ts` — add `StepGraderConfig`, `ResolvedStepGrader` types; add `step_graders` field to `ConversationConfig` and `ResolvedConversation`
-- `src/core/config.ts` — validate `step_graders` (after_turn > 0, valid grader configs); resolve step grader file references in `resolveConversation()`
-- `src/types.ts` — add `'step_grader'` to `LogEntry.type` union; add `step_grader_results` to `ConversationTurn`; add `step_grader_key` and `step_grader_result` to `LogEntry`
+- `src/core/config.types.ts` — add `StepGraderConfig`, `ResolvedStepGrader` types; add `step_graders` field to `ConversationConfig`, `ResolvedConversation`, and `DefineEvalConversationInput`
+- `src/core/config.ts` — validate `step_graders` (after_turn > 0, valid grader configs); resolve step grader file references in `resolveConversation()`; removed "step_graders are not supported yet" guard
+- `src/types.ts` — add `'step_grader'` to `LogEntry.type` union; add `step_grader_results` to `ConversationTurn`; add `step_grader_key` to `LogEntry`
 
 **5b. Step grader execution in conversation runner**
 
 **Files changed:**
-- `src/conversationRunner.ts` — after `checkCompletion()` and before `pickReply()`, run any step graders whose `after_turn` matches the current turn number; on the completion turn, run step graders before returning
+- `src/conversationRunner.ts` — `runStepGraders()` helper runs after `checkCompletion()` and before `pickReply()`; on the completion turn, step graders still run before returning; requires `taskPath` in `ConversationRunOptions`
 - `src/commands/run.ts` — stage step grader assets into `tests/steps/` and `prompts/steps/` namespaces (e.g. `turn_1_0.sh`, `turn_3_0.md`)
+- `src/evalRunner.ts` — passes `taskPath` to `runConversationTrial()`
 
 **5c. LLM transcript integration**
 
 **Files changed:**
-- `src/graders/index.ts` — build multi-turn transcripts from all turns using `assistant_message` + command logs, not just the first `agent_result`
+- `src/graders/index.ts` — build per-turn structured transcripts grouped by turn number with `**User:**`/`**Agent:**` formatting and per-turn command summaries
 
 **5d. Cleanup (alongside step graders)**
 
-- Extract `withAbortTimeout` from `conversationRunner.ts` and `evalRunner.ts` into a shared utility (e.g. `src/utils/timeout.ts`)
-- Add persona LLM retry-once logic in `conversationRunner.ts` `pickReply()` (design Section 16: retry once, then end conversation with `'error'`)
-- Add config validation that a conversation requires at least one of `replies` or `persona` in `src/core/config.ts`
+- Extracted `withAbortTimeout` from `conversationRunner.ts` and `evalRunner.ts` into `src/utils/timeout.ts`
+- Added persona LLM retry-once logic in `conversationRunner.ts` `pickReply()` (design Section 16: retry once, then return null to end conversation)
+- Config validation for `replies` or `persona` already existed (added in Phase 1)
+
+**Deviations from design:**
+- `LogEntry` does not include a separate `step_grader_result` field; it reuses the existing `grader_result` field for step grader results (avoids redundant fields)
+- LLM transcript format uses markdown bold (`**User:**`/`**Agent:**`) instead of plain `User:`/`Assistant:` for clearer turn delineation
+- Persona retry returns `null` (triggering `no_replies` completion) rather than setting `turn_status: 'error'`, keeping the error semantics simpler
 
 ### Phase 6: Reporting & Output (est. scope: small)
 

@@ -16,6 +16,7 @@ import { ResolvedConversation, ResolvedGrader } from './core/config.types';
 import { runConversationTrial } from './conversationRunner';
 import { getGrader } from './graders';
 import { fmt, Spinner } from './utils/cli';
+import { withAbortTimeout } from './utils/timeout';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -26,41 +27,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
         promise.then(
             (value) => { clearTimeout(timer); resolve(value); },
             (error) => { clearTimeout(timer); reject(error); }
-        );
-    });
-}
-
-function withAbortTimeout<T>(
-    run: (signal: AbortSignal) => Promise<T>,
-    timeoutMs: number,
-    label: string
-): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const controller = new AbortController();
-        let timedOut = false;
-
-        const timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-        }, timeoutMs);
-
-        run(controller.signal).then(
-            (value) => {
-                clearTimeout(timer);
-                if (timedOut || controller.signal.aborted) {
-                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-                    return;
-                }
-                resolve(value);
-            },
-            (error) => {
-                clearTimeout(timer);
-                if (timedOut || controller.signal.aborted) {
-                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-                    return;
-                }
-                reject(error);
-            }
         );
     });
 }
@@ -229,6 +195,7 @@ export class EvalRunner {
                     graderModel: opts.graderModel,
                     provider: this.provider,
                     runtime,
+                    taskPath,
                     timeoutSec: opts.timeoutSec,
                     timestamp: () => this.timestamp(),
                 });

@@ -279,6 +279,30 @@ async function prepareTempTaskDir(
         }
     }
 
+    // Write step grader assets into namespaced subdirectories
+    if (resolved.conversation?.step_graders) {
+        await fs.ensureDir(path.join(tmpDir, 'tests', 'steps'));
+        await fs.ensureDir(path.join(tmpDir, 'prompts', 'steps'));
+        for (const sg of resolved.conversation.step_graders) {
+            for (let gIdx = 0; gIdx < sg.graders.length; gIdx++) {
+                const g = sg.graders[gIdx];
+                if (g.type === 'deterministic' && g.run) {
+                    const script = `#!/bin/bash\n${g.run.trim()}\n`;
+                    await fs.writeFile(
+                        path.join(tmpDir, 'tests', 'steps', `turn_${sg.after_turn}_${gIdx}.sh`),
+                        script
+                    );
+                }
+                if (g.type === 'llm_rubric' && g.rubric) {
+                    await fs.writeFile(
+                        path.join(tmpDir, 'prompts', 'steps', `turn_${sg.after_turn}_${gIdx}.md`),
+                        g.rubric
+                    );
+                }
+            }
+        }
+    }
+
     // Copy workspace files into the local task bundle.
     for (const w of resolved.workspace) {
         const srcPath = path.resolve(baseDir, w.src);

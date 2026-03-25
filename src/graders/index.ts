@@ -121,16 +121,42 @@ export class LLMGrader implements Grader {
             sections.push(`## Commands Executed\n${cmds}`);
         }
 
-        const conversationEntries = sessionLog.filter(e => e.type === 'user_reply' || e.type === 'agent_result');
-        const hasConversationReplies = conversationEntries.some(e => e.type === 'user_reply');
+        const hasConversationReplies = sessionLog.some(e => e.type === 'user_reply');
         if (hasConversationReplies) {
-            const transcriptLines = conversationEntries.map((entry) => {
-                if (entry.type === 'user_reply') {
-                    return `User: ${entry.output || ''}`;
+            // Build per-turn structured transcript with commands grouped by turn
+            const turnNumbers = [...new Set(
+                sessionLog
+                    .filter(e => e.turn_number !== undefined)
+                    .map(e => e.turn_number!)
+            )].sort((a, b) => a - b);
+
+            const turnSections: string[] = [];
+            for (const turnNum of turnNumbers) {
+                const turnEntries = sessionLog.filter(e => e.turn_number === turnNum);
+                const userReply = turnEntries.find(e => e.type === 'user_reply');
+                const agentResult = turnEntries.find(e => e.type === 'agent_result');
+                const turnCommands = turnEntries.filter(e => e.type === 'command');
+
+                const source = userReply?.reply_source
+                    ? ` (${userReply.reply_source})`
+                    : turnNum === 1 ? ' (opener)' : '';
+
+                const lines: string[] = [`### Turn ${turnNum}${source}`];
+                if (userReply) {
+                    lines.push(`**User:** ${userReply.output || ''}`);
                 }
-                return `Assistant: ${entry.assistant_message || entry.output || ''}`;
-            }).join('\n');
-            sections.push(`## Conversation Transcript\n${transcriptLines}`);
+                if (agentResult) {
+                    lines.push(`**Agent:** ${agentResult.assistant_message || agentResult.output || ''}`);
+                }
+                if (turnCommands.length > 0) {
+                    const cmds = turnCommands.map(e =>
+                        `${e.command}${e.stdout ? ' → ' + e.stdout.trim().substring(0, 200) : ''}`
+                    ).join(', ');
+                    lines.push(`Commands: ${cmds}`);
+                }
+                turnSections.push(lines.join('\n'));
+            }
+            sections.push(`## Conversation Transcript\n\n${turnSections.join('\n\n')}`);
         } else {
             const agentEntries = sessionLog.filter(e => e.type === 'agent_result');
             if (agentEntries.length > 0) {

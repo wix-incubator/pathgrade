@@ -11,6 +11,7 @@ import {
     ResolvedGrader,
     ConversationConfig,
     ResolvedConversation,
+    ResolvedStepGrader,
     WorkspaceMapping,
     EnvironmentConfig,
 } from './config.types';
@@ -123,7 +124,18 @@ export function validateConfig(raw: any): EvalConfig {
                 throw new Error(`Task "${t.name}" conversation completion must include a positive "max_turns"`);
             }
             if (t.conversation.step_graders !== undefined) {
-                throw new Error(`Task "${t.name}" conversation.step_graders are not supported yet`);
+                if (!Array.isArray(t.conversation.step_graders)) {
+                    throw new Error(`Task "${t.name}" conversation.step_graders must be an array`);
+                }
+                for (let sgIdx = 0; sgIdx < t.conversation.step_graders.length; sgIdx++) {
+                    const sg = t.conversation.step_graders[sgIdx];
+                    if (typeof sg.after_turn !== 'number' || sg.after_turn < 1) {
+                        throw new Error(`Task "${t.name}" step_graders[${sgIdx}].after_turn must be a positive number`);
+                    }
+                    if (!Array.isArray(sg.graders) || sg.graders.length === 0) {
+                        throw new Error(`Task "${t.name}" step_graders[${sgIdx}] must have at least one grader`);
+                    }
+                }
             }
             if (!Array.isArray(t.conversation.replies) && t.conversation.replies !== undefined) {
                 throw new Error(`Task "${t.name}" conversation.replies must be an array when provided`);
@@ -177,6 +189,17 @@ export function validateConfig(raw: any): EvalConfig {
                     facts: t.conversation.persona.facts,
                     model: t.conversation.persona.model,
                 } : undefined,
+                step_graders: t.conversation.step_graders?.map((sg: any) => ({
+                    after_turn: sg.after_turn,
+                    graders: sg.graders.map((g: any) => ({
+                        type: g.type,
+                        setup: g.setup,
+                        run: g.run,
+                        rubric: g.rubric,
+                        model: g.model,
+                        weight: g.weight ?? 1.0,
+                    })),
+                })),
             } : undefined,
             workspace,
             graders: t.graders.map((g: any) => ({
@@ -285,6 +308,30 @@ async function resolveConversation(
                 facts: conversation.persona.facts,
                 model: conversation.persona.model,
             }
+            : undefined,
+        step_graders: conversation.step_graders
+            ? await Promise.all(
+                conversation.step_graders.map(async (sg): Promise<ResolvedStepGrader> => ({
+                    after_turn: sg.after_turn,
+                    graders: await Promise.all(
+                        sg.graders.map(async (g) => {
+                            const resolved: ResolvedGrader = {
+                                type: g.type,
+                                setup: g.setup,
+                                model: g.model,
+                                weight: g.weight,
+                            };
+                            if (g.type === 'deterministic' && g.run) {
+                                resolved.run = await resolveFileOrInline(g.run, baseDir);
+                            }
+                            if (g.type === 'llm_rubric' && g.rubric) {
+                                resolved.rubric = await resolveFileOrInline(g.rubric, baseDir);
+                            }
+                            return resolved;
+                        })
+                    ),
+                }))
+            )
             : undefined,
     };
 }

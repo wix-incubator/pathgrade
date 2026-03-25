@@ -25,6 +25,7 @@ export interface ConversationTurn {
     duration_ms: number;
     commands: TurnCommand[];
     turn_status: 'completed' | 'error' | 'timeout';
+    step_grader_results?: GraderResult[];
 }
 
 export type ConversationCompletionReason =
@@ -51,7 +52,7 @@ export interface GraderResult {
 }
 
 export interface LogEntry {
-    type: 'agent_start' | 'command' | 'agent_result' | 'grader' | 'reward' | 'user_reply';
+    type: 'agent_start' | 'command' | 'agent_result' | 'grader' | 'reward' | 'user_reply' | 'step_grader';
     timestamp: string;
     instruction?: string;
     command?: string;
@@ -64,6 +65,7 @@ export interface LogEntry {
     grader_result?: GraderResult;
     turn_number?: number;
     reply_source?: ConversationReplySource;
+    step_grader_key?: string;
 }
 
 export interface TrialResult {

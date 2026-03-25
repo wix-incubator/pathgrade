@@ -419,10 +419,12 @@ describe('LLMGrader', () => {
 
     const prompt = capturedBody.contents[0].parts[0].text;
     expect(prompt).toContain('Conversation Transcript');
-    expect(prompt).toContain('User: Help me start a project.');
-    expect(prompt).toContain('Assistant: What is your goal?');
-    expect(prompt).toContain('User: Validate demand quickly.');
-    expect(prompt).toContain('Assistant: Project brief created.');
+    expect(prompt).toContain('**User:** Help me start a project.');
+    expect(prompt).toContain('**Agent:** What is your goal?');
+    expect(prompt).toContain('**User:** Validate demand quickly.');
+    expect(prompt).toContain('**Agent:** Project brief created.');
+    expect(prompt).toContain('Turn 1');
+    expect(prompt).toContain('Turn 2');
 
     globalThis.fetch = originalFetch;
   });

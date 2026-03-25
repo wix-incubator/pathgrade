@@ -30,11 +30,18 @@ export interface ConversationCompletionConfig {
     timeout?: number;
 }
 
+/** Graders that run at intermediate conversation steps */
+export interface StepGraderConfig {
+    after_turn: number;       // 1-indexed turn number
+    graders: EvalGraderConfig[];
+}
+
 export interface ConversationConfig {
     opener: string;
     completion: ConversationCompletionConfig;
     replies?: ConversationReplyConfig[];
     persona?: ConversationPersonaConfig;
+    step_graders?: StepGraderConfig[];
 }
 
 export interface ResolvedConversationReply {
@@ -42,11 +49,17 @@ export interface ResolvedConversationReply {
     when?: string;
 }
 
+export interface ResolvedStepGrader {
+    after_turn: number;
+    graders: ResolvedGrader[];
+}
+
 export interface ResolvedConversation {
     opener: string;
     completion: ConversationCompletionConfig;
     replies?: ResolvedConversationReply[];
     persona?: ConversationPersonaConfig;
+    step_graders?: ResolvedStepGrader[];
 }
 
 /** Grader definition */
@@ -139,6 +152,7 @@ export interface DefineEvalConversationInput {
     completion: ConversationCompletionConfig;
     replies?: ConversationReplyConfig[];
     persona?: ConversationPersonaConfig;
+    step_graders?: StepGraderConfig[];
 }
 
 export interface DefineEvalTaskInput {
