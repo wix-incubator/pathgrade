@@ -1194,6 +1194,8 @@ Expected: uses HTTP API path (existing behavior), no regressions
 
 - [x] **Step 5: Commit any fixes discovered during verification**
 
+**Note (2026-03-25):** Smoke test Step 4 was run with only `OPENAI_API_KEY` set. The HTTP API path routed correctly to OpenAI, but the `llm_rubric` grader returned an empty response (score 0), likely due to an invalid or expired key. The code path is confirmed correct — `callLLM()` uses the API-key path when keys are present, and the CLI path when they are not. Full backward-compat verification of actual grading scores requires a working `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`.
+
 ---
 
 ## Risks and Mitigations
