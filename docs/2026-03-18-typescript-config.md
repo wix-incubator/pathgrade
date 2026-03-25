@@ -30,13 +30,13 @@
 **Files:**
 - Modify: `package.json`
 
-- [ ] **Step 1: Install jiti**
+- [x] **Step 1: Install jiti**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npm install jiti
 ```
 
-- [ ] **Step 2: Verify installation**
+- [x] **Step 2: Verify installation**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "const createJiti = require('jiti').createJiti || require('jiti'); console.log('jiti loaded')"
@@ -44,7 +44,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "const createJiti 
 
 Expected: Prints "jiti loaded", no error.
 
-- [ ] **Step 3: Check which jiti API is available**
+- [x] **Step 3: Check which jiti API is available**
 
 The jiti API differs between v1 and v2. Check which version was installed:
 
@@ -56,7 +56,7 @@ Note the major version — this determines the API used in Task 5:
 - **jiti v1**: `const jiti = require('jiti')(__filename); jiti('./file.ts')`
 - **jiti v2**: `const { createJiti } = require('jiti'); const jiti = createJiti(__filename); jiti.import('./file.ts')`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add package.json package-lock.json
@@ -73,7 +73,7 @@ Currently `DEFAULT_CONFIG` and `validateConfig()` live in `config.ts` with YAML-
 - Create: `src/core/defaults.ts`
 - Modify: `src/core/config.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/config.test.ts` at the bottom of the `describe('loadEvalConfig')` block — verify error messages don't say "eval.yaml" when loading TS config:
 
@@ -91,7 +91,7 @@ Add to `tests/config.test.ts` at the bottom of the `describe('loadEvalConfig')` 
   });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/config.test.ts
@@ -99,7 +99,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/confi
 
 Expected: FAIL — current error says "eval.yaml must have at least one task".
 
-- [ ] **Step 3: Create `src/core/defaults.ts`**
+- [x] **Step 3: Create `src/core/defaults.ts`**
 
 ```typescript
 import { EvalDefaults } from './config.types';
@@ -116,7 +116,7 @@ export const DEFAULT_CONFIG: EvalDefaults = {
 };
 ```
 
-- [ ] **Step 4: Update `src/core/config.ts`**
+- [x] **Step 4: Update `src/core/config.ts`**
 
 1. Remove the `DEFAULT_CONFIG` constant (now imported from `defaults.ts`)
 2. Add `import { DEFAULT_CONFIG } from './defaults';`
@@ -125,7 +125,7 @@ export const DEFAULT_CONFIG: EvalDefaults = {
    - `"eval.yaml must be a YAML object"` → `"Config must be an object"`
    - `"eval.yaml must have at least one task"` → `"Config must have at least one task in the \"tasks\" array"`
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/config.test.ts
@@ -135,7 +135,7 @@ Expected: PASS. Also verify existing tests still pass — update their `toThrow(
 - `'must be a YAML object'` → `'must be an object'`
 - `'at least one task'` stays the same (substring match still works)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/defaults.ts src/core/config.ts tests/config.test.ts
@@ -151,7 +151,7 @@ The user-facing type should be more ergonomic than the internal `EvalConfig`. De
 **Files:**
 - Modify: `src/core/config.types.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/define-eval.test.ts`:
 
@@ -186,7 +186,7 @@ describe('defineEval', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/define-eval.test.ts
@@ -194,7 +194,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/defin
 
 Expected: FAIL — `../src/core/define-eval` does not exist.
 
-- [ ] **Step 3: Add `DefineEvalInput` type to `config.types.ts`**
+- [x] **Step 3: Add `DefineEvalInput` type to `config.types.ts`**
 
 Add at the end of `src/core/config.types.ts`:
 
@@ -232,7 +232,7 @@ export interface DefineEvalInput {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/config.types.ts tests/define-eval.test.ts
@@ -248,7 +248,7 @@ git commit -m "feat: add DefineEvalInput type for TypeScript config"
 **Files:**
 - Create: `src/core/define-eval.ts`
 
-- [ ] **Step 1: Implement `defineEval()`**
+- [x] **Step 1: Implement `defineEval()`**
 
 Create `src/core/define-eval.ts`:
 
@@ -311,7 +311,7 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it passes**
+- [x] **Step 2: Run test to verify it passes**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/define-eval.test.ts
@@ -319,7 +319,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/defin
 
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/core/define-eval.ts
@@ -333,7 +333,7 @@ git commit -m "feat: implement defineEval() function"
 **Files:**
 - Modify: `tests/define-eval.test.ts`
 
-- [ ] **Step 1: Add remaining tests**
+- [x] **Step 1: Add remaining tests**
 
 Append to `tests/define-eval.test.ts` inside the `describe('defineEval')` block:
 
@@ -458,7 +458,7 @@ Append to `tests/define-eval.test.ts` inside the `describe('defineEval')` block:
   });
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/define-eval.test.ts
@@ -466,7 +466,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/defin
 
 Expected: All PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/define-eval.test.ts
@@ -481,7 +481,7 @@ git commit -m "test: full coverage for defineEval()"
 - Modify: `src/core/config.ts`
 - Modify: `tests/config.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add a **new describe block** in `tests/config.test.ts` (not inside the existing `loadEvalConfig` describe) to avoid module mock conflicts. The existing tests mock `fs-extra` at module level — the TS loading test needs to mock `jiti` separately:
 
@@ -525,7 +525,7 @@ describe('loadEvalConfig with eval.ts', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/config.test.ts
@@ -533,7 +533,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/confi
 
 Expected: FAIL — `loadEvalConfig` doesn't look for `eval.ts` yet.
 
-- [ ] **Step 3: Modify `loadEvalConfig()` in `src/core/config.ts`**
+- [x] **Step 3: Modify `loadEvalConfig()` in `src/core/config.ts`**
 
 Add the `eval.ts` path at the top of `loadEvalConfig`, and add the `loadEvalConfigFromTs` helper.
 
@@ -615,7 +615,7 @@ async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
 - Handles both `mod.default` (ES module default export) and `mod` (CommonJS `module.exports`)
 - Reuses `validateConfig()` — same validation for both YAML and TS
 
-- [ ] **Step 4: Update the "missing config" test**
+- [x] **Step 4: Update the "missing config" test**
 
 The existing test `'throws when eval.yaml is missing'` needs updating since the error message now mentions both formats:
 
@@ -626,7 +626,7 @@ The existing test `'throws when eval.yaml is missing'` needs updating since the 
   });
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/config.test.ts
@@ -634,7 +634,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run tests/confi
 
 Expected: All PASS (both old YAML tests and new TS test).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/config.ts tests/config.test.ts
@@ -651,7 +651,7 @@ git commit -m "feat: loadEvalConfig() supports eval.ts via jiti"
 - Create: `src/core/index.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: Create `src/core/index.ts`**
+- [x] **Step 1: Create `src/core/index.ts`**
 
 ```typescript
 export { defineEval } from './define-eval';
@@ -672,7 +672,7 @@ export type {
 } from './config.types';
 ```
 
-- [ ] **Step 2: Add `exports` field to `package.json`**
+- [x] **Step 2: Add `exports` field to `package.json`**
 
 Add to `package.json` alongside the existing `main` field:
 
@@ -696,7 +696,7 @@ import { defineEval } from 'skillgrade';
 import { defineEval } from 'skillgrade/config';
 ```
 
-- [ ] **Step 3: Verify build compiles**
+- [x] **Step 3: Verify build compiles**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npm run build
@@ -704,7 +704,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npm run build
 
 Expected: No errors. Check that `dist/core/index.js` and `dist/core/index.d.ts` exist.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/index.ts package.json
@@ -718,7 +718,7 @@ git commit -m "feat: add library entry point, export defineEval from package"
 **Files:**
 - Modify: `src/commands/init.ts`
 
-- [ ] **Step 1: Update init command to mention both formats**
+- [x] **Step 1: Update init command to mention both formats**
 
 In `src/commands/init.ts`, find where it references "eval.yaml" in user-facing output messages and add a note that `eval.ts` is also supported. The `init` command should continue generating `eval.yaml` (YAML is still the default for humans), but mention the TS alternative. For example:
 
@@ -726,7 +726,7 @@ In `src/commands/init.ts`, find where it references "eval.yaml" in user-facing o
 Created eval.yaml (tip: you can also use eval.ts for type-safe config)
 ```
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run
@@ -734,7 +734,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run
 
 Expected: All PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/commands/init.ts
@@ -750,7 +750,7 @@ git commit -m "docs: mention eval.ts as alternative in init output"
 
 We create the TS example in a **separate directory** (not alongside `examples/superlint/eval.yaml`) to avoid precedence confusion where `eval.ts` silently shadows `eval.yaml`.
 
-- [ ] **Step 1: Create the example directory and eval.ts**
+- [x] **Step 1: Create the example directory and eval.ts**
 
 ```bash
 mkdir -p /Users/nadavlac/projects/test-skills/skillgrade/examples/typescript-example
@@ -793,7 +793,7 @@ fi`,
 });
 ```
 
-- [ ] **Step 2: Verify the example loads correctly**
+- [x] **Step 2: Verify the example loads correctly**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx tsx -e "
@@ -820,7 +820,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "
 
 Expected: Prints `Tasks: [ 'example-task' ]` and `Valid!`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add examples/typescript-example/
@@ -833,7 +833,7 @@ git commit -m "docs: add eval.ts example"
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run
@@ -841,7 +841,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npx vitest run
 
 Expected: All existing tests still pass + new tests pass.
 
-- [ ] **Step 2: Verify YAML still works**
+- [x] **Step 2: Verify YAML still works**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "
@@ -855,7 +855,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "
 
 Expected: Loads from `eval.yaml` successfully.
 
-- [ ] **Step 3: Verify TS example loads**
+- [x] **Step 3: Verify TS example loads**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "
@@ -869,7 +869,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && node -e "
 
 Expected: Loads `eval.ts` successfully.
 
-- [ ] **Step 4: Build and verify**
+- [x] **Step 4: Build and verify**
 
 ```bash
 cd /Users/nadavlac/projects/test-skills/skillgrade && npm run build && ls dist/core/index.js dist/core/define-eval.js dist/core/defaults.js
@@ -877,7 +877,7 @@ cd /Users/nadavlac/projects/test-skills/skillgrade && npm run build && ls dist/c
 
 Expected: All three files exist.
 
-- [ ] **Step 5: Final commit**
+- [x] **Step 5: Final commit**
 
 ```bash
 git add -A

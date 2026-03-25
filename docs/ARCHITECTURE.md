@@ -1,25 +1,16 @@
 # Pathgrade Architecture Guide
 
-Pathgrade is a local-first evaluation runner for agent skills. It runs trials in isolated local workspaces by default, supports both single-turn and conversation tasks, grades results with deterministic and rubric-based graders, and is moving toward a hybrid model where some LLM-backed features can use a host-scoped remote backend for secure employee-machine usage.
+Pathgrade is a local-first evaluation runner for agent skills. It runs trials in isolated local workspaces by default, supports both single-turn and conversation tasks, and grades results with deterministic and rubric-based graders. LLM-backed features (persona replies, `llm_rubric` grading, init generation) use a CLI-first model: Claude CLI via the host's OAuth session when available, with API-key fallback for CI.
 
-## Current Product Boundary
+## Product Boundary
 
-Today, Pathgrade keeps the main execution runtime local:
+Pathgrade keeps the entire execution runtime local:
 
 - local trial workspaces
 - local agent CLI execution
 - local conversation orchestration
 - local deterministic graders
-
-The approved next architecture slice keeps that local runtime intact and changes only the LLM-backed boundary used by:
-
-- persona reply generation
-- `llm_rubric` grading
-
-That remote slice is documented in:
-
-- [docs/2026-03-23-mcp-s-remote-llm-prd.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-prd.md)
-- [docs/2026-03-23-mcp-s-remote-llm-spec.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-spec.md)
+- local LLM-backed grading and persona replies (via Claude CLI or API keys)
 
 ## Core Flow
 
@@ -62,13 +53,10 @@ src/
 ├── types.ts
 └── utils/
     ├── cli.ts
+    ├── cli-llm.ts
     ├── env.ts
     └── llm.ts
 ```
-
-Planned next addition:
-
-- `src/utils/mcpS.ts` for deterministic host-scoped `mcp-s-cli` integration
 
 ## Runtime Model
 
@@ -104,21 +92,19 @@ Examples:
 
 Used for:
 
-- future secure LLM backend selection
-- host-authenticated MCP-S access
-- employee-machine secure mode configuration
+- CLI-first LLM calls (Claude CLI uses host OAuth session)
+- host-auth passthrough mode for solver agents
 
 Examples:
 
-- `PATHGRADE_LLM_BACKEND`
-- `PATHGRADE_MCP_S_*`
-- host `HOME` / host `XDG_*` used by `mcp-s-cli`
+- host `HOME` preserving CLI login state
+- `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` for API-key fallback in CI
 
 Important boundary:
 
 - trial-scoped runtime env is for agents
-- host-scoped env is for future MCP-S calls
-- host-authenticated MCP-S invocations must not inherit trial `HOME` / `XDG_*`
+- host-scoped env is for LLM-backed features (grading, persona, init)
+- host-auth passthrough preserves real `HOME` while isolating the workspace via `cwd`
 
 ## `eval.yaml` Model
 
@@ -162,7 +148,7 @@ Conversation tasks add:
 
 Pathgrade no longer accepts `provider` or `docker` fields in `eval.yaml`. The agent runtime is always local.
 
-Runtime backend settings for the future remote LLM path are intentionally not part of `eval.yaml`; they are host-process configuration.
+LLM backend selection (CLI vs API keys) is determined at runtime by `callLLM()` in `src/utils/llm.ts`, not by `eval.yaml`.
 
 ## Main Components
 
@@ -224,17 +210,11 @@ Current continuation behavior:
 - `src/persona.ts`
 - `src/graders/index.ts`
 
-Current state:
+Current behavior:
 
-- direct provider calls are made from the local process
-- provider selection is inferred from model name and available API keys
-
-Approved next state:
-
-- keep a single shared LLM boundary
-- add backend-aware routing for `local`, `mcp_s`, and `auto`
-- keep the main agent loop local
-- move only persona replies and `llm_rubric` to a host-scoped remote backend when secure mode is enabled
+- CLI-first: when no API keys are available and Claude CLI is installed with an active OAuth session, `callLLM()` routes through `callClaudeCli()` in `src/utils/cli-llm.ts`
+- API-key fallback: when API keys are present (CI), uses direct provider HTTP calls (Gemini -> Anthropic -> OpenAI)
+- model guard: non-Claude models requested without API keys throw a clear error instead of silently substituting Claude
 
 ### Graders
 
@@ -243,7 +223,7 @@ Approved next state:
 - deterministic graders that execute shell commands and parse JSON from stdout
 - rubric graders that judge qualitative behavior from the transcript
 
-Step graders are planned next after the Remote LLM Backend slice.
+Step graders are planned as the next major feature.
 
 ## Output
 
@@ -257,14 +237,9 @@ Reports are written under `$TMPDIR/pathgrade/<skill-name>/results/` by default. 
 
 ## Current Direction
 
-The current runtime foundation for conversations is in place. The next architectural slice is the secure remote LLM backend for persona replies and `llm_rubric`, while keeping:
+The runtime foundation for conversations and CLI-first local LLM support are in place. The next major work is:
 
-- local agent execution
-- local workspace isolation
-- local deterministic grading
-
-After that, the next major architectural work remains:
-
-- step graders
+- step graders (`conversation.step_graders`)
+- conversation-aware `--validate` support
 - richer transcript/reporting support
 - conversation-aware browser/CLI reporting

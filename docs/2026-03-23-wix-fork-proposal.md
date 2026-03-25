@@ -61,7 +61,7 @@ That means:
 - isolated per-trial homes and workspaces
 - session-aware agent adapters
 - conversation-native grading and logging
-- optional host-scoped remote LLM services for persona simulation and rubric grading when employee machines do not have provider API keys
+- CLI-first local LLM support for persona simulation and rubric grading without provider API keys
 
 ## Proposed Directory Layout
 
@@ -282,15 +282,14 @@ Success condition:
 Success condition:
 - deterministic multi-turn eval passes for `ck-new`
 
-### Phase 3: Secure LLM-backed features for employee usage
+### Phase 3: CLI-first local LLM support — COMPLETE
 
-1. Introduce a host-scoped remote LLM backend for persona-backed replies and `llm_rubric`.
-2. Invoke remote tools deterministically via `mcp-s-cli`.
-3. Ship an employee entrypoint or onboarding path that enables secure mode by default for employee usage.
-4. Keep explicit local fallback for CI and controlled environments.
+1. Added CLI-first `callLLM()` fallback using Claude CLI's OAuth session when no API keys are present.
+2. Added host-auth passthrough mode for solver agents (preserves real HOME for CLI auth).
+3. API-key fallback preserved for CI.
 
 Success condition:
-- employee machines can run persona-backed and `llm_rubric` evals without local provider API keys
+- local runs work without provider API keys when Claude CLI is installed
 
 ### Phase 4: Add quality features
 

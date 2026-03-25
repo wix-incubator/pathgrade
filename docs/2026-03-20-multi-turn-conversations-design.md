@@ -1601,27 +1601,20 @@ Core logic:
 - `CompletionChecker` — evaluates completion conditions after each turn using `assistant_message`
 - Integration with existing `EvalRunner` — `runSingleTrial` creates a fresh agent instance and delegates when `conversation` is present
 
-### Phase 4: Secure Remote LLM Backend for Persona + Rubric Features (est. scope: medium)
+### Phase 4: CLI-First Local LLM Support (est. scope: medium) — COMPLETE
 
-**Files changed:**
-- `src/utils/llm.ts` — add a backend-aware LLM boundary with trial-scoped execution context
-- `src/persona.ts` — route persona-backed replies through the new LLM boundary with explicit remote model selection
-- `src/graders/index.ts` — route `llm_rubric` through the new LLM boundary with explicit remote model selection
-- `src/evalRunner.ts` — create one LLM execution context per trial and thread it through grading
-- `src/conversationRunner.ts` — reuse the trial LLM execution context for persona generations
-- `src/types.ts` — add LLM execution context and any required session-log metadata
-- `src/commands/run.ts` — honor host-scoped backend selection and secure-mode onboarding expectations
-- new `src/utils/mcpS.ts` — deterministic `mcp-s-cli` client with host-auth handling, stdin-only transport, timeout handling, and response parsing
+**Status:** Implemented. See `docs/superpowers/plans/2026-03-24-cli-first-local-llm-implementation.md`.
 
-Goals:
-- remove provider API key requirements from employee machines for persona-backed replies and `llm_rubric`
-- keep the main agent loop local
-- preserve local fallback for CI and explicit local mode
-- use host-scoped secure mode rather than trial-scoped auth state
+Replaced the earlier MCP-S remote backend plan with a simpler CLI-first approach:
+- `src/utils/cli-llm.ts` — Claude CLI subprocess wrapper (detection, invocation, envelope parsing)
+- `src/utils/llm.ts` — CLI-first fallback in `callLLM()` with `jsonSchema` support
+- `src/commands/init.ts` — CLI-first path for `pathgrade init`
+- `src/providers/local.ts` — host-auth passthrough mode for CLI-authenticated agents
 
-Reference docs:
-- [docs/2026-03-23-mcp-s-remote-llm-prd.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-prd.md)
-- [docs/2026-03-23-mcp-s-remote-llm-spec.md](/Users/nadavlac/projects/pathgrade/docs/2026-03-23-mcp-s-remote-llm-spec.md)
+Goals achieved:
+- local runs need zero provider API keys when Claude CLI is installed with an active OAuth session
+- API-key fallback preserved for CI
+- host-auth passthrough keeps real HOME for solver CLI auth while isolating workspace via `cwd`
 
 ### Phase 5: Step Grading + LLM Transcript Integration (est. scope: medium)
 
@@ -1647,10 +1640,10 @@ Reference docs:
 ### Dependency Order
 
 ```
-Phase 1 (types) → Phase 2 (agents) → Phase 3 (runner) → Phase 4 (remote llm backend) → Phase 5 (grading) → Phase 6 (reporting) → Phase 7 (example)
+Phase 1 (types) → Phase 2 (agents) → Phase 3 (runner) → Phase 4 (CLI-first LLM ✓) → Phase 5 (grading) → Phase 6 (reporting) → Phase 7 (example)
 ```
 
-Phase 1 and 2 can be developed in parallel. Phase 3 depends on both. Phase 4 depends on Phase 3 because persona-backed replies and `llm_rubric` already exist there. Phases 5-7 depend on Phase 3, but Phase 4 is intentionally sequenced before Phase 5 because employee-machine secure execution is now a blocker for broader usage.
+Phases 1-4 are complete. Phase 5 (step graders) is the next implementation target. Phases 6-7 depend on Phase 5.
 
 ---
 
