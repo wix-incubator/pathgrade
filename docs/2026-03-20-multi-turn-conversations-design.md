@@ -1566,7 +1566,9 @@ tasks:
 - keep build/test green
 - preserve CI entrypoints early so later runtime work stays automation-friendly
 
-### Phase 1: Core Types & Config (est. scope: small)
+### Phase 1: Core Types & Config (est. scope: small) — COMPLETE
+
+**Status:** Implemented with deviations from original design.
 
 **Files changed:**
 - `src/core/config.types.ts` — add ConversationConfig, ConversationReply, ConversationPersona, ConversationCompletion, StepGrader types
@@ -1576,7 +1578,17 @@ tasks:
 - `src/commands/init.ts` — remove Docker-related scaffolding from generated evals
 - `src/skillgrade.ts` — remove Docker/provider CLI surface area
 
-### Phase 2: Local Runtime Isolation + Agent Session Continuation + CI-Safe Execution (est. scope: medium)
+**Deviations from design:**
+- Type naming uses `Config` suffix: `ConversationReplyConfig`, `ConversationPersonaConfig`, `ConversationCompletionConfig` (design said `ConversationReply`, `ConversationPersona`, `ConversationCompletion`)
+- `AgentTurnResult` uses camelCase (`rawOutput`, `assistantMessage`) and adds `exitCode` (design said `raw_output`, `assistant_message`, no exitCode)
+- `BaseAgent.run()` returns `Promise<string>` not `Promise<AgentTurnResult>` — adapter in `createAgentSession()` wraps it
+- Agent interface uses session-object pattern (`createSession()` → `AgentSession` with `start()`/`reply()`) instead of the design's stateful-agent pattern (`continueSession()`/`resetSession()` on agent). Session-object pattern is better — state lives in closures, not on the agent instance.
+- `StepGrader` types not yet added (deferred to Phase 5)
+- Added types not in original design: `TrialRuntime`, `TrialPaths`, `AgentSession`, `AgentTurnInput`, `AgentCommandRunner`
+
+### Phase 2: Local Runtime Isolation + Agent Session Continuation + CI-Safe Execution (est. scope: medium) — COMPLETE
+
+**Status:** Implemented. One gap remains (agent factory — see Phase 4.5).
 
 **Files changed:**
 - `src/providers/local.ts` — create isolated trial root (`workspace`, `home`, `xdg`, `tmp`) and implement abortable child-process execution
@@ -1590,9 +1602,17 @@ tasks:
 - verify the runtime works on GitHub Actions runners without Docker
 - define which eval suites run on PRs vs scheduled workflows
 
-### Phase 3: Conversation Runner (est. scope: medium)
+**Deviations from design:**
+- Agents use `createSession()` returning `AgentSession` instead of `continueSession()`/`resetSession()` methods (see Phase 1 deviations)
+- Agent factory exists in `registry.ts` (`createAgent()`) but `commands/run.ts` creates a single instance and passes it to `runEval()` instead of passing a factory function. See Phase 4.5 for fix.
 
-**New file:** `src/conversationRunner.ts`
+### Phase 3: Conversation Runner (est. scope: medium) — COMPLETE
+
+**Status:** Implemented. Also includes `src/persona.ts` for persona reply generation.
+
+**New files:**
+- `src/conversationRunner.ts`
+- `src/persona.ts`
 
 Core logic:
 - `runConversationTrial()` — orchestrates the multi-turn loop
@@ -1600,6 +1620,12 @@ Core logic:
 - `PersonaLLM` — generates simulated user replies (reuses grader LLM infrastructure)
 - `CompletionChecker` — evaluates completion conditions after each turn using `assistant_message`
 - Integration with existing `EvalRunner` — `runSingleTrial` creates a fresh agent instance and delegates when `conversation` is present
+
+**Gaps to address in later phases:**
+- No step grader execution in the conversation loop (Phase 5)
+- No persona LLM retry on failure (design Section 16 says retry once; Phase 5)
+- `withAbortTimeout` duplicated in both `conversationRunner.ts` and `evalRunner.ts` (Phase 5)
+- No validation that conversation requires at least one of `replies` or `persona` (Phase 5)
 
 ### Phase 4: CLI-First Local LLM Support (est. scope: medium) — COMPLETE
 
@@ -1616,12 +1642,43 @@ Goals achieved:
 - API-key fallback preserved for CI
 - host-auth passthrough keeps real HOME for solver CLI auth while isolating workspace via `cwd`
 
-### Phase 5: Step Grading + LLM Transcript Integration (est. scope: medium)
+### Phase 4.5: Agent Factory Fix (est. scope: small)
+
+**Status:** Not started. **Priority: High** — latent bug for parallel multi-turn trials.
+
+**Problem:** `commands/run.ts` creates a single agent instance and passes it to `runEval()`. The design requires a factory so each trial gets a fresh agent, preventing state contamination when trials run in parallel. With the session-object pattern, the risk is partially mitigated (each `createSession()` creates a new closure), but if any agent's `createSession()` ever mutates the agent instance, parallel trials would collide.
 
 **Files changed:**
-- `src/conversationRunner.ts` — call step graders at appropriate points in the loop and address their staged asset paths
-- `src/evalRunner.ts` — merge step grader results into TrialResult
+- `src/evalRunner.ts` — change `runEval()` signature from `agent: BaseAgent` to `agentFactory: () => BaseAgent`; call factory inside `runSingleTrial()`
+- `src/commands/run.ts` — pass `() => createAgent(agentName)` instead of `createAgent(agentName)`
+
+### Phase 5: Step Grading + Cleanup (est. scope: medium)
+
+**Status:** Not started. Next implementation target.
+
+**5a. Step grader types and config**
+
+**Files changed:**
+- `src/core/config.types.ts` — add `StepGraderConfig`, `ResolvedStepGrader` types; add `step_graders` field to `ConversationConfig` and `ResolvedConversation`
+- `src/core/config.ts` — validate `step_graders` (after_turn > 0, valid grader configs); resolve step grader file references in `resolveConversation()`
+- `src/types.ts` — add `'step_grader'` to `LogEntry.type` union; add `step_grader_results` to `ConversationTurn`; add `step_grader_key` and `step_grader_result` to `LogEntry`
+
+**5b. Step grader execution in conversation runner**
+
+**Files changed:**
+- `src/conversationRunner.ts` — after `checkCompletion()` and before `pickReply()`, run any step graders whose `after_turn` matches the current turn number; on the completion turn, run step graders before returning
+- `src/commands/run.ts` — stage step grader assets into `tests/steps/` and `prompts/steps/` namespaces (e.g. `turn_1_0.sh`, `turn_3_0.md`)
+
+**5c. LLM transcript integration**
+
+**Files changed:**
 - `src/graders/index.ts` — build multi-turn transcripts from all turns using `assistant_message` + command logs, not just the first `agent_result`
+
+**5d. Cleanup (alongside step graders)**
+
+- Extract `withAbortTimeout` from `conversationRunner.ts` and `evalRunner.ts` into a shared utility (e.g. `src/utils/timeout.ts`)
+- Add persona LLM retry-once logic in `conversationRunner.ts` `pickReply()` (design Section 16: retry once, then end conversation with `'error'`)
+- Add config validation that a conversation requires at least one of `replies` or `persona` in `src/core/config.ts`
 
 ### Phase 6: Reporting & Output (est. scope: small)
 
@@ -1637,13 +1694,24 @@ Goals achieved:
 - `examples/ck-new/graders/check-brief.js` — already created
 - `examples/ck-new/fixtures/` — already created
 
+### Phase 8: Design Doc Reconciliation (est. scope: small)
+
+**Status:** Do after Phases 4.5-5 are stable.
+
+Update design doc sections to match actual implementation:
+- Section 6 (TypeScript Types) — update to session-object pattern, camelCase `AgentTurnResult`, add `TrialRuntime`/`TrialPaths`/`AgentSession` types
+- Section 10 (Agent Session Continuation) — rewrite code examples to use `createSession()` → `AgentSession` pattern instead of `continueSession()`/`resetSession()`
+- Section 7 (Execution Flow) — update pseudocode to reflect `session.start()`/`session.reply()` instead of `agent.run()`/`agent.continueSession()`
+
 ### Dependency Order
 
 ```
-Phase 1 (types) → Phase 2 (agents) → Phase 3 (runner) → Phase 4 (CLI-first LLM ✓) → Phase 5 (grading) → Phase 6 (reporting) → Phase 7 (example)
+Phase 1 (types ✓) → Phase 2 (agents ✓) → Phase 3 (runner ✓) → Phase 4 (CLI-first LLM ✓)
+  → Phase 4.5 (agent factory fix) → Phase 5 (step grading + cleanup)
+  → Phase 6 (reporting) → Phase 7 (example) → Phase 8 (doc reconciliation)
 ```
 
-Phases 1-4 are complete. Phase 5 (step graders) is the next implementation target. Phases 6-7 depend on Phase 5.
+Phases 1-4 are complete. Phase 4.5 (agent factory) is a small prerequisite fix. Phase 5 (step graders + cleanup) is the main remaining work. Phases 6-8 depend on Phase 5.
 
 ---
 
