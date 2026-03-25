@@ -112,7 +112,7 @@ export class EvalRunner {
     }
 
     async runEval(
-        agent: BaseAgent,
+        agentFactory: () => BaseAgent,
         taskPath: string,
         skillsPaths: string[],
         opts: EvalRunOptions,
@@ -141,11 +141,11 @@ export class EvalRunner {
 
         try {
             if (parallel > 1 && numTrials > 1) {
-                trials = await this.runTrialsParallel(agent, taskPath, skillsPaths, opts, numTrials, parallel, env);
+                trials = await this.runTrialsParallel(agentFactory, taskPath, skillsPaths, opts, numTrials, parallel, env);
             } else {
                 trials = [];
                 for (let i = 0; i < numTrials; i++) {
-                    trials.push(await this.runSingleTrial(agent, taskPath, skillsPaths, opts, i, numTrials, env));
+                    trials.push(await this.runSingleTrial(agentFactory, taskPath, skillsPaths, opts, i, numTrials, env));
                 }
             }
         } finally {
@@ -175,7 +175,7 @@ export class EvalRunner {
     }
 
     private async runTrialsParallel(
-        agent: BaseAgent,
+        agentFactory: () => BaseAgent,
         taskPath: string,
         skillsPaths: string[],
         opts: EvalRunOptions,
@@ -189,7 +189,7 @@ export class EvalRunner {
         const workers = Array.from({ length: Math.min(parallel, numTrials) }, async () => {
             while (queue.length > 0) {
                 const index = queue.shift()!;
-                results[index] = await this.runSingleTrial(agent, taskPath, skillsPaths, opts, index, numTrials, env);
+                results[index] = await this.runSingleTrial(agentFactory, taskPath, skillsPaths, opts, index, numTrials, env);
             }
         });
 
@@ -198,7 +198,7 @@ export class EvalRunner {
     }
 
     private async runSingleTrial(
-        agent: BaseAgent,
+        agentFactory: () => BaseAgent,
         taskPath: string,
         skillsPaths: string[],
         opts: EvalRunOptions,
@@ -209,6 +209,7 @@ export class EvalRunner {
         const sessionLog: LogEntry[] = [];
         let commandCount = 0;
         const startTime = Date.now();
+        const agent = agentFactory();
 
         const spinner = new Spinner(`${index + 1}/${total}`, 'setting up environment');
         const runtime = await this.provider.setup(taskPath, skillsPaths, opts, env);

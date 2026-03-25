@@ -1588,7 +1588,7 @@ tasks:
 
 ### Phase 2: Local Runtime Isolation + Agent Session Continuation + CI-Safe Execution (est. scope: medium) — COMPLETE
 
-**Status:** Implemented. One gap remains (agent factory — see Phase 4.5).
+**Status:** Implemented. Agent factory gap fixed in Phase 4.5.
 
 **Files changed:**
 - `src/providers/local.ts` — create isolated trial root (`workspace`, `home`, `xdg`, `tmp`) and implement abortable child-process execution
@@ -1604,7 +1604,7 @@ tasks:
 
 **Deviations from design:**
 - Agents use `createSession()` returning `AgentSession` instead of `continueSession()`/`resetSession()` methods (see Phase 1 deviations)
-- Agent factory exists in `registry.ts` (`createAgent()`) but `commands/run.ts` creates a single instance and passes it to `runEval()` instead of passing a factory function. See Phase 4.5 for fix.
+- Agent factory exists in `registry.ts` (`createAgent()`) — fixed in Phase 4.5: `runEval()` now accepts `agentFactory: () => BaseAgent` and each trial creates a fresh instance.
 
 ### Phase 3: Conversation Runner (est. scope: medium) — COMPLETE
 
@@ -1642,15 +1642,15 @@ Goals achieved:
 - API-key fallback preserved for CI
 - host-auth passthrough keeps real HOME for solver CLI auth while isolating workspace via `cwd`
 
-### Phase 4.5: Agent Factory Fix (est. scope: small)
+### Phase 4.5: Agent Factory Fix (est. scope: small) — COMPLETE
 
-**Status:** Not started. **Priority: High** — latent bug for parallel multi-turn trials.
+**Status:** Implemented.
 
-**Problem:** `commands/run.ts` creates a single agent instance and passes it to `runEval()`. The design requires a factory so each trial gets a fresh agent, preventing state contamination when trials run in parallel. With the session-object pattern, the risk is partially mitigated (each `createSession()` creates a new closure), but if any agent's `createSession()` ever mutates the agent instance, parallel trials would collide.
+**Problem:** `commands/run.ts` created a single agent instance and passed it to `runEval()`. The design requires a factory so each trial gets a fresh agent, preventing state contamination when trials run in parallel.
 
 **Files changed:**
-- `src/evalRunner.ts` — change `runEval()` signature from `agent: BaseAgent` to `agentFactory: () => BaseAgent`; call factory inside `runSingleTrial()`
-- `src/commands/run.ts` — pass `() => createAgent(agentName)` instead of `createAgent(agentName)`
+- `src/evalRunner.ts` — changed `runEval()`, `runTrialsParallel()`, and `runSingleTrial()` signatures from `agent: BaseAgent` to `agentFactory: () => BaseAgent`; factory called inside `runSingleTrial()`
+- `src/commands/run.ts` — passes `() => createAgent(agentName)` instead of `createAgent(agentName)`
 
 ### Phase 5: Step Grading + Cleanup (est. scope: medium)
 
@@ -1707,11 +1707,11 @@ Update design doc sections to match actual implementation:
 
 ```
 Phase 1 (types ✓) → Phase 2 (agents ✓) → Phase 3 (runner ✓) → Phase 4 (CLI-first LLM ✓)
-  → Phase 4.5 (agent factory fix) → Phase 5 (step grading + cleanup)
+  → Phase 4.5 (agent factory fix ✓) → Phase 5 (step grading + cleanup)
   → Phase 6 (reporting) → Phase 7 (example) → Phase 8 (doc reconciliation)
 ```
 
-Phases 1-4 are complete. Phase 4.5 (agent factory) is a small prerequisite fix. Phase 5 (step graders + cleanup) is the main remaining work. Phases 6-8 depend on Phase 5.
+Phases 1-4.5 are complete. Phase 5 (step graders + cleanup) is the main remaining work. Phases 6-8 depend on Phase 5.
 
 ---
 

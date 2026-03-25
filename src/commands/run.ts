@@ -178,7 +178,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 }
             } as BaseAgent;
 
-            const report = await runner.runEval(solveAgent, tmpTaskDir, skillsPaths, evalOpts, 1, env);
+            const report = await runner.runEval(() => solveAgent, tmpTaskDir, skillsPaths, evalOpts, 1, env);
             const passed = report.trials[0].reward >= 0.5;
 
             validationResult(passed, report.trials[0].reward, report.trials[0].grader_results.map(gr => ({
@@ -190,14 +190,12 @@ export async function runEvals(dir: string, opts: RunOptions) {
             if (!passed) allPassed = false;
         } else {
             // Normal eval mode
-            const agent = createAgent(agentName);
-
             header(resolved.name);
             console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('runtime')} local  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
             console.log();
 
             try {
-                const report = await runner.runEval(agent, tmpTaskDir, skillsPaths, evalOpts, trials, env, parallel);
+                const report = await runner.runEval(() => createAgent(agentName), tmpTaskDir, skillsPaths, evalOpts, trials, env, parallel);
                 reports.push(report);
 
                 // LLM grader reasoning (condensed)

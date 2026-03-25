@@ -83,7 +83,7 @@ describe('EvalRunner', () => {
     vi.spyOn(gradersModule, 'getGrader').mockReturnValue(mockGrader);
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], opts, 1);
+    const report = await runner.runEval(() => agent, '/task', [], opts, 1);
 
     expect(report.task).toBe('task');
     expect(report.trials).toHaveLength(1);
@@ -117,7 +117,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
     expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
     expect(start).toHaveBeenCalledWith({ message: 'Do something' });
@@ -147,7 +147,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts({
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
       instruction: undefined,
       conversation: {
         opener: 'Help me start a new project.',
@@ -218,7 +218,7 @@ describe('EvalRunner', () => {
 
     try {
       const runner = new EvalRunner(provider);
-      const report = await runner.runEval(agent, '/task', [], makeEvalOpts({
+      const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
         instruction: undefined,
         conversation: {
           opener: 'Help me start a new project.',
@@ -315,7 +315,7 @@ describe('EvalRunner', () => {
 
     try {
       const runner = new EvalRunner(provider);
-      const report = await runner.runEval(agent, '/task', [], makeEvalOpts({
+      const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
         instruction: undefined,
         conversation: {
           opener: 'Idea',
@@ -349,7 +349,7 @@ describe('EvalRunner', () => {
     } as any as BaseAgent;
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
     expect(report.trials[0].reward).toBe(0);
     expect(report.trials[0].grader_results).toEqual([]);
@@ -380,7 +380,7 @@ describe('EvalRunner', () => {
     } as any as BaseAgent;
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts({ timeoutSec: 0.01 }), 1);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({ timeoutSec: 0.01 }), 1);
 
     expect(report.trials[0].reward).toBe(0);
     expect(seenSignals).toHaveLength(1);
@@ -400,7 +400,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider, '/logs');
-    await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+    await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
     expect(mockEnsureDir).toHaveBeenCalledWith('/logs');
     expect(mockWriteJSON).toHaveBeenCalled();
@@ -431,7 +431,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider, '/logs');
-    await runner.runEval(agent, '/task', [], makeEvalOpts(), 1, { SECRET: 'MY_SECRET_VALUE_123' });
+    await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1, { SECRET: 'MY_SECRET_VALUE_123' });
 
     const writtenReport = (mockWriteJSON.mock.calls[0] as any[])[1];
     const reportStr = JSON.stringify(writtenReport);
@@ -458,7 +458,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 2);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 2);
 
     expect(report.trials).toHaveLength(2);
     // Trial 1 score=0, Trial 2 score=1.0
@@ -477,7 +477,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 3, undefined, 2);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 3, undefined, 2);
 
     expect(report.trials).toHaveLength(3);
   });
@@ -494,7 +494,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+    await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
     expect(mockWriteJSON).not.toHaveBeenCalled();
   });
@@ -508,7 +508,7 @@ describe('EvalRunner', () => {
     } as any as BaseAgent;
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
     expect((provider as any).diagnose).toHaveBeenCalled();
     const lastLogEntry = report.trials[0].session_log[report.trials[0].session_log.length - 1];
@@ -532,7 +532,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], makeEvalOpts(), 1);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
     expect(report.trials).toHaveLength(1);
     // Should not throw even without prepare/teardown
@@ -558,7 +558,7 @@ describe('EvalRunner', () => {
     });
 
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(agent, '/task', [], opts, 1);
+    const report = await runner.runEval(() => agent, '/task', [], opts, 1);
 
     expect(report.trials[0].grader_results).toHaveLength(3);
   });

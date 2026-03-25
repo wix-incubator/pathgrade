@@ -23,7 +23,7 @@ async function runTest(numTrials: number = 1, logDir?: string) {
     } as BaseAgent;
 
     const taskPath = path.join(__dirname, '..', 'tasks', 'superlint_demo');
-    const report = await runner.runEval(solvingAgent, taskPath, [], numTrials);
+    const report = await runner.runEval(() => solvingAgent, taskPath, [], numTrials);
 
     console.log('Eval Report Summary:');
     console.log(`Task: ${report.task}`);
@@ -113,7 +113,7 @@ async function main() {
 
         const runner = new EvalRunner(new LocalProvider(), secretLogDir);
         await runner.runEval(
-            secretAgent,
+            () => secretAgent,
             path.join(__dirname, '..', 'tasks', 'superlint_demo'),
             [],
             1,
