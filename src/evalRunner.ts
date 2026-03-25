@@ -407,6 +407,18 @@ export class EvalRunner {
             for (const graderResult of trial.grader_results) {
                 if (graderResult.details) graderResult.details = redact(graderResult.details);
             }
+            if (trial.conversation?.turns) {
+                for (const turn of trial.conversation.turns) {
+                    turn.user_message = redact(turn.user_message);
+                    turn.assistant_message = redact(turn.assistant_message);
+                    turn.raw_agent_output = redact(turn.raw_agent_output);
+                    if (turn.step_grader_results) {
+                        for (const sg of turn.step_grader_results) {
+                            if (sg.details) sg.details = redact(sg.details);
+                        }
+                    }
+                }
+            }
         }
 
         return sanitized;

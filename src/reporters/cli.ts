@@ -64,7 +64,11 @@ export async function runCliPreview(resultsDir: string) {
                 return `${fmt.dim(g.grader_type)} ${colored}`;
             }).join('  ');
 
-            console.log(`    ${fmt.dim(`${trial.trial_id}`.padEnd(4))} ${trialStatus}  ${reward}  ${fmt.dim(dur.padEnd(7))} ${fmt.dim(cmds.padEnd(7))} ${graders}`);
+            const convSuffix = trial.conversation
+                ? `  ${fmt.dim(`${trial.conversation.total_turns} turns`)}  ${fmt.dim(trial.conversation.completion_reason)}`
+                : '';
+
+            console.log(`    ${fmt.dim(`${trial.trial_id}`.padEnd(4))} ${trialStatus}  ${reward}  ${fmt.dim(dur.padEnd(7))} ${fmt.dim(cmds.padEnd(7))} ${graders}${convSuffix}`);
         }
         console.log();
 
@@ -76,6 +80,24 @@ export async function runCliPreview(resultsDir: string) {
                 for (const g of llmGraders) {
                     const scoreStr = g.score >= 0.5 ? fmt.green(g.score.toFixed(2)) : fmt.red(g.score.toFixed(2));
                     console.log(`    ${fmt.dim(`trial ${trial.trial_id}`)} ${scoreStr} ${fmt.dim(g.details.substring(0, 100))}`);
+                }
+            }
+            console.log();
+        }
+
+        // ── Step grader details (conversation trials)
+        const hasStepGraders = trials.some((t: any) =>
+            t.conversation?.turns?.some((turn: any) => turn.step_grader_results?.length > 0));
+        if (hasStepGraders) {
+            console.log(`    ${fmt.bold('Step Graders')}`);
+            for (const trial of trials) {
+                if (!trial.conversation?.turns) continue;
+                for (const turn of trial.conversation.turns) {
+                    if (!turn.step_grader_results?.length) continue;
+                    for (const g of turn.step_grader_results) {
+                        const scoreStr = g.score >= 0.5 ? fmt.green(g.score.toFixed(2)) : fmt.red(g.score.toFixed(2));
+                        console.log(`    ${fmt.dim(`trial ${trial.trial_id} turn ${turn.turn_number}`)} ${scoreStr} ${fmt.dim(g.grader_type)}  ${fmt.dim(g.details.substring(0, 80))}`);
+                    }
                 }
             }
             console.log();

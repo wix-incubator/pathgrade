@@ -1686,12 +1686,17 @@ Goals achieved:
 - LLM transcript format uses markdown bold (`**User:**`/`**Agent:**`) instead of plain `User:`/`Assistant:` for clearer turn delineation
 - Persona retry returns `null` (triggering `no_replies` completion) rather than setting `turn_status: 'error'`, keeping the error semantics simpler
 
-### Phase 6: Reporting & Output (est. scope: small)
+### Phase 6: Reporting & Output — COMPLETE
 
 **Files changed:**
-- `src/reporters/cli.ts` — display conversation turn count, completion reason
-- `src/reporters/browser.ts` — render conversation transcript in web UI
-- `src/evalRunner.ts` — include conversation data in saved JSON reports
+- `src/reporters/cli.ts` — display conversation turn count, completion reason, and per-turn step grader results
+- `src/reporters/browser.ts` — no changes needed (serves static HTML, already passes full report JSON)
+- `src/viewer.html` — render conversation transcript with per-turn user message, agent response, source label, step grader results
+- `src/evalRunner.ts` — conversation data already included in JSON via TrialResult serialization; added secret redaction for conversation turns
+
+**Deviations:**
+- `browser.ts` itself unchanged — it already serves the full report JSON; all rendering changes are in `viewer.html`
+- Added `sanitize()` coverage for `conversation.turns` fields (user_message, assistant_message, raw_agent_output, step_grader_results.details) — not in original spec but necessary for secret redaction parity
 
 ### Phase 7: ck-new Example Eval (est. scope: small)
 
@@ -1714,10 +1719,10 @@ Update design doc sections to match actual implementation:
 ```
 Phase 1 (types ✓) → Phase 2 (agents ✓) → Phase 3 (runner ✓) → Phase 4 (CLI-first LLM ✓)
   → Phase 4.5 (agent factory fix ✓) → Phase 5 (step grading + cleanup)
-  → Phase 6 (reporting) → Phase 7 (example) → Phase 8 (doc reconciliation)
+  → Phase 6 (reporting ✓) → Phase 7 (example) → Phase 8 (doc reconciliation)
 ```
 
-Phases 1-4.5 are complete. Phase 5 (step graders + cleanup) is the main remaining work. Phases 6-8 depend on Phase 5.
+Phases 1-6 are complete. Phases 7-8 remain.
 
 ---
 
