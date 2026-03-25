@@ -150,7 +150,7 @@ Results recorded in `docs/cli-poc/2026-03-25-cli-flag-verification.md`. All assu
 - Create: `src/utils/cli-llm.ts`
 - Test: `tests/cli-llm.test.ts`
 
-- [ ] **Step 1: Write failing test for `isClaudeCliAvailable`**
+- [x] **Step 1: Write failing test for `isClaudeCliAvailable`**
 
 ```typescript
 // tests/cli-llm.test.ts
@@ -165,12 +165,12 @@ describe('isClaudeCliAvailable', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/cli-llm.test.ts`
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Implement `isClaudeCliAvailable` and `callClaudeCli`**
+- [x] **Step 3: Implement `isClaudeCliAvailable` and `callClaudeCli`**
 
 ```typescript
 // src/utils/cli-llm.ts
@@ -380,7 +380,7 @@ Key design points:
 - `stdin.write(stdin, callback)` handles backpressure for large prompts
 - The existing Claude agent adapter (`src/agents/claude.ts:31`) already passes `--dangerously-skip-permissions` for solver runs — no change needed there
 
-- [ ] **Step 4: Write additional tests**
+- [x] **Step 4: Write additional tests**
 
 ```typescript
 import { describe, it, expect } from 'vitest';
@@ -449,12 +449,12 @@ describe('extractStructuredOutput', () => {
 });
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `npx vitest run tests/cli-llm.test.ts`
 Expected: PASS (unit tests always, integration tests when claude installed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/utils/cli-llm.ts tests/cli-llm.test.ts
@@ -473,7 +473,7 @@ This task is the **single point of CLI detection**. All callers (grader, persona
 
 This change also covers persona generation (`src/persona.ts:69`) since it calls `callLLM()`.
 
-- [ ] **Step 1: Add `'cli'` to `LLMCallResult.provider` union and `jsonSchema` to opts**
+- [x] **Step 1: Add `'cli'` to `LLMCallResult.provider` union and `jsonSchema` to opts**
 
 In `src/utils/llm.ts`, update the types:
 
@@ -495,7 +495,7 @@ export interface LLMCallResult {
 }
 ```
 
-- [ ] **Step 2: Write failing tests**
+- [x] **Step 2: Write failing tests**
 
 ```typescript
 // tests/llm-fallback.test.ts
@@ -568,11 +568,11 @@ describe('callLLM CLI-first fallback', () => {
 });
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `npx vitest run tests/llm-fallback.test.ts`
 
-- [ ] **Step 4: Modify `callLLM` to try CLI first**
+- [x] **Step 4: Modify `callLLM` to try CLI first**
 
 In `src/utils/llm.ts`, change the `callLLM` function:
 
@@ -652,12 +652,12 @@ This preserves full backward compatibility:
 - Local without API keys and without CLI → throws (existing behavior)
 - Non-Claude model requested without API key → throws with clear message (not silent substitution)
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `npx vitest run tests/llm-fallback.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/utils/llm.ts tests/llm-fallback.test.ts
