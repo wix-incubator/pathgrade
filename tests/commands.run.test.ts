@@ -14,7 +14,15 @@ vi.mock('fs-extra', () => ({
 
 import * as fs from 'fs-extra';
 import { ResolvedTask } from '../src/core/config.types';
-import { TaskConfig } from '../src/types';
+
+/** Local replica of the old TaskConfig shape for test-only use. */
+interface TaskConfig {
+  version: string;
+  metadata: { author_name: string; author_email: string; difficulty: string; category: string; tags: string[] };
+  graders: { type: string; command?: string; rubric?: string; weight: number }[];
+  agent: { timeout_sec: number };
+  environment: { build_timeout_sec: number; cpus: number; memory_mb: number; storage_mb: number };
+}
 
 const mockPathExists = vi.mocked(fs.pathExists);
 const mockEnsureDir = vi.mocked(fs.ensureDir);

@@ -156,9 +156,14 @@ describe('runEvals local-first runtime path', () => {
 
     await runEvals('/repo', { parallel: 2, agent: 'claude' });
 
+    // runEval now receives an agentFactory function; invoke it to verify createAgent is called
+    const factory = runEvalMock.mock.calls[0][0];
+    expect(typeof factory).toBe('function');
+    factory(); // triggers createAgent('claude')
     expect(createAgentMock).toHaveBeenCalledWith('claude');
+
     expect(runEvalMock).toHaveBeenCalledWith(
-      expect.objectContaining({ run: expect.any(Function) }),
+      expect.any(Function),
       expect.stringContaining('/pathgrade/repo/tmp/test-task'),
       [],
       expect.objectContaining({

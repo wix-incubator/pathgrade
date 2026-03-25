@@ -1,6 +1,6 @@
 import { BaseAgent } from '../src/types';
 import { LocalProvider } from '../src/providers/local';
-import { EvalRunner, loadTaskConfig } from '../src/evalRunner';
+import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
 import * as path from 'path';
 import * as fs from 'fs-extra';
 
@@ -23,7 +23,13 @@ async function runTest(numTrials: number = 1, logDir?: string) {
     } as BaseAgent;
 
     const taskPath = path.join(__dirname, '..', 'tasks', 'superlint_demo');
-    const report = await runner.runEval(() => solvingAgent, taskPath, [], numTrials);
+    const evalOpts: EvalRunOptions = {
+        instruction: 'Solve the task',
+        graders: [{ type: 'deterministic', weight: 1 }],
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+    };
+    const report = await runner.runEval(() => solvingAgent, taskPath, [], evalOpts, numTrials);
 
     console.log('Eval Report Summary:');
     console.log(`Task: ${report.task}`);
@@ -112,10 +118,17 @@ async function main() {
         } as BaseAgent;
 
         const runner = new EvalRunner(new LocalProvider(), secretLogDir);
+        const secretEvalOpts: EvalRunOptions = {
+            instruction: 'Check for secret',
+            graders: [{ type: 'deterministic', weight: 1 }],
+            timeoutSec: 300,
+            environment: { cpus: 2, memory_mb: 2048 },
+        };
         await runner.runEval(
             () => secretAgent,
             path.join(__dirname, '..', 'tasks', 'superlint_demo'),
             [],
+            secretEvalOpts,
             1,
             { MY_SECRET: 'SUPER_SECRET_KEY_12345' }
         );
