@@ -9,6 +9,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { detectSkills } from '../core/skills';
 import { parseEnvFile } from '../utils/env';
+import { isClaudeCliAvailable, callClaudeCli } from '../utils/cli-llm';
 
 export async function runInit(dir: string, opts: { force?: boolean } = {}) {
   const evalPath = path.join(dir, 'eval.yaml');
@@ -47,20 +48,28 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
     }
   }
 
-  // Try LLM-powered scaffold — auto-detect from available API key
+  // Try LLM-powered scaffold — auto-detect from available API key or CLI
   const geminiKey = process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
-  const llmProvider = geminiKey ? 'gemini' : anthropicKey ? 'anthropic' : openaiKey ? 'openai' : null;
-  const llmApiKey = geminiKey || anthropicKey || openaiKey;
+  const hasApiKey = !!(geminiKey || anthropicKey || openaiKey);
+  const cliAvailable = await isClaudeCliAvailable();
 
-  const providerLabel: Record<string, string> = { gemini: 'Gemini', anthropic: 'Anthropic', openai: 'OpenAI' };
-
-  if (llmProvider && llmApiKey) {
+  if (hasApiKey || cliAvailable) {
     const { Spinner, fmt } = await import('../utils/cli');
-    const spinner = new Spinner('init', `generating eval with ${providerLabel[llmProvider]}`);
+    const label = hasApiKey
+      ? `generating eval with ${geminiKey ? 'Gemini' : anthropicKey ? 'Anthropic' : 'OpenAI'}`
+      : 'generating eval with Claude CLI';
+    const spinner = new Spinner('init', label);
     try {
-      const config = await generateWithLLM(skills, llmApiKey, llmProvider);
+      let config: string;
+      if (hasApiKey) {
+        const llmProvider = geminiKey ? 'gemini' : anthropicKey ? 'anthropic' : 'openai';
+        const llmApiKey = (geminiKey || anthropicKey || openaiKey)!;
+        config = await generateWithLLM(skills, llmApiKey, llmProvider);
+      } else {
+        config = await generateWithCli(skills);
+      }
       await fs.writeFile(evalPath, config, 'utf-8');
       spinner.stop(fmt.green('created eval.yaml'));
       console.log(`     Review and edit the file, then run: pathgrade\n`);
@@ -70,7 +79,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
       console.log('     Falling back to template.\n');
     }
   } else {
-    console.log('  Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for AI-powered eval generation.\n');
+    console.log('  Install Claude CLI or set an API key for AI-powered eval generation.\n');
   }
 
   // Fallback: template-based scaffold
@@ -129,18 +138,15 @@ function extractInstructionHint(skillMd: string): string {
 }
 
 /**
- * Generate eval.yaml content using Gemini API.
+ * Build the init prompt for eval.yaml generation.
+ * Shared by both the API-key path (generateWithLLM) and CLI path (generateWithCli).
  */
-async function generateWithLLM(
-  skills: Array<{ name: string; skillMd: string }>,
-  apiKey: string,
-  provider: 'gemini' | 'anthropic' | 'openai' = 'gemini'
-): Promise<string> {
+function buildInitPrompt(skills: Array<{ name: string; skillMd: string }>): string {
   const skillSummaries = skills.map(s =>
     `## Skill: ${s.name}\n\n${s.skillMd}`
   ).join('\n\n---\n\n');
 
-  const prompt = `You are an expert at creating evaluation tasks for AI agent skills.
+  return `You are an expert at creating evaluation tasks for AI agent skills.
 
 Given the following skill definition(s), generate an eval.yaml file that defines 1-2 evaluation tasks to test whether an AI agent correctly discovers and uses the skill.
 
@@ -212,6 +218,26 @@ tasks:
         rubric: |
           <evaluation criteria>
         weight: 0.3`;
+}
+
+async function generateWithCli(
+    skills: Array<{ name: string; skillMd: string }>
+): Promise<string> {
+    const prompt = buildInitPrompt(skills);
+    const result = await callClaudeCli(prompt, { timeoutSec: 120 });
+    const yamlContent = result.text.replace(/```ya?ml\n?/g, '').replace(/```\n?/g, '').trim();
+    return yamlContent + '\n';
+}
+
+/**
+ * Generate eval.yaml content using an LLM API.
+ */
+async function generateWithLLM(
+  skills: Array<{ name: string; skillMd: string }>,
+  apiKey: string,
+  provider: 'gemini' | 'anthropic' | 'openai' = 'gemini'
+): Promise<string> {
+  const prompt = buildInitPrompt(skills);
 
   let text: string;
   const fetchOpts = { signal: AbortSignal.timeout(120_000) };
