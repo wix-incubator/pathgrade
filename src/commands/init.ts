@@ -71,7 +71,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
         config = await generateWithCli(skills);
       }
       await fs.writeFile(evalPath, config, 'utf-8');
-      spinner.stop(fmt.green('created eval.yaml'));
+      spinner.stop(fmt.green('created eval.yaml (tip: you can also use eval.ts for type-safe config)'));
       console.log(`     Review and edit the file, then run: pathgrade\n`);
       return;
     } catch (err: any) {
@@ -105,7 +105,7 @@ async function writeTemplate(evalPath: string, taskName: string, instruction: st
     .replace(/\{\{INSTRUCTION\}\}/g, instruction);
 
   await fs.writeFile(evalPath, result, 'utf-8');
-  console.log(`  Created eval.yaml.`);
+  console.log(`  Created eval.yaml (tip: you can also use eval.ts for type-safe config).`);
   console.log(`     Edit the file to define your eval tasks, then run: pathgrade\n`);
 }
 
