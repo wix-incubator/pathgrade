@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js `child_process.spawn`, existing TypeScript codebase (CommonJS).
 
-**Evidence:** POC results in `docs/cli-poc/claude-results.json`. CLI flag assumptions are verified in Task 0 before any implementation begins.
+**Evidence:** POC results in `docs/cli-poc/claude-results.json`. CLI flag verification in `docs/cli-poc/2026-03-25-cli-flag-verification.md` (Task 0 — completed).
 
 ---
 
@@ -49,7 +49,7 @@ This plan covers the three judge call surfaces plus the solver auth passthrough:
 
 **Purpose:** Verify all CLI flag assumptions before implementation. The POC `docs/cli-poc/claude-results.json` contains raw results but the flag behaviors assumed by this plan must be confirmed with `child_process.spawn` (no shell).
 
-- [ ] **Step 1: Verify `--output-format text` with `-p` mode**
+- [x] **Step 1: Verify `--output-format text` with `-p` mode**
 
 ```bash
 # From Node.js spawn (no shell):
@@ -66,7 +66,7 @@ child.on('close', code => console.log('exit:', code, 'stdout:', JSON.stringify(o
 
 Expected: exit 0, stdout contains "hello"
 
-- [ ] **Step 2: Verify `--output-format json` + `--json-schema` with spawn**
+- [x] **Step 2: Verify `--output-format json` + `--json-schema` with spawn**
 
 ```bash
 node -e "
@@ -88,7 +88,7 @@ child.on('close', code => {
 
 Expected: exit 0, envelope has `structured_output` with `answer` field
 
-- [ ] **Step 3: Verify tool disabling in `-p` mode**
+- [x] **Step 3: Verify tool disabling in `-p` mode**
 
 Test whether `-p` mode already disables tools (making `--tools ""` unnecessary):
 
@@ -118,7 +118,7 @@ child.on('close', code => console.log('exit:', code, 'length:', out.length));
 
 Document which approach works. If `-p` mode already disables tools, omit the flag entirely.
 
-- [ ] **Step 4: Verify `claude auth status` exit codes**
+- [x] **Step 4: Verify `claude auth status` exit codes**
 
 ```bash
 # When authenticated:
@@ -134,9 +134,13 @@ child.on('close', code => console.log('exit:', code, 'stdout:', out.trim(), 'std
 
 Verify: authenticated → exit 0, not authenticated → exit non-zero. If exit code is unreliable, fall back to the canary approach (a cheap `-p` call as the availability check).
 
-- [ ] **Step 5: Document results**
+- [x] **Step 5: Document results**
 
-Record all findings in `docs/cli-poc/2026-03-24-cli-flag-verification.md`. Update the plan if any assumption was wrong.
+Results recorded in `docs/cli-poc/2026-03-25-cli-flag-verification.md`. All assumptions confirmed:
+- `-p` mode disables tools — no `--tools` flag needed
+- `--json-schema` accepts inline JSON via spawn, envelope has `structured_output`
+- `auth status` returns JSON with `loggedIn` field, exit 0 when authenticated
+- Bonus: `auth status` JSON output enables a secondary `loggedIn: true` check
 
 ---
 
