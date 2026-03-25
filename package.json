@@ -4,6 +4,16 @@
   "description": "Evaluate whether AI agents discover and use your skills correctly",
   "main": "dist/pathgrade.js",
   "types": "dist/pathgrade.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./config": {
+      "types": "./dist/core/define-eval.d.ts",
+      "default": "./dist/core/define-eval.js"
+    }
+  },
   "bin": {
     "pathgrade": "./bin/pathgrade.js"
   },
