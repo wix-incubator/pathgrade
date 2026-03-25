@@ -17,32 +17,37 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
+/** Mock pathExists to return false for eval.ts (skip TS loading) and true for eval.yaml */
+function mockYamlOnly() {
+  mockPathExists.mockImplementation(async (p: any) => !String(p).endsWith('eval.ts'));
+}
+
 describe('loadEvalConfig', () => {
-  it('throws when eval.yaml is missing', async () => {
+  it('throws when no config file is found', async () => {
     mockPathExists.mockResolvedValue(false as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('No eval.yaml found');
+    await expect(loadEvalConfig('/test')).rejects.toThrow('No eval.ts or eval.yaml found');
   });
 
   it('throws when YAML is not an object', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     mockReadFile.mockResolvedValue('just a string' as any);
     await expect(loadEvalConfig('/test')).rejects.toThrow('must be an object');
   });
 
   it('throws when tasks array is missing', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     mockReadFile.mockResolvedValue('version: "1"\n' as any);
     await expect(loadEvalConfig('/test')).rejects.toThrow('at least one task');
   });
 
   it('throws when tasks array is empty', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     mockReadFile.mockResolvedValue('version: "1"\ntasks: []\n' as any);
     await expect(loadEvalConfig('/test')).rejects.toThrow('at least one task');
   });
 
   it('throws when task is missing name', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - instruction: "do something"
@@ -55,7 +60,7 @@ tasks:
   });
 
   it('throws when task is missing instruction', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -68,7 +73,7 @@ tasks:
   });
 
   it('accepts conversation tasks without instruction', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -94,7 +99,7 @@ tasks:
   });
 
   it('accepts conversation tasks with persona fallback and no scripted replies', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -129,7 +134,7 @@ tasks:
   });
 
   it('rejects conversation tasks with neither scripted replies nor persona', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -149,7 +154,7 @@ tasks:
   });
 
   it('throws when task has no graders', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -160,7 +165,7 @@ tasks:
   });
 
   it('throws on workspace mapping without src/dest', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -176,7 +181,7 @@ tasks:
   });
 
   it('parses valid config correctly', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 skill: ./SKILL.md
 defaults:
@@ -208,7 +213,7 @@ tasks:
   });
 
   it('applies default values when defaults not specified', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -230,7 +235,7 @@ tasks:
   });
 
   it('rejects deprecated defaults.provider', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 defaults:
   provider: local
@@ -247,7 +252,7 @@ tasks:
   });
 
   it('rejects deprecated defaults.docker', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 defaults:
   docker:
@@ -265,7 +270,7 @@ tasks:
   });
 
   it('rejects deprecated task-level provider and docker fields', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -283,7 +288,7 @@ tasks:
   });
 
   it('handles workspace string shorthand', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -303,7 +308,7 @@ tasks:
   });
 
   it('handles workspace objects with chmod', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -325,7 +330,7 @@ tasks:
   });
 
   it('defaults grader weight to 1.0', async () => {
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     const yaml = `version: "1"
 tasks:
   - name: test-task
@@ -394,7 +399,7 @@ describe('resolveTask', () => {
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
     };
 
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     mockReadFile.mockResolvedValue('File content here' as any);
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -419,7 +424,7 @@ describe('resolveTask', () => {
       graders: [{ type: 'deterministic', run: 'test.sh', weight: 1.0 }],
     };
 
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     mockReadFile.mockResolvedValue('#!/bin/bash\necho pass' as any);
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -433,7 +438,7 @@ describe('resolveTask', () => {
       graders: [{ type: 'llm_rubric', rubric: 'rubric.md', weight: 1.0 }],
     };
 
-    mockPathExists.mockResolvedValue(true as any);
+    mockYamlOnly();
     mockReadFile.mockResolvedValue('Evaluate quality...' as any);
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -550,3 +555,4 @@ describe('resolveTask', () => {
     });
   });
 });
+

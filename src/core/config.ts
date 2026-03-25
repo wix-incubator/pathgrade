@@ -1,5 +1,5 @@
 /**
- * Parser and validator for eval.yaml config files.
+ * Parser and validator for eval config files (eval.ts or eval.yaml).
  */
 import * as fs from 'fs-extra';
 import * as path from 'path';
@@ -17,15 +17,22 @@ import {
 import { DEFAULT_CONFIG } from './defaults';
 
 /**
- * Load and parse eval.yaml from a directory.
+ * Load eval config from a directory.
+ * Tries eval.ts first (TypeScript config), then eval.yaml.
  */
 export async function loadEvalConfig(dir: string): Promise<EvalConfig> {
-    const yamlPath = path.join(dir, 'eval.yaml');
-    if (!await fs.pathExists(yamlPath)) {
-        throw new Error(`No eval.yaml found in ${dir}`);
+    // Try eval.ts first
+    const tsPath = path.join(dir, 'eval.ts');
+    if (await fs.pathExists(tsPath)) {
+        return loadEvalConfigFromTs(tsPath);
     }
 
-    // Dynamically import js-yaml
+    // Fall back to eval.yaml
+    const yamlPath = path.join(dir, 'eval.yaml');
+    if (!await fs.pathExists(yamlPath)) {
+        throw new Error(`No eval.ts or eval.yaml found in ${dir}`);
+    }
+
     let yaml: any;
     try {
         yaml = require('js-yaml');
@@ -37,6 +44,28 @@ export async function loadEvalConfig(dir: string): Promise<EvalConfig> {
     const raw = yaml.load(content) as any;
 
     return validateConfig(raw);
+}
+
+/**
+ * Load eval config from a TypeScript file using jiti.
+ */
+async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
+    let mod: any;
+    try {
+        const { createJiti } = require('jiti');
+        const jiti = createJiti(__filename);
+        mod = await jiti.import(filePath);
+    } catch (e: any) {
+        throw new Error(`Failed to load eval.ts: ${e.message}. Ensure jiti is installed: npm install jiti`);
+    }
+
+    const config = mod.default || mod;
+
+    if (!config || typeof config !== 'object') {
+        throw new Error('eval.ts must export an EvalConfig (default export or module.exports)');
+    }
+
+    return validateConfig(config);
 }
 
 /**
