@@ -671,7 +671,7 @@ git commit -m "feat: add CLI-first fallback to callLLM with jsonSchema support"
 **Files:**
 - Modify: `src/commands/init.ts`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```typescript
 describe('runInit with CLI backend', () => {
@@ -681,7 +681,7 @@ describe('runInit with CLI backend', () => {
 });
 ```
 
-- [ ] **Step 2: Extract `buildInitPrompt` from `generateWithLLM`**
+- [x] **Step 2: Extract `buildInitPrompt` from `generateWithLLM`**
 
 The existing `generateWithLLM` at `src/commands/init.ts:134-289` has a 70-line inline prompt (lines 143-214) interleaved with provider-specific API call logic. This extraction is non-trivial because:
 - The prompt references `skillSummaries` built at lines 139-141
@@ -747,7 +747,7 @@ async function generateWithLLM(
 
 **Verification:** After extraction, run `npx vitest run` to confirm existing tests still pass — the prompt content must be identical.
 
-- [ ] **Step 3: Replace API-key detection with CLI-first path**
+- [x] **Step 3: Replace API-key detection with CLI-first path**
 
 In `src/commands/init.ts`, replace the API key detection block (lines 50-74):
 
@@ -789,7 +789,7 @@ if (hasApiKey || cliAvailable) {
 }
 ```
 
-- [ ] **Step 4: Add `generateWithCli` function**
+- [x] **Step 4: Add `generateWithCli` function**
 
 ```typescript
 async function generateWithCli(
@@ -802,11 +802,11 @@ async function generateWithCli(
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `npx vitest run`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/commands/init.ts
@@ -827,7 +827,7 @@ This is the most architecturally significant change. Currently `LocalProvider.se
 
 **Architecture decision:** `authMode` is set by the CLI entry point (`src/commands/run.ts`), not by `EvalRunner`. This avoids the non-existent `opts.agent` issue — `run.ts` already has `agentName` at line 135, and it's the right place to make this decision.
 
-- [ ] **Step 1: Make XDG paths optional in `TrialPaths`**
+- [x] **Step 1: Make XDG paths optional in `TrialPaths`**
 
 In `src/types.ts`, update `TrialPaths`:
 
@@ -845,7 +845,7 @@ export interface TrialPaths {
 
 Audit: `TrialPaths` consumers access these via `runtime.paths?.xdg` (already optional-chained at `tests/providers.local.test.ts:41`). No other consumer accesses `xdg`/`xdgState`/`xdgCache` directly — they're only used in the `env` object returned by `setup()`.
 
-- [ ] **Step 2: Add `authMode` to `EvalRunOptions`**
+- [x] **Step 2: Add `authMode` to `EvalRunOptions`**
 
 In `src/evalRunner.ts`, add to `EvalRunOptions`:
 
@@ -866,7 +866,7 @@ export interface EvalRunOptions {
 }
 ```
 
-- [ ] **Step 3: Pass `authMode` through `EvalRunner` to provider**
+- [x] **Step 3: Pass `authMode` through `EvalRunner` to provider**
 
 In `src/evalRunner.ts`, at line 212 where `this.provider.setup()` is called:
 
@@ -885,7 +885,7 @@ const runtime = await this.provider.setup(
 
 Note: `opts` is `EvalRunOptions` which already passes `timeoutSec` and `environment` — `EnvironmentSetupOpts` receives these correctly. Adding `authMode` as an optional field on `EnvironmentSetupOpts` keeps the interface compatible.
 
-- [ ] **Step 4: Add `authMode` to `EnvironmentSetupOpts`**
+- [x] **Step 4: Add `authMode` to `EnvironmentSetupOpts`**
 
 In `src/types.ts`:
 
@@ -905,7 +905,7 @@ export interface EnvironmentSetupOpts {
 }
 ```
 
-- [ ] **Step 5: Modify `LocalProvider.setup()` to support host auth**
+- [x] **Step 5: Modify `LocalProvider.setup()` to support host auth**
 
 In `src/providers/local.ts`, two changes:
 
@@ -949,7 +949,7 @@ async setup(taskPath: string, skillsPaths: string[], opts: EnvironmentSetupOpts,
 
 Note: The `workspacePath` and `tmpPath` variables are created BEFORE the branch — move the `const rootDir`, `workspacePath`, `tmpPath`, `ensureDir`, and `copy` calls above the branch. The existing `homePath`/`xdgPath` declarations stay in the isolated branch only.
 
-- [ ] **Step 6: Set `authMode` in `src/commands/run.ts`**
+- [x] **Step 6: Set `authMode` in `src/commands/run.ts`**
 
 In `src/commands/run.ts`, after `agentName` is determined (around line 147), add:
 
@@ -973,7 +973,7 @@ const evalOpts: EvalRunOptions = opts.validate
       };
 ```
 
-- [ ] **Step 7: Write tests**
+- [x] **Step 7: Write tests**
 
 ```typescript
 // tests/local-provider-auth.test.ts
@@ -1055,11 +1055,11 @@ describe('LocalProvider host-auth passthrough', () => {
 });
 ```
 
-- [ ] **Step 8: Run full test suite**
+- [x] **Step 8: Run full test suite**
 
 Run: `npx vitest run`
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/types.ts src/providers/local.ts src/evalRunner.ts src/commands/run.ts tests/local-provider-auth.test.ts
@@ -1074,7 +1074,7 @@ git commit -m "feat: add host-auth passthrough mode for CLI-authenticated agents
 - Modify: `src/commands/init.ts:73`
 - Modify: `src/utils/llm.ts:72` and `src/utils/llm.ts:202`
 
-- [ ] **Step 1: Update error messages**
+- [x] **Step 1: Update error messages**
 
 The existing error messages tell users to set API keys. Update them to mention CLI auth as an alternative.
 
@@ -1098,7 +1098,7 @@ In `src/commands/init.ts:73`:
 + 'Install Claude CLI or set an API key for AI-powered eval generation.'
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/utils/llm.ts src/commands/init.ts
@@ -1114,7 +1114,7 @@ git commit -m "docs: update error messages to mention CLI auth alternative"
 
 The `LLMGrader` already calls `callLLM()`, and Task 2 added `jsonSchema` support to `LLMCallOptions`. This task wires the grader to use structured output via the existing `callLLM()` path — **not** by importing `callClaudeCli` directly.
 
-- [ ] **Step 1: Add jsonSchema to the grader's `callLLM` call**
+- [x] **Step 1: Add jsonSchema to the grader's `callLLM` call**
 
 In `src/graders/index.ts`, at line 171 where `callLLM` is called:
 
@@ -1141,11 +1141,11 @@ const response = await callLLM(prompt, {
 
 Note: `jsonSchema` is only used by the CLI path inside `callLLM()`. When the API-key path is active, `jsonSchema` is ignored and the existing text-mode response + `parseResponse()` handles it. This is intentional — the API providers don't support `--json-schema`.
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 Run: `npx vitest run`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/graders/index.ts
@@ -1158,12 +1158,12 @@ git commit -m "feat: pass jsonSchema through callLLM for structured rubric gradi
 
 No new files — this is a manual verification step.
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 Run: `npx vitest run`
 Expected: all tests pass
 
-- [ ] **Step 2: Run pathgrade init without API keys**
+- [x] **Step 2: Run pathgrade init without API keys**
 
 ```bash
 unset GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY
@@ -1174,7 +1174,7 @@ pathgrade init
 
 Expected: eval.yaml generated via Claude CLI, no API key errors
 
-- [ ] **Step 3: Run a local eval without API keys**
+- [x] **Step 3: Run a local eval without API keys**
 
 ```bash
 unset GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY
@@ -1183,7 +1183,7 @@ pathgrade  # in a directory with an eval.yaml
 
 Expected: solver runs with host auth, rubric grades via CLI, no API key errors
 
-- [ ] **Step 4: Run with API keys to verify backward compatibility**
+- [x] **Step 4: Run with API keys to verify backward compatibility**
 
 ```bash
 export GEMINI_API_KEY=<real-key>
@@ -1192,7 +1192,7 @@ pathgrade
 
 Expected: uses HTTP API path (existing behavior), no regressions
 
-- [ ] **Step 5: Commit any fixes discovered during verification**
+- [x] **Step 5: Commit any fixes discovered during verification**
 
 ---
 
