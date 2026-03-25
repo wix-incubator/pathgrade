@@ -1,0 +1,41 @@
+import { EvalConfig, DefineEvalInput } from './config.types';
+import { validateConfig } from './config';
+
+/**
+ * Define a pathgrade evaluation config in TypeScript.
+ * All defaults are optional — same defaults as eval.yaml.
+ */
+export function defineEval(input: DefineEvalInput): EvalConfig {
+    const raw: Record<string, any> = {
+        version: input.version || '1',
+        skill: input.skill,
+        defaults: input.defaults ? {
+            ...input.defaults,
+            environment: input.defaults.environment ? {
+                ...input.defaults.environment,
+            } : undefined,
+        } : undefined,
+        tasks: input.tasks.map(t => ({
+            name: t.name,
+            instruction: t.instruction,
+            conversation: t.conversation,
+            workspace: t.workspace,
+            graders: t.graders.map(g => ({
+                type: g.type,
+                setup: g.setup,
+                run: g.run,
+                rubric: g.rubric,
+                model: g.model,
+                weight: g.weight,  // validateConfig defaults to 1.0
+            })),
+            solution: t.solution,
+            agent: t.agent,
+            trials: t.trials,
+            timeout: t.timeout,
+            grader_model: t.grader_model,
+            environment: t.environment,
+        })),
+    };
+
+    return validateConfig(raw);
+}

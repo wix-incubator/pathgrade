@@ -123,3 +123,41 @@ export interface ResolvedGrader {
     model?: string;     // LLM model override
     weight: number;
 }
+
+/** User-friendly input for defineEval() — all defaults are optional */
+export interface DefineEvalGraderInput {
+    type: 'deterministic' | 'llm_rubric';
+    setup?: string;
+    run?: string;
+    rubric?: string;
+    model?: string;
+    weight?: number;    // defaults to 1.0
+}
+
+export interface DefineEvalConversationInput {
+    opener: string;
+    completion: ConversationCompletionConfig;
+    replies?: ConversationReplyConfig[];
+    persona?: ConversationPersonaConfig;
+}
+
+export interface DefineEvalTaskInput {
+    name: string;
+    instruction?: string;
+    conversation?: DefineEvalConversationInput;
+    workspace?: WorkspaceMapping[];
+    graders: DefineEvalGraderInput[];
+    solution?: string;
+    agent?: string;
+    trials?: number;
+    timeout?: number;
+    grader_model?: string;
+    environment?: Partial<EnvironmentConfig>;
+}
+
+export interface DefineEvalInput {
+    version?: string;           // defaults to '1'
+    skill?: string;
+    defaults?: Partial<EvalDefaults>;
+    tasks: DefineEvalTaskInput[];
+}
