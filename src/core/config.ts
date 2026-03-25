@@ -54,7 +54,7 @@ async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
     try {
         const { createJiti } = require('jiti');
         const jiti = createJiti(__filename);
-        mod = await jiti.import(filePath);
+        mod = await jiti.import(path.resolve(filePath));
     } catch (e: any) {
         throw new Error(`Failed to load eval.ts: ${e.message}. Ensure jiti is installed: npm install jiti`);
     }
