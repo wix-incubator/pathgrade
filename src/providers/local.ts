@@ -15,19 +15,12 @@ import {
 } from '../types';
 
 export class LocalProvider implements EnvironmentProvider {
-    async setup(taskPath: string, skillsPaths: string[], _opts: EnvironmentSetupOpts, _env?: Record<string, string>): Promise<TrialRuntime> {
+    async setup(taskPath: string, skillsPaths: string[], opts: EnvironmentSetupOpts, _env?: Record<string, string>): Promise<TrialRuntime> {
         const rootDir = path.join(os.tmpdir(), `pathgrade-${Math.random().toString(36).substring(7)}`);
         const workspacePath = path.join(rootDir, 'workspace');
-        const homePath = path.join(rootDir, 'home');
-        const xdgPath = path.join(rootDir, 'xdg');
-        const xdgStatePath = path.join(xdgPath, 'state');
-        const xdgCachePath = path.join(xdgPath, 'cache');
         const tmpPath = path.join(rootDir, 'tmp');
 
         await fs.ensureDir(workspacePath);
-        await fs.ensureDir(homePath);
-        await fs.ensureDir(xdgStatePath);
-        await fs.ensureDir(xdgCachePath);
         await fs.ensureDir(tmpPath);
         await fs.copy(taskPath, workspacePath);
 
@@ -44,6 +37,36 @@ export class LocalProvider implements EnvironmentProvider {
                 await fs.copy(spath, path.join(skillsDir, skillName));
             }
         }
+
+        if (opts.authMode === 'host') {
+            // Host-auth passthrough: keep real HOME for CLI auth.
+            // Only isolate TMPDIR so agent temp files don't pollute.
+            return {
+                handle: rootDir,
+                workspacePath,
+                env: {
+                    TMPDIR: tmpPath,
+                    TMP: tmpPath,
+                    TEMP: tmpPath,
+                },
+                paths: {
+                    root: rootDir,
+                    workspace: workspacePath,
+                    home: process.env.HOME || os.homedir(),
+                    tmp: tmpPath,
+                },
+            };
+        }
+
+        // Isolated mode (default): override HOME to kill CLI auth
+        const homePath = path.join(rootDir, 'home');
+        const xdgPath = path.join(rootDir, 'xdg');
+        const xdgStatePath = path.join(xdgPath, 'state');
+        const xdgCachePath = path.join(xdgPath, 'cache');
+
+        await fs.ensureDir(homePath);
+        await fs.ensureDir(xdgStatePath);
+        await fs.ensureDir(xdgCachePath);
 
         return {
             handle: rootDir,

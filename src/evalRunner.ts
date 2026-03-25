@@ -94,6 +94,8 @@ export interface EvalRunOptions {
         cpus: number;
         memory_mb: number;
     };
+    /** Set by the CLI entry point based on agent type + CLI availability. */
+    authMode?: 'host' | 'isolated';
 }
 
 export class EvalRunner {

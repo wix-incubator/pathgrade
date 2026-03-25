@@ -98,9 +98,9 @@ export interface TrialPaths {
     root: string;
     workspace: string;
     home: string;
-    xdg: string;
-    xdgState: string;
-    xdgCache: string;
+    xdg?: string;
+    xdgState?: string;
+    xdgCache?: string;
     tmp: string;
 }
 
@@ -192,6 +192,12 @@ export interface EnvironmentSetupOpts {
         cpus: number;
         memory_mb: number;
     };
+    /**
+     * 'host' — preserve real HOME for CLI auth (host-auth passthrough).
+     *          Workspace is still isolated via cwd.
+     * 'isolated' — override HOME with temp dir (current default behavior).
+     */
+    authMode?: 'host' | 'isolated';
 }
 
 export interface EnvironmentProvider {

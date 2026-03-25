@@ -15,6 +15,7 @@ import { BaseAgent, EvalReport } from '../types';
 import { ResolvedTask } from '../core/config.types';
 import { parseEnvFile } from '../utils/env';
 import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
+import { isClaudeCliAvailable } from '../utils/cli-llm';
 
 interface RunOptions {
     eval?: string;       // run specific eval(s) by name (comma-separated)
@@ -110,27 +111,6 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const tmpTaskDir = path.join(outputDir, 'tmp', resolved.name);
         await prepareTempTaskDir(resolved, dir, tmpTaskDir);
 
-        // Build eval options — pass resolved content directly
-        const filteredGraders = opts.grader
-            ? resolved.graders.filter(g => g.type === opts.grader)
-            : resolved.graders;
-        const evalOpts: EvalRunOptions = resolved.conversation
-            ? {
-                instruction: undefined,
-                conversation: resolved.conversation,
-                graders: filteredGraders,
-                timeoutSec: resolved.conversation.completion.timeout ?? resolved.timeout,
-                graderModel: resolved.grader_model,
-                environment: resolved.environment,
-            }
-            : {
-                instruction: resolved.instruction,
-                graders: filteredGraders,
-                timeoutSec: resolved.timeout,
-                graderModel: resolved.grader_model,
-                environment: resolved.environment,
-            };
-
         // Pick agent: CLI flag > task-level override > auto-detect from API key > default
         let agentName = opts.agent || resolved.agent;
         if (!opts.agent && !taskDef.agent) {
@@ -145,6 +125,34 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 else if (hasGemini) agentName = 'gemini';
             }
         }
+
+        // Host-auth passthrough for CLI-authenticated agents
+        const cliAgents = ['claude', 'codex'];
+        const useHostAuth = cliAgents.includes(agentName) && await isClaudeCliAvailable();
+
+        // Build eval options — pass resolved content directly
+        const filteredGraders = opts.grader
+            ? resolved.graders.filter(g => g.type === opts.grader)
+            : resolved.graders;
+        const evalOpts: EvalRunOptions = resolved.conversation
+            ? {
+                instruction: undefined,
+                conversation: resolved.conversation,
+                graders: filteredGraders,
+                timeoutSec: resolved.conversation.completion.timeout ?? resolved.timeout,
+                graderModel: resolved.grader_model,
+                environment: resolved.environment,
+                authMode: useHostAuth ? 'host' : undefined,
+            }
+            : {
+                instruction: resolved.instruction,
+                graders: filteredGraders,
+                timeoutSec: resolved.timeout,
+                graderModel: resolved.grader_model,
+                environment: resolved.environment,
+                authMode: useHostAuth ? 'host' : undefined,
+            };
+
         const provider = new LocalProvider();
 
         const runner = new EvalRunner(provider, resultsDir);
