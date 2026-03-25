@@ -168,9 +168,19 @@ ${transcript}
 Respond with ONLY a JSON object: {"score": <number>, "reasoning": "<brief explanation>"}`;
 
         try {
+            const rubricSchema = JSON.stringify({
+                type: 'object',
+                properties: {
+                    score: { type: 'number' },
+                    reasoning: { type: 'string' },
+                },
+                required: ['score', 'reasoning'],
+                additionalProperties: false,
+            });
             const response = await callLLM(prompt, {
                 model: config.model,
                 env,
+                jsonSchema: rubricSchema,
             });
             return this.parseResponse(response.text, config);
         } catch (error: any) {
