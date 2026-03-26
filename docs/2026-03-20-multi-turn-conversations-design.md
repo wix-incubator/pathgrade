@@ -1698,12 +1698,29 @@ Goals achieved:
 - `browser.ts` itself unchanged — it already serves the full report JSON; all rendering changes are in `viewer.html`
 - Added `sanitize()` coverage for `conversation.turns` fields (user_message, assistant_message, raw_agent_output, step_grader_results.details) — not in original spec but necessary for secret redaction parity
 
-### Phase 7: ck-new Example Eval (est. scope: small)
+### Phase 7: ck-new Example Eval (est. scope: small) — COMPLETE
+
+**Status:** Implemented.
 
 **New files:**
-- `examples/ck-new/eval.yaml` — updated with `conversation:` config
-- `examples/ck-new/graders/check-brief.js` — already created
-- `examples/ck-new/fixtures/` — already created
+- `examples/ck-new/eval.ts` — TypeScript eval config using `defineEval()` with two conversation tasks (scripted + persona)
+- `examples/ck-new/graders/check-brief.js` — deterministic grader checking `artifacts/project-brief-*.md` existence and required sections
+- `examples/ck-new/skill/` — bundled copy of the ck-new skill (SKILL.md, .claude-plugin/plugin.json, agents/openai.yaml)
+- `examples/ck-new/README.md` — example documentation
+
+**Deviations from design:**
+- Uses `eval.ts` with `defineEval()` instead of `eval.yaml` — the design doc Section 17 shows YAML, but the task called for TypeScript config
+- Skill is bundled at `skill/` with `skill: 'skill'` in the config, instead of referencing the absolute path `~/.claude/skills/ck-new` — makes the example self-contained and runnable without external dependencies
+- No `fixtures/` directory — ck-new is a conversational skill that creates its own output; no fixture files are needed
+- Reply patterns differ from Section 17: added KB enrichment skip pattern, reordered patterns to handle agent messages that mention "gameplan" during KB enrichment, and added `before moving` to the approval pattern
+
+**Infrastructure fixes made during Phase 7 (required for conversation evals to work):**
+- Grader assets staged in `.pathgrade/` hidden directory instead of workspace root — prevents the agent from seeing test scripts and rubrics during conversation turns
+- `LocalProvider` generates a `CLAUDE.md` in the workspace listing available skills — ensures Claude discovers skills in `-p` (pipe) mode
+- `ClaudeAgent` uses `--output-format json` and `--resume <session-id>` for multi-turn conversation continuation instead of `-c` flag — `-c` was unreliable in pipe mode
+- `ClaudeAgent` redirects stdin with `< /dev/null` to prevent "Warning: no stdin data received" noise
+- `callLLM()` now prefers Claude CLI when available, regardless of API keys — only falls back to API-key providers when a non-Claude model is explicitly requested
+- Agent auto-detection removed from `run.ts` — defaults to Claude (only supported agent currently)
 
 ### Phase 8: Design Doc Reconciliation (est. scope: small)
 
