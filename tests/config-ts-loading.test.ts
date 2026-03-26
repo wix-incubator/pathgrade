@@ -69,24 +69,8 @@ tasks:
     expect(config.tasks[0].name).toBe('from-ts');
   });
 
-  it('falls back to eval.yaml when eval.ts does not exist', async () => {
+  it('throws when eval.ts does not exist (no yaml fallback)', async () => {
     tmpDir = makeTmpDir();
-    fs.writeFileSync(path.join(tmpDir, 'eval.yaml'), `
-version: "1"
-tasks:
-  - name: yaml-task
-    instruction: from yaml
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`);
-
-    const config = await loadEvalConfig(tmpDir);
-    expect(config.tasks[0].name).toBe('yaml-task');
-  });
-
-  it('throws when neither eval.ts nor eval.yaml exist', async () => {
-    tmpDir = makeTmpDir();
-    await expect(loadEvalConfig(tmpDir)).rejects.toThrow('No eval.ts or eval.yaml found');
+    await expect(loadEvalConfig(tmpDir)).rejects.toThrow('No eval.ts found');
   });
 });

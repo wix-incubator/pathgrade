@@ -1,5 +1,5 @@
 /**
- * Parser and validator for eval config files (eval.ts or eval.yaml).
+ * Parser and validator for eval config files (eval.ts).
  */
 import * as fs from 'fs-extra';
 import * as path from 'path';
@@ -19,32 +19,14 @@ import { DEFAULT_CONFIG } from './defaults';
 
 /**
  * Load eval config from a directory.
- * Tries eval.ts first (TypeScript config), then eval.yaml.
+ * Loads eval.ts via jiti.
  */
 export async function loadEvalConfig(dir: string): Promise<EvalConfig> {
-    // Try eval.ts first
     const tsPath = path.join(dir, 'eval.ts');
-    if (await fs.pathExists(tsPath)) {
-        return loadEvalConfigFromTs(tsPath);
+    if (!await fs.pathExists(tsPath)) {
+        throw new Error(`No eval.ts found in ${dir}`);
     }
-
-    // Fall back to eval.yaml
-    const yamlPath = path.join(dir, 'eval.yaml');
-    if (!await fs.pathExists(yamlPath)) {
-        throw new Error(`No eval.ts or eval.yaml found in ${dir}`);
-    }
-
-    let yaml: any;
-    try {
-        yaml = require('js-yaml');
-    } catch {
-        throw new Error('js-yaml is required. Run: npm install js-yaml');
-    }
-
-    const content = await fs.readFile(yamlPath, 'utf-8');
-    const raw = yaml.load(content) as any;
-
-    return validateConfig(raw);
+    return loadEvalConfigFromTs(tsPath);
 }
 
 /**
