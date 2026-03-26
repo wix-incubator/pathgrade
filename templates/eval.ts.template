@@ -1,0 +1,39 @@
+import { defineEval } from '@wix/pathgrade';
+
+export default defineEval({
+  defaults: {
+    agent: 'gemini',
+    trials: 5,
+    timeout: 300,
+    threshold: 0.8,
+  },
+
+  tasks: [
+    {
+      name: '{{TASK_NAME}}',
+      instruction: `{{INSTRUCTION}}`,
+
+      // workspace: [
+      //   { src: 'fixtures/broken-file.js', dest: 'app.js' },
+      //   { src: 'bin/my-tool', dest: '/usr/local/bin/my-tool', chmod: '+x' },
+      // ],
+
+      graders: [
+        {
+          type: 'deterministic',
+          // Grader must output JSON: { "score": 0.0-1.0, "details": "...", "checks": [...] }
+          run: `echo '{"score": 0.0, "details": "TODO: implement grader"}'`,
+          weight: 0.7,
+        },
+        {
+          type: 'llm_rubric',
+          rubric: `TODO: Write evaluation criteria.`,
+          weight: 0.3,
+        },
+      ],
+
+      // Optional: reference solution for --validate
+      // solution: 'solutions/solve.sh',
+    },
+  ],
+});

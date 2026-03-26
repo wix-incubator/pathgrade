@@ -1,7 +1,7 @@
 /**
  * `pathgrade init` command.
  *
- * Detects skills in the current directory and generates an eval.yaml template.
+ * Detects skills in the current directory and generates an eval.ts config.
  * With an API key, uses an LLM to generate intelligent eval tasks.
  * Without an API key, generates a well-commented template.
  */
@@ -12,14 +12,14 @@ import { parseEnvFile } from '../utils/env';
 import { isClaudeCliAvailable, callClaudeCli } from '../utils/cli-llm';
 
 export async function runInit(dir: string, opts: { force?: boolean } = {}) {
-  const evalPath = path.join(dir, 'eval.yaml');
+  const evalPath = path.join(dir, 'eval.ts');
 
   if (await fs.pathExists(evalPath)) {
     if (opts.force) {
       await fs.remove(evalPath);
     } else {
-      console.error('  eval.yaml already exists. Use --force to overwrite.');
-      throw new Error('eval.yaml already exists');
+      console.error('  eval.ts already exists. Use --force to overwrite.');
+      throw new Error('eval.ts already exists');
     }
   }
 
@@ -71,7 +71,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
         config = await generateWithCli(skills);
       }
       await fs.writeFile(evalPath, config, 'utf-8');
-      spinner.stop(fmt.green('created eval.yaml (tip: you can also use eval.ts for type-safe config)'));
+      spinner.stop(fmt.green('created eval.ts'));
       console.log(`     Review and edit the file, then run: pathgrade\n`);
       return;
     } catch (err: any) {
@@ -90,7 +90,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
 }
 
 async function writeTemplate(evalPath: string, taskName: string, instruction: string) {
-  const templatePath = path.join(__dirname, '..', '..', 'templates', 'eval.yaml.template');
+  const templatePath = path.join(__dirname, '..', '..', 'templates', 'eval.ts.template');
   let template: string;
 
   if (await fs.pathExists(templatePath)) {
@@ -105,7 +105,7 @@ async function writeTemplate(evalPath: string, taskName: string, instruction: st
     .replace(/\{\{INSTRUCTION\}\}/g, instruction);
 
   await fs.writeFile(evalPath, result, 'utf-8');
-  console.log(`  Created eval.yaml (tip: you can also use eval.ts for type-safe config).`);
+  console.log(`  Created eval.ts.`);
   console.log(`     Edit the file to define your eval tasks, then run: pathgrade\n`);
 }
 
@@ -138,7 +138,7 @@ function extractInstructionHint(skillMd: string): string {
 }
 
 /**
- * Build the init prompt for eval.yaml generation.
+ * Build the init prompt for eval.ts generation.
  * Shared by both the API-key path (generateWithLLM) and CLI path (generateWithCli).
  */
 function buildInitPrompt(skills: Array<{ name: string; skillMd: string }>): string {
@@ -148,7 +148,7 @@ function buildInitPrompt(skills: Array<{ name: string; skillMd: string }>): stri
 
   return `You are an expert at creating evaluation tasks for AI agent skills.
 
-Given the following skill definition(s), generate an eval.yaml file that defines 1-2 evaluation tasks to test whether an AI agent correctly discovers and uses the skill.
+Given the following skill definition(s), generate an eval.ts file that defines 1-2 evaluation tasks to test whether an AI agent correctly discovers and uses the skill.
 
 For each task:
 - Write a realistic instruction (what a user would ask the agent to do)
@@ -171,53 +171,38 @@ CRITICAL — FILENAME CONSISTENCY:
 
 ${skillSummaries}
 
-Respond with ONLY the eval.yaml content. Use this exact format:
+Respond with ONLY the eval.ts file content. Start with the import statement. Use this format:
 
-version: "1"
+import { defineEval } from '@wix/pathgrade';
 
-defaults:
-  agent: gemini
-  trials: 5
-  timeout: 300
-  threshold: 0.8
-
-tasks:
-  - name: <descriptive-task-name>
-    instruction: |
-      <realistic user instruction>
-      Save <expected output> as <exact-filename>.
-    workspace:
-      # Files to copy into the agent's workspace (optional).
-      # Use string shorthand or src/dest objects:
-      # - fixtures/app.js                    # copies as app.js
-      # - src: templates/viewer.html
-      #   dest: templates/viewer.html
-    graders:
-      - type: deterministic
-        run: |
-          # Check conditions and output JSON
-          passed=0
-          total=2
-          c1_pass=false c1_msg="Check 1 failed"
-          c2_pass=false c2_msg="Check 2 failed"
-
-          if <check1>; then
-            passed=$((passed + 1))
-            c1_pass=true; c1_msg="Check 1 passed"
-          fi
-
-          if <check2>; then
-            passed=$((passed + 1))
-            c2_pass=true; c2_msg="Check 2 passed"
-          fi
-
-          score=$(awk "BEGIN {printf \\"%.2f\\", $passed/$total}")
-          echo "{\\"score\\":$score,\\"details\\":\\"$passed/$total checks passed\\",\\"checks\\":[{\\"name\\":\\"check1\\",\\"passed\\":$c1_pass,\\"message\\":\\"$c1_msg\\"},{\\"name\\":\\"check2\\",\\"passed\\":$c2_pass,\\"message\\":\\"$c2_msg\\"}]}"
-        weight: 0.7
-      - type: llm_rubric
-        rubric: |
-          <evaluation criteria>
-        weight: 0.3`;
+export default defineEval({
+  defaults: { agent: 'gemini', trials: 5, timeout: 300, threshold: 0.8 },
+  tasks: [
+    {
+      name: '<descriptive-task-name>',
+      instruction: \`<realistic user instruction>
+Save <expected output> as <exact-filename>.\`,
+      workspace: [
+        // Files to copy into the agent's workspace (optional).
+        // { src: 'fixtures/app.js', dest: 'app.js' },
+      ],
+      graders: [
+        {
+          type: 'deterministic',
+          run: \`# Check conditions and output JSON
+...
+echo '{"score": ..., "details": "...", "checks": [...]}'\`,
+          weight: 0.7,
+        },
+        {
+          type: 'llm_rubric',
+          rubric: \`<evaluation criteria>\`,
+          weight: 0.3,
+        },
+      ],
+    },
+  ],
+});`;
 }
 
 async function generateWithCli(
@@ -225,12 +210,12 @@ async function generateWithCli(
 ): Promise<string> {
     const prompt = buildInitPrompt(skills);
     const result = await callClaudeCli(prompt, { timeoutSec: 120 });
-    const yamlContent = result.text.replace(/```ya?ml\n?/g, '').replace(/```\n?/g, '').trim();
-    return yamlContent + '\n';
+    const tsContent = result.text.replace(/```(?:typescript|ts)?\n?/g, '').replace(/```\n?/g, '').trim();
+    return tsContent + '\n';
 }
 
 /**
- * Generate eval.yaml content using an LLM API.
+ * Generate eval.ts content using an LLM API.
  */
 async function generateWithLLM(
   skills: Array<{ name: string; skillMd: string }>,
@@ -309,35 +294,50 @@ async function generateWithLLM(
     if (!text) throw new Error('Empty response from Gemini API');
   }
 
-  // Extract YAML from response (strip markdown code fences if present)
-  const yamlContent = text.replace(/```ya?ml\n?/g, '').replace(/```\n?/g, '').trim();
-  return yamlContent + '\n';
+  // Extract TypeScript from response (strip markdown code fences if present)
+  const tsContent = text.replace(/```(?:typescript|ts)?\n?/g, '').replace(/```\n?/g, '').trim();
+  return tsContent + '\n';
 }
 
 function getInlineTemplate(): string {
-  return `version: "1"
+  return `import { defineEval } from '@wix/pathgrade';
 
-defaults:
-  agent: gemini
-  trials: 5
-  timeout: 300
-  threshold: 0.8
+export default defineEval({
+  defaults: {
+    agent: 'gemini',
+    trials: 5,
+    timeout: 300,
+    threshold: 0.8,
+  },
 
-tasks:
-  - name: {{TASK_NAME}}
-    instruction: |
-      {{INSTRUCTION}}
+  tasks: [
+    {
+      name: '{{TASK_NAME}}',
+      instruction: \`{{INSTRUCTION}}\`,
 
-    graders:
-      - type: deterministic
-        run: |
-          # Grader must output JSON: {"score": 0.0-1.0, "details": "...", "checks": [...]}
-          echo '{"score": 0.0, "details": "TODO: implement grader"}'
-        weight: 0.7
+      // workspace: [
+      //   { src: 'fixtures/broken-file.js', dest: 'app.js' },
+      //   { src: 'bin/my-tool', dest: '/usr/local/bin/my-tool', chmod: '+x' },
+      // ],
 
-      - type: llm_rubric
-        rubric: |
-          TODO: Write evaluation criteria.
-        weight: 0.3
+      graders: [
+        {
+          type: 'deterministic',
+          // Grader must output JSON: { "score": 0.0-1.0, "details": "...", "checks": [...] }
+          run: \`echo '{"score": 0.0, "details": "TODO: implement grader"}'\`,
+          weight: 0.7,
+        },
+        {
+          type: 'llm_rubric',
+          rubric: \`TODO: Write evaluation criteria.\`,
+          weight: 0.3,
+        },
+      ],
+
+      // Optional: reference solution for --validate
+      // solution: 'solutions/solve.sh',
+    },
+  ],
+});
 `;
 }
