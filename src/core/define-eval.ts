@@ -6,7 +6,7 @@ import { validateConfig } from './config';
  * All defaults are optional — same defaults as EvalConfig.
  */
 export function defineEval(input: DefineEvalInput): EvalConfig {
-    const raw: Record<string, any> = {
+    const raw: Record<string, unknown> = {
         version: input.version || '1',
         skillPath: input.skillPath,
         defaults: input.defaults ? {

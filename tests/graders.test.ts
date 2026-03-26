@@ -371,17 +371,19 @@ describe('LLMGrader', () => {
 
     const originalFetch = globalThis.fetch;
     let capturedBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: any) => {
-      capturedBody = JSON.parse(opts.body);
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+      capturedBody = JSON.parse(opts.body as string);
       return {
+        ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
         }),
+        text: () => Promise.resolve(''),
       };
     });
 
     const provider = makeProvider('');
-    const sessionLog = [
+    const sessionLog: import('../src/types').LogEntry[] = [
       { type: 'agent_start', instruction: 'Do something', timestamp: '' },
       { type: 'command', command: 'ls', stdout: 'file.txt', stderr: '', exitCode: 0, timestamp: '' },
       { type: 'agent_result', output: 'Done!', timestamp: '' },
@@ -406,17 +408,19 @@ describe('LLMGrader', () => {
 
     const originalFetch = globalThis.fetch;
     let capturedBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: any) => {
-      capturedBody = JSON.parse(opts.body);
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+      capturedBody = JSON.parse(opts.body as string);
       return {
+        ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: '{"score": 0.8, "reasoning": "covers the whole conversation"}' }] } }],
         }),
+        text: () => Promise.resolve(''),
       };
     });
 
     const provider = makeProvider('');
-    const sessionLog = [
+    const sessionLog: import('../src/types').LogEntry[] = [
       { type: 'agent_start', instruction: 'Help me start a project.', timestamp: '' },
       { type: 'user_reply', output: 'Help me start a project.', turn_number: 1, reply_source: 'opener', timestamp: '' },
       { type: 'agent_result', output: 'raw turn one', assistant_message: 'What is your goal?', turn_number: 1, timestamp: '' },

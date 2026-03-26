@@ -19,6 +19,73 @@ import {
 } from './config.types';
 import { DEFAULT_CONFIG } from './defaults';
 
+/** Raw (unvalidated) input shape for validateConfig. */
+interface RawEvalConfig {
+    version?: string;
+    skillPath?: string;
+    defaults?: Record<string, unknown> & {
+        provider?: unknown;
+        docker?: unknown;
+        agent?: string;
+        trials?: number;
+        timeout?: number;
+        threshold?: number;
+        grader_model?: string;
+        environment?: Partial<EnvironmentConfig>;
+    };
+    tasks?: RawTask[];
+}
+
+interface RawTask {
+    name?: string;
+    type?: string;
+    instruction?: string;
+    conversation?: RawConversation;
+    workspace?: (string | { src?: string; dest?: string; chmod?: string })[];
+    graders?: RawGrader[];
+    solution?: string;
+    agent?: string;
+    trials?: number;
+    timeout?: number;
+    grader_model?: string;
+    environment?: Partial<EnvironmentConfig>;
+    provider?: unknown;
+    docker?: unknown;
+}
+
+interface RawConversation {
+    opener?: string;
+    completion?: {
+        max_turns?: number;
+        signal?: string;
+        done_phrase?: string;
+        done_when?: string;
+        timeout?: number;
+    };
+    replies?: RawReply[];
+    persona?: { description?: string; facts?: string[]; model?: string };
+    step_graders?: RawStepGrader[];
+}
+
+interface RawReply {
+    content?: string;
+    when?: string;
+}
+
+interface RawStepGrader {
+    after_turn?: number;
+    graders?: RawGrader[];
+}
+
+interface RawGrader {
+    type?: string;
+    setup?: string;
+    run?: string;
+    rubric?: string;
+    model?: string;
+    weight?: number;
+}
+
 /**
  * Load eval config from a directory.
  * Loads eval.ts via jiti.
@@ -35,13 +102,13 @@ export async function loadEvalConfig(dir: string): Promise<EvalConfig> {
  * Load eval config from a TypeScript file using jiti.
  */
 async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
-    let mod: any;
+    let mod: { default?: unknown; [key: string]: unknown };
     try {
         const { createJiti } = require('jiti');
         const jiti = createJiti(__filename);
         mod = await jiti.import(path.resolve(filePath));
-    } catch (e: any) {
-        throw new Error(`Failed to load eval.ts: ${e.message}. Ensure jiti is installed: npm install jiti`);
+    } catch (e: unknown) {
+        throw new Error(`Failed to load eval.ts: ${(e as Error).message}. Ensure jiti is installed: npm install jiti`);
     }
 
     const config = mod.default || mod;
@@ -56,37 +123,39 @@ async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
 /**
  * Validates a raw config object into a typed EvalConfig.
  */
-export function validateConfig(raw: any): EvalConfig {
+export function validateConfig(raw: unknown): EvalConfig {
     if (!raw || typeof raw !== 'object') {
         throw new Error('Config must be an object');
     }
+    const config = raw as RawEvalConfig;
 
-    if (raw.defaults?.provider !== undefined) {
+    if (config.defaults?.provider !== undefined) {
         throw new Error('Config no longer supports defaults.provider; pathgrade runs locally only');
     }
-    if (raw.defaults?.docker !== undefined) {
+    if (config.defaults?.docker !== undefined) {
         throw new Error('Config no longer supports defaults.docker; pathgrade runs locally only');
     }
 
-    const version = raw.version || '1';
-    const defaults: EvalDefaults = {
+    const version = config.version || '1';
+    const mergedDefaults = {
         ...DEFAULT_CONFIG,
-        ...(raw.defaults || {}),
+        ...(config.defaults || {}),
         environment: {
             ...DEFAULT_CONFIG.environment,
-            ...(raw.defaults?.environment || {}),
+            ...(config.defaults?.environment || {}),
         },
     };
 
-    if (defaults.agent && !(VALID_AGENTS as readonly string[]).includes(defaults.agent)) {
-        throw new Error(`Invalid agent "${defaults.agent}". Must be one of: ${VALID_AGENTS.join(', ')}`);
+    if (mergedDefaults.agent && !(VALID_AGENTS as readonly string[]).includes(mergedDefaults.agent)) {
+        throw new Error(`Invalid agent "${mergedDefaults.agent}". Must be one of: ${VALID_AGENTS.join(', ')}`);
     }
+    const defaults = mergedDefaults as EvalDefaults;
 
-    if (!raw.tasks || !Array.isArray(raw.tasks) || raw.tasks.length === 0) {
+    if (!config.tasks || !Array.isArray(config.tasks) || config.tasks.length === 0) {
         throw new Error('Config must have at least one task in the "tasks" array');
     }
 
-    const tasks: EvalTaskConfig[] = raw.tasks.map((t: any, i: number) => {
+    const tasks: EvalTaskConfig[] = config.tasks.map((t: RawTask, i: number) => {
         if (!t.name) throw new Error(`Task ${i} is missing a "name"`);
         if (!t.type || (t.type !== 'instruction' && t.type !== 'conversation')) {
             throw new Error(`Task "${t.name || i}" is missing a "type" field. Must be 'instruction' or 'conversation'. Got: ${JSON.stringify(t.type)}`);
@@ -146,7 +215,7 @@ export function validateConfig(raw: any): EvalConfig {
             }
         }
 
-        const workspace: WorkspaceMapping[] = (t.workspace || []).map((w: any) => {
+        const workspace: WorkspaceMapping[] = (t.workspace || []).map((w) => {
             if (typeof w === 'string') {
                 // Support shorthand: "fixtures/app.js" → same filename in workspace
                 return { src: w, dest: path.basename(w) };
@@ -160,7 +229,7 @@ export function validateConfig(raw: any): EvalConfig {
         const base = {
             name: t.name,
             workspace,
-            graders: t.graders.map((g: any) => ({
+            graders: (t.graders || []).map((g: RawGrader) => ({
                 type: g.type,
                 setup: g.setup,
                 run: g.run,
@@ -181,9 +250,9 @@ export function validateConfig(raw: any): EvalConfig {
                 ...base,
                 type: 'conversation' as const,
                 conversation: {
-                    opener: t.conversation.opener,
-                    completion: { ...t.conversation.completion },
-                    replies: t.conversation.replies?.map((reply: any) => {
+                    opener: t.conversation!.opener,
+                    completion: { ...t.conversation!.completion },
+                    replies: t.conversation!.replies?.map((reply: RawReply) => {
                         if (!reply?.content) {
                             throw new Error(`Task "${t.name}" conversation replies must include "content"`);
                         }
@@ -192,14 +261,14 @@ export function validateConfig(raw: any): EvalConfig {
                             when: reply.when,
                         };
                     }),
-                    persona: t.conversation.persona ? {
-                        description: t.conversation.persona.description,
-                        facts: t.conversation.persona.facts,
-                        model: t.conversation.persona.model,
+                    persona: t.conversation!.persona ? {
+                        description: t.conversation!.persona.description,
+                        facts: t.conversation!.persona.facts,
+                        model: t.conversation!.persona.model,
                     } : undefined,
-                    step_graders: t.conversation.step_graders?.map((sg: any) => ({
+                    step_graders: t.conversation!.step_graders?.map((sg: RawStepGrader) => ({
                         after_turn: sg.after_turn,
-                        graders: sg.graders.map((g: any) => ({
+                        graders: (sg.graders || []).map((g: RawGrader) => ({
                             type: g.type,
                             setup: g.setup,
                             run: g.run,
@@ -209,16 +278,16 @@ export function validateConfig(raw: any): EvalConfig {
                         })),
                     })),
                 },
-            };
+            } as EvalTaskConfig;
         }
         return {
             ...base,
             type: 'instruction' as const,
             instruction: t.instruction,
-        };
+        } as EvalTaskConfig;
     });
 
-    return { version, skillPath: raw.skillPath, defaults, tasks };
+    return { version, skillPath: config.skillPath, defaults, tasks };
 }
 
 /**

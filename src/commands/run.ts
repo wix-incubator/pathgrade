@@ -11,7 +11,7 @@ import { detectSkills } from '../core/skills';
 import { LocalProvider } from '../providers/local';
 import { EvalRunner, EvalRunOptions } from '../evalRunner';
 import { createAgent } from '../agents/registry';
-import { BaseAgent, EvalReport } from '../types';
+import { AgentCommandRunner, BaseAgent, EvalReport } from '../types';
 import { ResolvedTask, AgentName } from '../core/config.types';
 import { parseEnvFile } from '../utils/env';
 import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
@@ -164,7 +164,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
             header(`validate: ${resolved.name}`);
 
             const solveAgent = {
-                async run(_instruction: string, _workspace: string, runCommand: any) {
+                async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
                     const result = await runCommand(`bash ${path.basename(resolved.solution!)}`);
                     return result.stdout;
                 }

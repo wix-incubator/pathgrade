@@ -1,5 +1,20 @@
 import { isClaudeCliAvailable, callClaudeCli } from './cli-llm';
 
+interface GeminiResponse {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+}
+
+interface AnthropicResponse {
+    content?: { text?: string }[];
+    usage?: { input_tokens?: number; output_tokens?: number };
+}
+
+interface OpenAIResponse {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+
 export interface LLMCallOptions {
     model?: string;
     env?: Record<string, string>;
@@ -102,7 +117,7 @@ async function callGemini(
             throw new Error(`Gemini API error (${response.status}): ${errBody.slice(0, 300)}`);
         }
 
-        const data = await response.json() as any;
+        const data = await response.json() as GeminiResponse;
         return {
             text: data?.candidates?.[0]?.content?.parts?.[0]?.text || '',
             inputTokens: data?.usageMetadata?.promptTokenCount,
@@ -142,7 +157,7 @@ async function callAnthropic(
             throw new Error(`Anthropic API error (${response.status}): ${errBody.slice(0, 300)}`);
         }
 
-        const data = await response.json() as any;
+        const data = await response.json() as AnthropicResponse;
         return {
             text: data?.content?.[0]?.text || '',
             inputTokens: data?.usage?.input_tokens,
@@ -184,7 +199,7 @@ async function callOpenAI(
             throw new Error(`OpenAI API error (${response.status}): ${errBody.slice(0, 300)}`);
         }
 
-        const data = await response.json() as any;
+        const data = await response.json() as OpenAIResponse;
         return {
             text: data?.choices?.[0]?.message?.content || '',
             inputTokens: data?.usage?.prompt_tokens,

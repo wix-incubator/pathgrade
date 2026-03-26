@@ -74,8 +74,8 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
       spinner.stop(fmt.green('created eval.ts'));
       console.log(`     Review and edit the file, then run: pathgrade\n`);
       return;
-    } catch (err: any) {
-      spinner.stop(fmt.red(`AI generation failed: ${err.message}`));
+    } catch (err: unknown) {
+      spinner.stop(fmt.red(`AI generation failed: ${(err as Error).message}`));
       console.log('     Falling back to template.\n');
     }
   } else {
@@ -248,8 +248,8 @@ async function generateWithLLM(
       throw new Error(`Anthropic API returned ${response.status}`);
     }
 
-    const data = await response.json() as any;
-    text = data.content?.[0]?.text;
+    const data = await response.json() as { content?: { text?: string }[] };
+    text = data.content?.[0]?.text ?? '';
     if (!text) throw new Error('Empty response from Anthropic API');
   } else if (provider === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -271,8 +271,8 @@ async function generateWithLLM(
       throw new Error(`OpenAI API returned ${response.status}`);
     }
 
-    const data = await response.json() as any;
-    text = data.choices?.[0]?.message?.content;
+    const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+    text = data.choices?.[0]?.message?.content ?? '';
     if (!text) throw new Error('Empty response from OpenAI API');
   } else {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
@@ -289,8 +289,8 @@ async function generateWithLLM(
       throw new Error(`Gemini API returned ${response.status}`);
     }
 
-    const data = await response.json() as any;
-    text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const data = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     if (!text) throw new Error('Empty response from Gemini API');
   }
 

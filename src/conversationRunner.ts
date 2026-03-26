@@ -453,9 +453,9 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
             personaInputTokens += reply.personaInputTokens ?? 0;
             personaOutputTokens += reply.personaOutputTokens ?? 0;
             nextReply = reply;
-        } catch (err: any) {
+        } catch (err: unknown) {
             const durationMs = Date.now() - turnStart;
-            const errorMessage = err?.message || String(err);
+            const errorMessage = (err as Error)?.message || String(err);
             const timedOut = errorMessage.includes('timed out after');
 
             turns.push({

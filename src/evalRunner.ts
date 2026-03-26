@@ -288,9 +288,9 @@ export class EvalRunner {
                 session_log: sessionLog,
                 conversation: conversationData,
             };
-        } catch (error: any) {
+        } catch (error: unknown) {
             const duration_ms = Date.now() - startTime;
-            const errorMsg = error?.message || String(error);
+            const errorMsg = (error as Error)?.message || String(error);
             spinner.stop(`${fmt.fail('FAIL')}  ${errorMsg.substring(0, 50)}  ${fmt.dim((duration_ms / 1000).toFixed(1) + 's')}`);
 
             let diagnostics = '';

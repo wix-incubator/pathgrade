@@ -1,4 +1,4 @@
-import { GraderConfig, GraderResult, EnvironmentProvider, EnvironmentHandle } from '../types';
+import { GraderConfig, GraderResult, EnvironmentProvider, EnvironmentHandle, LogEntry } from '../types';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { callLLM } from '../utils/llm';
@@ -9,7 +9,7 @@ export interface Grader {
         provider: EnvironmentProvider,
         config: GraderConfig,
         taskPath: string,
-        sessionLog: any[],
+        sessionLog: LogEntry[],
         env?: Record<string, string>
     ): Promise<GraderResult>;
 }
@@ -30,7 +30,7 @@ export class DeterministicGrader implements Grader {
         provider: EnvironmentProvider,
         config: GraderConfig,
         _taskPath: string,
-        _sessionLog: any[],
+        _sessionLog: LogEntry[],
         env?: Record<string, string>
     ): Promise<GraderResult> {
         const command = config.command || 'bash .pathgrade/tests/test.sh';
@@ -54,7 +54,7 @@ export class DeterministicGrader implements Grader {
             const checks = parsed.checks || [];
 
             // Build rich details string with per-check breakdown
-            const checkLines = checks.map((c: any) =>
+            const checkLines = checks.map((c: { passed?: boolean; name?: string; message?: string }) =>
                 `  ${c.passed ? '✓' : '✗'} ${c.name}: ${c.message || ''}`
             );
             const fullDetails = checkLines.length > 0
@@ -88,7 +88,7 @@ export class LLMGrader implements Grader {
         _provider: EnvironmentProvider,
         config: GraderConfig,
         taskPath: string,
-        sessionLog: any[],
+        sessionLog: LogEntry[],
         env?: Record<string, string>
     ): Promise<GraderResult> {
         const rubricPath = path.join(taskPath, config.rubric || '.pathgrade/prompts/quality.md');
@@ -209,12 +209,12 @@ Respond with ONLY a JSON object: {"score": <number>, "reasoning": "<brief explan
                 jsonSchema: rubricSchema,
             });
             return this.parseResponse(response.text, config);
-        } catch (error: any) {
+        } catch (error: unknown) {
             return {
                 grader_type: 'llm_rubric',
                 score: 0,
                 weight: config.weight,
-                details: error?.message || String(error),
+                details: (error as Error)?.message || String(error),
             };
         }
     }
