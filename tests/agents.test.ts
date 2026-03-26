@@ -105,34 +105,55 @@ describe('GeminiAgent', () => {
 });
 
 describe('ClaudeAgent', () => {
-  it('writes instruction via base64 and runs claude CLI', async () => {
+  function makeClaudeEnvelope(result: string, sessionId = 'sess-abc-123') {
+    return JSON.stringify({ result, session_id: sessionId });
+  }
+
+  it('writes instruction via base64 and runs claude CLI with JSON output', async () => {
     const agent = new ClaudeAgent();
     const commands: string[] = [];
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
       commands.push(cmd);
-      return { stdout: 'output', stderr: '', exitCode: 0 };
+      if (cmd.includes('claude')) {
+        return { stdout: makeClaudeEnvelope('Hello from Claude'), stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
     });
 
     const result = await agent.run('Test instruction', '/workspace', mockRunCommand);
 
     expect(commands).toHaveLength(2);
     expect(commands[0]).toContain('base64');
-    expect(commands[0]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
     expect(commands[1]).toContain('claude');
     expect(commands[1]).toContain('-p');
+    expect(commands[1]).toContain('--output-format json');
     expect(commands[1]).toContain('--dangerously-skip-permissions');
-    expect(result).toContain('output');
+    expect(commands[1]).toContain('< /dev/null');
+    expect(result).toBe('Hello from Claude');
   });
 
-  it('returns combined stdout and stderr', async () => {
+  it('parses JSON envelope and extracts result text', async () => {
+    const agent = new ClaudeAgent();
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: makeClaudeEnvelope('Extracted response'), stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test', '/workspace', mockRunCommand);
+    expect(result).toBe('Extracted response');
+  });
+
+  it('falls back to raw stdout when JSON parsing fails', async () => {
     const agent = new ClaudeAgent();
     const mockRunCommand = vi.fn()
       .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 })
-      .mockResolvedValueOnce({ stdout: 'claude-out', stderr: 'claude-err', exitCode: 0 });
+      .mockResolvedValueOnce({ stdout: 'plain text output', stderr: 'some warning', exitCode: 0 });
 
     const result = await agent.run('Test', '/workspace', mockRunCommand);
-    expect(result).toContain('claude-out');
-    expect(result).toContain('claude-err');
+    expect(result).toContain('plain text output');
+    expect(result).toContain('some warning');
   });
 
   it('handles non-zero exit code without throwing', async () => {
@@ -151,6 +172,9 @@ describe('ClaudeAgent', () => {
     let capturedCmd = '';
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
       if (cmd.includes('base64')) capturedCmd = cmd;
+      if (cmd.includes('claude')) {
+        return { stdout: makeClaudeEnvelope('ok'), stderr: '', exitCode: 0 };
+      }
       return { stdout: '', stderr: '', exitCode: 0 };
     });
 
@@ -160,21 +184,37 @@ describe('ClaudeAgent', () => {
     expect(capturedCmd).toContain(expectedB64);
   });
 
-  it('uses native continuation when replying in a session', async () => {
+  it('captures session_id from first turn and uses --resume for continuation', async () => {
     const agent = new ClaudeAgent();
     const commands: string[] = [];
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
       commands.push(cmd);
-      return { stdout: 'output', stderr: '', exitCode: 0 };
+      if (cmd.includes('claude')) {
+        return {
+          stdout: makeClaudeEnvelope('response text', 'test-session-123'),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
     });
 
     const session = await agent.createSession('/workspace', mockRunCommand);
-    await session.start({ message: 'First turn' });
-    await session.reply({ message: 'Second turn', continueSession: true });
+    const turn1 = await session.start({ message: 'First turn' });
+    const turn2 = await session.reply({ message: 'Second turn', continueSession: true });
 
-    expect(commands).toHaveLength(4);
-    expect(commands[1]).toContain('claude -p --dangerously-skip-permissions');
-    expect(commands[3]).toContain('claude -p -c --dangerously-skip-permissions');
+    // Both turns should parse the envelope
+    expect(turn1.assistantMessage).toBe('response text');
+    expect(turn2.assistantMessage).toBe('response text');
+
+    // First turn: no --resume
+    expect(commands[1]).toContain('claude -p');
+    expect(commands[1]).toContain('--output-format json');
+    expect(commands[1]).not.toContain('--resume');
+
+    // Second turn: uses --resume with session_id from first turn
+    expect(commands[3]).toContain('--resume test-session-123');
+    expect(commands[3]).toContain('--dangerously-skip-permissions');
   });
 });
 

@@ -12,6 +12,12 @@ vi.mock('./graders', () => ({
   getGrader: vi.fn(),
 }));
 
+// Force tests to use API-key path instead of Claude CLI
+vi.mock('../src/utils/cli-llm', () => ({
+  isClaudeCliAvailable: vi.fn().mockResolvedValue(false),
+  callClaudeCli: vi.fn(),
+}));
+
 import * as fs from 'fs-extra';
 import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
 import { BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';

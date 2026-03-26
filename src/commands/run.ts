@@ -111,20 +111,9 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const tmpTaskDir = path.join(outputDir, 'tmp', resolved.name);
         await prepareTempTaskDir(resolved, dir, tmpTaskDir);
 
-        // Pick agent: CLI flag > task-level override > auto-detect from API key > default
-        let agentName = opts.agent || resolved.agent;
-        if (!opts.agent && !taskDef.agent) {
-            // No explicit override — auto-detect from available API keys
-            const hasGemini = !!env.GEMINI_API_KEY;
-            const hasAnthropic = !!env.ANTHROPIC_API_KEY;
-            const hasOpenAI = !!env.OPENAI_API_KEY;
-            const keyCount = [hasGemini, hasAnthropic, hasOpenAI].filter(Boolean).length;
-            if (keyCount === 1) {
-                if (hasAnthropic) agentName = 'claude';
-                else if (hasOpenAI) agentName = 'codex';
-                else if (hasGemini) agentName = 'gemini';
-            }
-        }
+        // Pick agent: CLI flag > task-level override > default
+        // Currently only Claude is supported as the solver agent.
+        const agentName = opts.agent || resolved.agent || 'claude';
 
         // Host-auth passthrough for CLI-authenticated agents
         const cliAgents = ['claude', 'codex'];
@@ -236,25 +225,30 @@ export async function runEvals(dir: string, opts: RunOptions) {
  * Contains shared workspace files and grader scripts for the local runtime.
  * No longer writes task.toml or instruction.md — those are passed directly.
  */
-async function prepareTempTaskDir(
+export async function prepareTempTaskDir(
     resolved: ResolvedTask,
     baseDir: string,
     tmpDir: string
 ) {
     await fs.ensureDir(tmpDir);
 
+    // Stage grader assets in a hidden .pathgrade directory so the agent
+    // doesn't see them when exploring the workspace during conversation evals.
+    const graderRoot = path.join(tmpDir, '.pathgrade');
+
     // Write each deterministic grader script
-    await fs.ensureDir(path.join(tmpDir, 'tests'));
+    await fs.ensureDir(path.join(graderRoot, 'tests'));
     const detGraders = resolved.graders.filter(g => g.type === 'deterministic');
     for (let i = 0; i < detGraders.length; i++) {
         if (detGraders[i].run) {
             const script = `#!/bin/bash\n${detGraders[i].run!.trim()}\n`;
             const filename = i === 0 ? 'test.sh' : `test_${i}.sh`;
-            await fs.writeFile(path.join(tmpDir, 'tests', filename), script);
+            await fs.writeFile(path.join(graderRoot, 'tests', filename), script);
         }
     }
 
-    // Copy referenced grader files/directories
+    // Copy referenced grader files/directories to workspace root (not .pathgrade)
+    // because grader scripts reference them by relative path from the workspace.
     for (const g of resolved.graders) {
         if (g.type === 'deterministic' && g.run) {
             const pathMatches = g.run.match(/[\w./-]+\.\w{1,4}/g) || [];
@@ -270,32 +264,32 @@ async function prepareTempTaskDir(
     }
 
     // Write each LLM rubric
-    await fs.ensureDir(path.join(tmpDir, 'prompts'));
+    await fs.ensureDir(path.join(graderRoot, 'prompts'));
     const llmGraders = resolved.graders.filter(g => g.type === 'llm_rubric');
     for (let i = 0; i < llmGraders.length; i++) {
         if (llmGraders[i].rubric) {
             const filename = i === 0 ? 'quality.md' : `quality_${i}.md`;
-            await fs.writeFile(path.join(tmpDir, 'prompts', filename), llmGraders[i].rubric!);
+            await fs.writeFile(path.join(graderRoot, 'prompts', filename), llmGraders[i].rubric!);
         }
     }
 
     // Write step grader assets into namespaced subdirectories
     if (resolved.conversation?.step_graders) {
-        await fs.ensureDir(path.join(tmpDir, 'tests', 'steps'));
-        await fs.ensureDir(path.join(tmpDir, 'prompts', 'steps'));
+        await fs.ensureDir(path.join(graderRoot, 'tests', 'steps'));
+        await fs.ensureDir(path.join(graderRoot, 'prompts', 'steps'));
         for (const sg of resolved.conversation.step_graders) {
             for (let gIdx = 0; gIdx < sg.graders.length; gIdx++) {
                 const g = sg.graders[gIdx];
                 if (g.type === 'deterministic' && g.run) {
                     const script = `#!/bin/bash\n${g.run.trim()}\n`;
                     await fs.writeFile(
-                        path.join(tmpDir, 'tests', 'steps', `turn_${sg.after_turn}_${gIdx}.sh`),
+                        path.join(graderRoot, 'tests', 'steps', `turn_${sg.after_turn}_${gIdx}.sh`),
                         script
                     );
                 }
                 if (g.type === 'llm_rubric' && g.rubric) {
                     await fs.writeFile(
-                        path.join(tmpDir, 'prompts', 'steps', `turn_${sg.after_turn}_${gIdx}.md`),
+                        path.join(graderRoot, 'prompts', 'steps', `turn_${sg.after_turn}_${gIdx}.md`),
                         g.rubric
                     );
                 }

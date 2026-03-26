@@ -33,7 +33,7 @@ export class DeterministicGrader implements Grader {
         _sessionLog: any[],
         env?: Record<string, string>
     ): Promise<GraderResult> {
-        const command = config.command || 'bash tests/test.sh';
+        const command = config.command || 'bash .pathgrade/tests/test.sh';
         const result = await provider.runCommand(workspace, command, env);
 
         // Parse JSON from stdout
@@ -91,7 +91,7 @@ export class LLMGrader implements Grader {
         sessionLog: any[],
         env?: Record<string, string>
     ): Promise<GraderResult> {
-        const rubricPath = path.join(taskPath, config.rubric || 'prompts/quality.md');
+        const rubricPath = path.join(taskPath, config.rubric || '.pathgrade/prompts/quality.md');
         if (!await fs.pathExists(rubricPath)) {
             return {
                 grader_type: 'llm_rubric',

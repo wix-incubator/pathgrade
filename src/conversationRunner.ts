@@ -144,10 +144,10 @@ async function runStepGraders(
             const graderConfig = {
                 type: graderDef.type,
                 command: graderDef.type === 'deterministic'
-                    ? `bash tests/steps/turn_${turnNumber}_${graderIdx}.sh`
+                    ? `bash .pathgrade/tests/steps/turn_${turnNumber}_${graderIdx}.sh`
                     : undefined,
                 rubric: graderDef.type === 'llm_rubric'
-                    ? `prompts/steps/turn_${turnNumber}_${graderIdx}.md`
+                    ? `.pathgrade/prompts/steps/turn_${turnNumber}_${graderIdx}.md`
                     : undefined,
                 model: graderDef.model || opts.graderModel,
                 weight: graderDef.weight,
@@ -331,6 +331,7 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
 
             const assistantMessage = normalizeAssistantMessage(turnResult.rawOutput, turnResult.assistantMessage);
             const durationMs = Date.now() - turnStart;
+
 
             turns.push({
                 turn_number: turnNumber,

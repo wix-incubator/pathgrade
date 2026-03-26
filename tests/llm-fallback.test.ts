@@ -51,28 +51,17 @@ describe('callLLM CLI-first fallback', () => {
         expect(mockCallCli).not.toHaveBeenCalled();
     });
 
-    it('uses API keys directly when explicitly provided in env', async () => {
-        // When env has an API key, skip CLI and use the HTTP path.
-        // We don't mock fetch — we just verify CLI was NOT called and the
-        // function attempts the API path (which will fail without a real key,
-        // but the important assertion is that CLI was bypassed).
+    it('prefers CLI over API keys when CLI is available', async () => {
+        // CLI is always preferred when available, even if API keys are present.
+        // API keys are only used when CLI is unavailable or a non-Claude model is requested.
         mockIsAvailable.mockResolvedValue(true);
-        // Stub fetch to simulate a successful Anthropic response
-        const fakeFetch = vi.fn().mockResolvedValue({
-            json: async () => ({
-                content: [{ text: 'api response' }],
-                usage: { input_tokens: 10, output_tokens: 5 },
-            }),
-        });
-        vi.stubGlobal('fetch', fakeFetch);
+        mockCallCli.mockResolvedValue({ text: 'cli response', provider: 'cli', model: 'claude-cli' });
 
         const result = await callLLM('test', {
             env: { ANTHROPIC_API_KEY: 'sk-test-key' },
         });
-        expect(mockCallCli).not.toHaveBeenCalled();
-        expect(result.provider).toBe('anthropic');
-
-        vi.unstubAllGlobals();
+        expect(mockCallCli).toHaveBeenCalled();
+        expect(result.provider).toBe('cli');
     });
 
     it('skips CLI when opts.model specifies a non-Claude model', async () => {

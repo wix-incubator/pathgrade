@@ -38,6 +38,37 @@ export class LocalProvider implements EnvironmentProvider {
             }
         }
 
+        // Generate a CLAUDE.md that tells the agent about available skills.
+        // Without this, the agent may not discover skills in -p (pipe) mode.
+        if (skillsPaths.length > 0) {
+            const skillEntries: string[] = [];
+            for (const spath of skillsPaths) {
+                const skillMdPath = path.join(spath, 'SKILL.md');
+                if (await fs.pathExists(skillMdPath)) {
+                    const content = await fs.readFile(skillMdPath, 'utf-8');
+                    // Extract name and description from frontmatter
+                    const nameMatch = content.match(/^name:\s*(.+)$/m);
+                    const descMatch = content.match(/^description:\s*(.+)$/m);
+                    const name = nameMatch?.[1]?.trim() || path.basename(spath);
+                    const desc = descMatch?.[1]?.trim() || '';
+                    skillEntries.push(`- **${name}**: ${desc}`);
+                }
+            }
+
+            if (skillEntries.length > 0) {
+                const claudeMd = [
+                    '# Project Skills',
+                    '',
+                    'This project has the following skills available. When the user\'s request matches a skill, follow it exactly.',
+                    '',
+                    ...skillEntries,
+                    '',
+                    'Skills are located in `.claude/skills/`. Read the SKILL.md to understand the full workflow before responding.',
+                ].join('\n');
+                await fs.writeFile(path.join(workspacePath, 'CLAUDE.md'), claudeMd);
+            }
+        }
+
         if (opts.authMode === 'host') {
             // Host-auth passthrough: keep real HOME for CLI auth.
             // Only isolate TMPDIR so agent temp files don't pollute.

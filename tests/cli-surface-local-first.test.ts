@@ -27,7 +27,7 @@ describe('local-first CLI surface', () => {
     const output = getHelpOutput();
 
     expect(output).not.toContain('--provider=');
-    expect(output).toContain('--agent=gemini|claude|codex');
+    expect(output).toContain('--agent=claude');
     expect(output).toContain('Output directory');
   });
 

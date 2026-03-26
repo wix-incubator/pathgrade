@@ -184,27 +184,13 @@ async function callOpenAI(
 
 export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promise<LLMCallResult> {
     const keys = getApiKeys(opts.env);
-    const hasExplicitKey = Object.values(keys).some(Boolean);
 
-    // CLI-first: when no API keys are available, try Claude CLI.
-    // This must fire BEFORE getProviderSequence(), because getProviderSequence
-    // throws when a model is explicitly requested (e.g., "claude-3-5-sonnet")
-    // but no matching key exists. In keyless CLI mode, that throw is wrong —
-    // the CLI handles auth via OAuth, not via API key env vars.
-    if (!hasExplicitKey && await isClaudeCliAvailable()) {
-        // Guard: if opts.model specifies a non-Claude model, don't silently
-        // substitute Claude. The user explicitly asked for a different provider.
-        const requestedProvider = inferProviderFromModel(opts.model);
-        if (requestedProvider && requestedProvider !== 'anthropic') {
-            // Non-Claude model requested but no API key for it — throw
-            // rather than silently using Claude CLI.
-            throw new Error(
-                `No API key for model "${opts.model}". ` +
-                `CLI fallback only supports Claude models. ` +
-                `Set ${requestedProvider === 'gemini' ? 'GEMINI_API_KEY' : requestedProvider === 'openai' ? 'OPENAI_API_KEY' : 'the appropriate API key'}.`
-            );
-        }
+    // CLI-first: prefer Claude CLI when available, unless a non-Claude
+    // model is explicitly requested (e.g., "gpt-4o" needs OPENAI_API_KEY).
+    const requestedProvider = inferProviderFromModel(opts.model);
+    const needsNonClaudeProvider = requestedProvider && requestedProvider !== 'anthropic';
 
+    if (!needsNonClaudeProvider && await isClaudeCliAvailable()) {
         // Build CLI options — forward model and jsonSchema
         const cliOpts: Record<string, string | undefined> = {};
         if (opts.model) cliOpts.model = opts.model;

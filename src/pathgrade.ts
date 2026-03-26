@@ -128,7 +128,7 @@ function printHelp() {
     --grader=TYPE      Run only graders of this type (deterministic|llm_rubric)
     --trials=N         Override trial count (overrides preset)
     --parallel=N       Run trials concurrently
-    --agent=gemini|claude|codex   Override agent (default: auto-detect from API key)
+    --agent=claude                Override agent (default: claude)
     --output=DIR       Output directory for reports and temp files
                        Default: $TMPDIR/pathgrade
     --validate         Verify graders using reference solutions

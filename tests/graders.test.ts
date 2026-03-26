@@ -107,11 +107,11 @@ describe('DeterministicGrader', () => {
     expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'node test.js', undefined);
   });
 
-  it('uses default command bash tests/test.sh when command not set', async () => {
+  it('uses default command bash .pathgrade/tests/test.sh when command not set', async () => {
     const provider = makeProvider('{"score": 1.0, "details": "pass"}');
     await grader.grade('/workspace', provider, baseConfig, '/task', []);
 
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash tests/test.sh', undefined);
+    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', undefined);
   });
 
   it('generates default details from score when details not in JSON', async () => {
@@ -133,7 +133,7 @@ describe('DeterministicGrader', () => {
     const env = { FOO: 'bar' };
     await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash tests/test.sh', env);
+    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', env);
   });
 });
 
@@ -180,7 +180,7 @@ describe('LLMGrader', () => {
     const config: GraderConfig = { type: 'llm_rubric', weight: 1.0 };
 
     const result = await grader.grade('/workspace', provider, config, '/task', []);
-    expect(result.details).toContain('prompts/quality.md');
+    expect(result.details).toContain('.pathgrade/prompts/quality.md');
   });
 
   describe('parseResponse (via grade)', () => {

@@ -69,6 +69,51 @@ describe('LocalProvider', () => {
       const claudePath = path.join(runtime.workspacePath, '.claude', 'skills', skillName, 'SKILL.md');
       expect(await fsExtra.pathExists(claudePath)).toBe(true);
     });
+
+    it('generates CLAUDE.md with skill descriptions when skills are present', async () => {
+      const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
+      const skillDir = path.join(os.tmpdir(), `pathgrade-test-skill-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.ensureDir(skillDir);
+      await fsExtra.writeFile(path.join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: my-skill',
+        'description: A test skill for evaluation',
+        '---',
+        '# My Skill',
+        'Content here.',
+      ].join('\n'));
+      tempDirs.push(taskDir, skillDir);
+
+      const runtime = await provider.setup(taskDir, [skillDir], {
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+      });
+      tempDirs.push(runtime.handle);
+
+      const claudeMdPath = path.join(runtime.workspacePath, 'CLAUDE.md');
+      expect(await fsExtra.pathExists(claudeMdPath)).toBe(true);
+
+      const content = await fsExtra.readFile(claudeMdPath, 'utf-8');
+      expect(content).toContain('my-skill');
+      expect(content).toContain('A test skill for evaluation');
+      expect(content).toContain('.claude/skills/');
+    });
+
+    it('does NOT generate CLAUDE.md when no skills are provided', async () => {
+      const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      tempDirs.push(taskDir);
+
+      const runtime = await provider.setup(taskDir, [], {
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+      });
+      tempDirs.push(runtime.handle);
+
+      const claudeMdPath = path.join(runtime.workspacePath, 'CLAUDE.md');
+      expect(await fsExtra.pathExists(claudeMdPath)).toBe(false);
+    });
   });
 
   describe('cleanup', () => {

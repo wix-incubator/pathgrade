@@ -1,209 +1,184 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import * as path from 'path';
-
-// We test resolvedToTaskConfig and prepareTempTaskDir
-// These are not exported, so we replicate the logic for testing
-
-vi.mock('fs-extra', () => ({
-  pathExists: vi.fn(),
-  readFile: vi.fn(),
-  ensureDir: vi.fn(),
-  writeFile: vi.fn(),
-  copy: vi.fn(),
-}));
-
-import * as fs from 'fs-extra';
+import * as os from 'os';
+import * as fsExtra from 'fs-extra';
+import { prepareTempTaskDir } from '../src/commands/run';
 import { ResolvedTask } from '../src/core/config.types';
 
-/** Local replica of the old TaskConfig shape for test-only use. */
-interface TaskConfig {
-  version: string;
-  metadata: { author_name: string; author_email: string; difficulty: string; category: string; tags: string[] };
-  graders: { type: string; command?: string; rubric?: string; weight: number }[];
-  agent: { timeout_sec: number };
-  environment: { build_timeout_sec: number; cpus: number; memory_mb: number; storage_mb: number };
-}
+describe('prepareTempTaskDir', () => {
+  const tempDirs: string[] = [];
 
-const mockPathExists = vi.mocked(fs.pathExists);
-const mockEnsureDir = vi.mocked(fs.ensureDir);
-const mockWriteFile = vi.mocked(fs.writeFile);
-const mockCopy = vi.mocked(fs.copy);
-
-beforeEach(() => {
-  vi.resetAllMocks();
-  mockPathExists.mockResolvedValue(false as any);
-});
-
-// Replicate resolvedToTaskConfig since it's not exported
-function resolvedToTaskConfig(resolved: ResolvedTask): TaskConfig {
-  return {
-    version: '1',
-    metadata: {
-      author_name: '',
-      author_email: '',
-      difficulty: 'medium',
-      category: 'pathgrade',
-      tags: [],
-    },
-    graders: resolved.graders.map(g => ({
-      type: g.type,
-      command: g.type === 'deterministic' ? 'bash tests/test.sh' : undefined,
-      rubric: g.type === 'llm_rubric' ? 'prompts/quality.md' : undefined,
-      weight: g.weight,
-    })),
-    agent: { timeout_sec: resolved.timeout },
-    environment: {
-      build_timeout_sec: 180,
-      cpus: 2,
-      memory_mb: 2048,
-      storage_mb: 500,
-    },
-  };
-}
-
-describe('resolvedToTaskConfig', () => {
-  it('maps deterministic graders correctly', () => {
-    const resolved: ResolvedTask = {
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 0.7 }],
-      agent: 'gemini',
-      trials: 5,
-      timeout: 300,
-      environment: { cpus: 2, memory_mb: 2048 },
-    };
-
-    const config = resolvedToTaskConfig(resolved);
-    expect(config.graders[0].type).toBe('deterministic');
-    expect(config.graders[0].command).toBe('bash tests/test.sh');
-    expect(config.graders[0].weight).toBe(0.7);
-  });
-
-  it('maps llm_rubric graders correctly', () => {
-    const resolved: ResolvedTask = {
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [{ type: 'llm_rubric', rubric: 'check quality', weight: 0.3 }],
-      agent: 'gemini',
-      trials: 5,
-      timeout: 300,
-      environment: { cpus: 2, memory_mb: 2048 },
-    };
-
-    const config = resolvedToTaskConfig(resolved);
-    expect(config.graders[0].type).toBe('llm_rubric');
-    expect(config.graders[0].rubric).toBe('prompts/quality.md');
-    expect(config.graders[0].weight).toBe(0.3);
-  });
-
-  it('sets agent timeout from resolved task', () => {
-    const resolved: ResolvedTask = {
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
-      agent: 'gemini',
-      trials: 5,
-      timeout: 600,
-      environment: { cpus: 2, memory_mb: 2048 },
-    };
-
-    const config = resolvedToTaskConfig(resolved);
-    expect(config.agent.timeout_sec).toBe(600);
-  });
-
-  it('sets default environment values', () => {
-    const resolved: ResolvedTask = {
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
-      agent: 'gemini',
-      trials: 5,
-      timeout: 300,
-      environment: { cpus: 2, memory_mb: 2048 },
-    };
-
-    const config = resolvedToTaskConfig(resolved);
-    expect(config.environment.cpus).toBe(2);
-    expect(config.environment.memory_mb).toBe(2048);
-    expect(config.environment.storage_mb).toBe(500);
-    expect(config.environment.build_timeout_sec).toBe(180);
-  });
-
-  it('maps multiple graders', () => {
-    const resolved: ResolvedTask = {
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [
-        { type: 'deterministic', run: 'echo ok', weight: 0.7 },
-        { type: 'llm_rubric', rubric: 'quality criteria', weight: 0.3 },
-      ],
-      agent: 'gemini',
-      trials: 5,
-      timeout: 300,
-      environment: { cpus: 2, memory_mb: 2048 },
-    };
-
-    const config = resolvedToTaskConfig(resolved);
-    expect(config.graders).toHaveLength(2);
-    expect(config.graders[0].type).toBe('deterministic');
-    expect(config.graders[1].type).toBe('llm_rubric');
-  });
-
-  it('sets metadata with default values', () => {
-    const resolved: ResolvedTask = {
-      name: 'test-task',
-      instruction: 'do it',
-      workspace: [],
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
-      agent: 'gemini',
-      trials: 5,
-      timeout: 300,
-      environment: { cpus: 2, memory_mb: 2048 },
-    };
-
-    const config = resolvedToTaskConfig(resolved);
-    expect(config.metadata.difficulty).toBe('medium');
-    expect(config.metadata.category).toBe('pathgrade');
-    expect(config.version).toBe('1');
-  });
-});
-
-describe('parseEnvFile (from commands/run.ts)', () => {
-  // Replicate parseEnvFile from commands/run.ts
-  function parseEnvFile(content: string): Record<string, string> {
-    const env: Record<string, string> = {};
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = trimmed.substring(0, eqIdx).trim();
-      let value = trimmed.substring(eqIdx + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      env[key] = value;
+  afterEach(async () => {
+    for (const dir of tempDirs) {
+      try { await fsExtra.remove(dir); } catch {}
     }
-    return env;
+    tempDirs.length = 0;
+  });
+
+  function makeTmpDir(): string {
+    const dir = path.join(os.tmpdir(), `pathgrade-prep-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    tempDirs.push(dir);
+    return dir;
   }
 
-  it('behaves identically to cli.ts version', () => {
-    const content = `# Config
-KEY="value"
-PLAIN=text
-SINGLE='quoted'
-`;
-    const result = parseEnvFile(content);
-    expect(result).toEqual({
-      KEY: 'value',
-      PLAIN: 'text',
-      SINGLE: 'quoted',
+  function makeBaseDir(): string {
+    const dir = makeTmpDir();
+    return dir;
+  }
+
+  function makeResolvedTask(overrides?: Partial<ResolvedTask>): ResolvedTask {
+    return {
+      name: 'test-task',
+      instruction: 'do it',
+      workspace: [],
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      agent: 'claude',
+      trials: 1,
+      timeout: 300,
+      environment: { cpus: 2, memory_mb: 2048 },
+      ...overrides,
+    };
+  }
+
+  it('stages deterministic grader scripts into .pathgrade/tests/', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    const resolved = makeResolvedTask({
+      graders: [
+        { type: 'deterministic', run: 'echo "hello"', weight: 0.7 },
+        { type: 'deterministic', run: 'node check.js', weight: 0.3 },
+      ],
     });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    const testSh = await fsExtra.readFile(path.join(tmpDir, '.pathgrade', 'tests', 'test.sh'), 'utf-8');
+    expect(testSh).toContain('echo "hello"');
+
+    const test1Sh = await fsExtra.readFile(path.join(tmpDir, '.pathgrade', 'tests', 'test_1.sh'), 'utf-8');
+    expect(test1Sh).toContain('node check.js');
+  });
+
+  it('stages LLM rubric files into .pathgrade/prompts/', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    const resolved = makeResolvedTask({
+      graders: [
+        { type: 'llm_rubric', rubric: 'Evaluate code quality.', weight: 0.5 },
+      ],
+    });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    const rubric = await fsExtra.readFile(path.join(tmpDir, '.pathgrade', 'prompts', 'quality.md'), 'utf-8');
+    expect(rubric).toBe('Evaluate code quality.');
+  });
+
+  it('does NOT place grader scripts at the workspace root', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    const resolved = makeResolvedTask({
+      graders: [
+        { type: 'deterministic', run: 'echo ok', weight: 0.5 },
+        { type: 'llm_rubric', rubric: 'rubric text', weight: 0.5 },
+      ],
+    });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    // These should NOT exist at the root level
+    expect(await fsExtra.pathExists(path.join(tmpDir, 'tests'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(tmpDir, 'prompts'))).toBe(false);
+
+    // They should be inside .pathgrade/
+    expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade', 'tests', 'test.sh'))).toBe(true);
+    expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade', 'prompts', 'quality.md'))).toBe(true);
+  });
+
+  it('copies referenced grader directories to the workspace root', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    // Create a grader file that the script references
+    await fsExtra.ensureDir(path.join(baseDir, 'graders'));
+    await fsExtra.writeFile(path.join(baseDir, 'graders', 'check-brief.js'), 'console.log("grader")');
+
+    const resolved = makeResolvedTask({
+      graders: [
+        { type: 'deterministic', run: 'node graders/check-brief.js', weight: 1.0 },
+      ],
+    });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    // The graders/ directory should be at workspace root (not in .pathgrade/)
+    // because the grader script references it as a relative path
+    const graderFile = path.join(tmpDir, 'graders', 'check-brief.js');
+    expect(await fsExtra.pathExists(graderFile)).toBe(true);
+    const content = await fsExtra.readFile(graderFile, 'utf-8');
+    expect(content).toBe('console.log("grader")');
+  });
+
+  it('copies workspace files to the tmpDir root', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    // Create a fixture file
+    await fsExtra.ensureDir(path.join(baseDir, 'fixtures'));
+    await fsExtra.writeFile(path.join(baseDir, 'fixtures', 'input.txt'), 'fixture data');
+
+    const resolved = makeResolvedTask({
+      workspace: [{ src: 'fixtures/input.txt', dest: 'input.txt' }],
+    });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    // Workspace files are copied by basename to the root
+    expect(await fsExtra.pathExists(path.join(tmpDir, 'input.txt'))).toBe(true);
+  });
+
+  it('stages step grader assets into .pathgrade/ namespaced subdirectories', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    const resolved: ResolvedTask = {
+      ...makeResolvedTask(),
+      graders: [{ type: 'deterministic', run: 'echo final', weight: 1.0 }],
+      conversation: {
+        opener: 'Hello',
+        completion: { max_turns: 4 },
+        step_graders: [
+          {
+            after_turn: 1,
+            graders: [
+              { type: 'deterministic', run: 'echo step1', weight: 0.5 },
+              { type: 'llm_rubric', rubric: 'Turn 1 rubric', weight: 0.5 },
+            ],
+          },
+        ],
+      },
+    };
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    // Grader index 0 is deterministic → .sh, index 1 is llm_rubric → .md
+    const stepScript = await fsExtra.readFile(
+      path.join(tmpDir, '.pathgrade', 'tests', 'steps', 'turn_1_0.sh'), 'utf-8'
+    );
+    expect(stepScript).toContain('echo step1');
+
+    const stepRubric = await fsExtra.readFile(
+      path.join(tmpDir, '.pathgrade', 'prompts', 'steps', 'turn_1_1.md'), 'utf-8'
+    );
+    expect(stepRubric).toBe('Turn 1 rubric');
   });
 });
