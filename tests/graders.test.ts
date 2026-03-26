@@ -193,6 +193,7 @@ describe('LLMGrader', () => {
 
       const originalFetch = globalThis.fetch;
       globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({
           candidates: [{
             content: {
@@ -200,6 +201,7 @@ describe('LLMGrader', () => {
             },
           }],
         }),
+        text: () => Promise.resolve(''),
       } as any);
 
       const provider = makeProvider('');
@@ -218,6 +220,7 @@ describe('LLMGrader', () => {
 
       const originalFetch = globalThis.fetch;
       globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({
           candidates: [{
             content: {
@@ -225,6 +228,7 @@ describe('LLMGrader', () => {
             },
           }],
         }),
+        text: () => Promise.resolve(''),
       } as any);
 
       const provider = makeProvider('');
@@ -242,9 +246,11 @@ describe('LLMGrader', () => {
 
       const originalFetch = globalThis.fetch;
       globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: '' }] } }],
         }),
+        text: () => Promise.resolve(''),
       } as any);
 
       const provider = makeProvider('');
@@ -283,9 +289,11 @@ describe('LLMGrader', () => {
       delete process.env.GEMINI_API_KEY;
 
       globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({
           content: [{ text: '{"score": 0.85, "reasoning": "good"}' }],
         }),
+        text: () => Promise.resolve(''),
       } as any);
 
       try {
@@ -334,10 +342,12 @@ describe('LLMGrader', () => {
       delete process.env.ANTHROPIC_API_KEY;
 
       globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({
           choices: [{ message: { content: '{"score": 0.9, "reasoning": "openai ok"}' } }],
           usage: { prompt_tokens: 10, completion_tokens: 5 },
         }),
+        text: () => Promise.resolve(''),
       } as any);
 
       try {

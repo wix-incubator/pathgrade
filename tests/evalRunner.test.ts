@@ -211,6 +211,7 @@ describe('EvalRunner', () => {
     globalThis.fetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
       capturedBody = JSON.parse(options.body);
       return {
+        ok: true,
         json: async () => ({
           candidates: [{ content: { parts: [{ text: 'No repo links yet, and I do not know the implementation details.' }] } }],
           usageMetadata: {
@@ -219,6 +220,7 @@ describe('EvalRunner', () => {
             totalTokenCount: 133,
           },
         }),
+        text: async () => '',
       } as any;
     });
 
@@ -309,6 +311,7 @@ describe('EvalRunner', () => {
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: async () => ({
         candidates: [{ content: { parts: [{ text: 'Repo' }] } }],
         usageMetadata: {
@@ -317,6 +320,7 @@ describe('EvalRunner', () => {
           totalTokenCount: 10,
         },
       }),
+      text: async () => '',
     } as any);
 
     try {
