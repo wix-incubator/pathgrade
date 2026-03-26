@@ -157,8 +157,8 @@ For each task:
 - Write an LLM rubric (criteria for the LLM judge)
 
 IMPORTANT GRADING RULES:
-- Deterministic graders MUST output JSON to stdout: {"score": 0.0-1.0, "details": "...", "checks": [...]}
-- Do NOT use exit codes for scoring. The grader should always exit 0 and report the score in JSON.
+- Deterministic graders MUST output JSON to stdout: {"score": 0.0-1.0, "details": "...", "checks": [{name, passed, message}]}
+- Do NOT use exit codes for scoring. Exit code is ignored — only stdout JSON matters.
 - Use awk for floating point arithmetic (bc is not available in node:20-slim).
 - The "checks" array is optional but recommended for per-check breakdown.
 - For workspace files, only reference files that exist in the skill directory or that the agent will create.
@@ -323,7 +323,8 @@ export default defineEval({
       graders: [
         {
           type: 'deterministic',
-          // Grader must output JSON: { "score": 0.0-1.0, "details": "...", "checks": [...] }
+          // Grader must output JSON to stdout. See: docs/grader-authoring.md
+          // Contract: { "score": 0.0-1.0, "details": "...", "checks": [{name, passed, message}] }
           run: \`echo '{"score": 0.0, "details": "TODO: implement grader"}'\`,
           weight: 0.7,
         },

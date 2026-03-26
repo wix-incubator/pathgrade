@@ -20,3 +20,4 @@ export type {
     ConversationPersonaConfig,
     ConversationCompletionConfig,
 } from './config.types';
+export type { GraderOutput, GraderCheck } from '../types';
