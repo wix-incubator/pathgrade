@@ -1,7 +1,7 @@
 import { defineEval } from '../../src/core/define-eval';
 
 export default defineEval({
-  skill: 'skill',
+  skillPath: 'skill',
 
   defaults: {
     agent: 'claude',

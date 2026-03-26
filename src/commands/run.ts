@@ -57,8 +57,8 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
     // Detect skills
     let skillsPaths: string[] = [];
-    if (config.skill) {
-        let skillDir = path.resolve(dir, config.skill);
+    if (config.skillPath) {
+        let skillDir = path.resolve(dir, config.skillPath);
         const stat = await fs.stat(skillDir).catch(() => null);
         if (stat?.isFile()) {
             skillDir = path.dirname(skillDir);
@@ -67,7 +67,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
             skillsPaths = [skillDir];
             kv('skill', path.relative(dir, skillDir) || '.');
         } else {
-            console.error(`  ${fmt.red('warning')}  skill path not found: ${config.skill}`);
+            console.error(`  ${fmt.red('warning')}  skill path not found: ${config.skillPath}`);
         }
     } else {
         const skills = await detectSkills(dir);

@@ -27,7 +27,7 @@ describe('defineEval', () => {
   it('accepts full config with all overrides', () => {
     const config = defineEval({
       version: '2',
-      skill: './skills/my-skill',
+      skillPath: './skills/my-skill',
       defaults: {
         agent: 'claude',
         trials: 10,
@@ -52,7 +52,7 @@ describe('defineEval', () => {
     });
 
     expect(config.version).toBe('2');
-    expect(config.skill).toBe('./skills/my-skill');
+    expect(config.skillPath).toBe('./skills/my-skill');
     expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.environment.cpus).toBe(4);
     expect(config.tasks[0].agent).toBe('codex');

@@ -108,7 +108,7 @@ export interface EvalDefaults {
 /** Top-level eval config */
 export interface EvalConfig {
     version: string;
-    skill?: string;         // optional path to SKILL.md (defaults to auto-detection)
+    skillPath?: string;     // optional path to SKILL.md (defaults to auto-detection)
     defaults: EvalDefaults;
     tasks: EvalTaskConfig[];
 }
@@ -171,7 +171,7 @@ export interface DefineEvalTaskInput {
 
 export interface DefineEvalInput {
     version?: string;           // defaults to '1'
-    skill?: string;
+    skillPath?: string;
     defaults?: Partial<EvalDefaults>;
     tasks: DefineEvalTaskInput[];
 }

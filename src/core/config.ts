@@ -200,7 +200,7 @@ export function validateConfig(raw: any): EvalConfig {
         };
     });
 
-    return { version, skill: raw.skill, defaults, tasks };
+    return { version, skillPath: raw.skillPath, defaults, tasks };
 }
 
 /**

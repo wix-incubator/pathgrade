@@ -125,7 +125,7 @@ describe('validateConfig', () => {
   it('parses valid config correctly', () => {
     const config = validateConfig({
       version: '1',
-      skill: './SKILL.md',
+      skillPath: './SKILL.md',
       defaults: { agent: 'claude', trials: 10 },
       tasks: [{
         name: 'test-task',
@@ -137,7 +137,7 @@ describe('validateConfig', () => {
       }],
     });
     expect(config.version).toBe('1');
-    expect(config.skill).toBe('./SKILL.md');
+    expect(config.skillPath).toBe('./SKILL.md');
     expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.trials).toBe(10);
     expect(config.tasks).toHaveLength(1);

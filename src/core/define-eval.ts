@@ -8,7 +8,7 @@ import { validateConfig } from './config';
 export function defineEval(input: DefineEvalInput): EvalConfig {
     const raw: Record<string, any> = {
         version: input.version || '1',
-        skill: input.skill,
+        skillPath: input.skillPath,
         defaults: input.defaults ? {
             ...input.defaults,
             environment: input.defaults.environment ? {
