@@ -32,6 +32,7 @@ export type ConversationCompletionReason =
     | 'max_turns'
     | 'signal'
     | 'done_phrase'
+    | 'done_when'
     | 'timeout'
     | 'no_replies'
     | 'error';
@@ -49,6 +50,26 @@ export interface GraderResult {
     score: number;      // 0.0 – 1.0
     weight: number;
     details: string;
+}
+
+/**
+ * JSON contract for deterministic grader stdout.
+ * The grader script must print a JSON object matching this shape to stdout.
+ */
+export interface GraderOutput {
+    /** Score between 0.0 and 1.0 (required). Clamped by pathgrade. */
+    score: number;
+    /** Human-readable summary (optional). */
+    details?: string;
+    /** Per-check breakdown, rendered as checkmarks in reports (optional). */
+    checks?: GraderCheck[];
+}
+
+/** Individual check result within a GraderOutput. */
+export interface GraderCheck {
+    name: string;
+    passed: boolean;
+    message?: string;
 }
 
 export interface LogEntry {

@@ -34,6 +34,7 @@ export interface ConversationCompletionConfig {
     max_turns: number;
     signal?: string;
     done_phrase?: string;
+    done_when?: string;     // semantic completion — LLM judges if condition is met
     timeout?: number;
 }
 

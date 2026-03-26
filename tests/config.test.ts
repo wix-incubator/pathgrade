@@ -251,6 +251,28 @@ describe('validateConfig', () => {
     ]);
   });
 
+  it('passes through done_when in conversation completion config', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'conversation',
+        conversation: {
+          opener: 'Start here',
+          completion: {
+            max_turns: 5,
+            done_when: 'The agent has delivered a complete project brief',
+          },
+          replies: [{ content: 'ok' }],
+        },
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
+    const task = config.tasks[0] as ConversationTaskConfig;
+    expect(task.conversation.completion.done_when)
+      .toBe('The agent has delivered a complete project brief');
+  });
+
   it('rejects invalid agent name in defaults', () => {
     expect(() => validateConfig({
       version: '1',
@@ -499,5 +521,22 @@ describe('resolveTask', () => {
         facts: ['The feature is for Wix Stores'],
       },
     });
+  });
+
+  it('preserves done_when through resolution', async () => {
+    const task: EvalTaskConfig = {
+      type: 'conversation' as const,
+      name: 'test-task',
+      conversation: {
+        opener: 'Opened inline',
+        completion: { max_turns: 4, done_when: 'Agent delivered the brief' },
+        replies: [{ content: 'ok' }],
+      },
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+    };
+
+    const resolved = await resolveTask(task, defaults, '/base');
+    expect(resolved.type === 'conversation' && resolved.conversation.completion.done_when)
+      .toBe('Agent delivered the brief');
   });
 });
