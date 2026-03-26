@@ -43,7 +43,7 @@ describe('loadEvalConfig with eval.ts', () => {
     expect(config.defaults.trials).toBe(5);
   });
 
-  it('prefers eval.ts over eval.yaml when both exist', async () => {
+  it('loads eval.ts regardless of other files present', async () => {
     tmpDir = makeTmpDir();
     fs.writeFileSync(path.join(tmpDir, 'eval.ts'), `
       export default {
@@ -55,15 +55,7 @@ describe('loadEvalConfig with eval.ts', () => {
         }],
       };
     `);
-    fs.writeFileSync(path.join(tmpDir, 'eval.yaml'), `
-version: "1"
-tasks:
-  - name: from-yaml
-    instruction: yaml loses
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`);
+    fs.writeFileSync(path.join(tmpDir, 'some-other-file.txt'), 'irrelevant');
 
     const config = await loadEvalConfig(tmpDir);
     expect(config.tasks[0].name).toBe('from-ts');

@@ -52,8 +52,7 @@ async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
 }
 
 /**
- * Validate raw config into a typed EvalConfig.
- * Works for both YAML-parsed and TypeScript-defined configs.
+ * Validates a raw config object into a typed EvalConfig.
  */
 export function validateConfig(raw: any): EvalConfig {
     if (!raw || typeof raw !== 'object') {
