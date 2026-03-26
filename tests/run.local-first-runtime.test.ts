@@ -118,6 +118,7 @@ describe('runEvals local-first runtime path', () => {
     });
 
     resolveTaskMock.mockResolvedValue({
+      type: 'instruction' as const,
       name: 'test-task',
       instruction: 'do it',
       workspace: [],
@@ -144,6 +145,7 @@ describe('runEvals local-first runtime path', () => {
 
   it('passes resolved local-only task settings through to the runner', async () => {
     resolveTaskMock.mockResolvedValueOnce({
+      type: 'instruction' as const,
       name: 'test-task',
       instruction: 'do it',
       workspace: [],
@@ -179,8 +181,8 @@ describe('runEvals local-first runtime path', () => {
 
   it('passes conversation tasks through with conversation timeout precedence', async () => {
     resolveTaskMock.mockResolvedValueOnce({
+      type: 'conversation' as const,
       name: 'conversation-task',
-      instruction: undefined,
       conversation: {
         opener: 'Help me start a project.',
         completion: {

@@ -26,6 +26,7 @@ export default defineEval({
   tasks: [
     {
       name: 'modernize-component',
+      type: 'instruction',
       instruction: `The file \`src/app/user-profile.component.ts\` uses legacy Angular APIs.
 Modernize it according to our coding standards defined in SKILL.md.
 

@@ -7,6 +7,7 @@ describe('defineEval', () => {
       tasks: [
         {
           name: 'test-task',
+          type: 'instruction',
           instruction: 'do something',
           graders: [{ type: 'deterministic', run: 'echo ok' }],
         },
@@ -38,6 +39,7 @@ describe('defineEval', () => {
       tasks: [
         {
           name: 'full-task',
+          type: 'instruction',
           instruction: 'do everything',
           workspace: [{ src: 'fixtures/app.js', dest: 'app.js' }],
           graders: [
@@ -70,22 +72,22 @@ describe('defineEval', () => {
   it('throws when task is missing name', () => {
     expect(() =>
       defineEval({
-        tasks: [{ name: '', instruction: 'x', graders: [{ type: 'deterministic', run: 'x' }] }],
+        tasks: [{ name: '', type: 'instruction', instruction: 'x', graders: [{ type: 'deterministic', run: 'x' }] }],
       })
     ).toThrow('missing a "name"');
   });
 
-  it('throws when task is missing instruction and conversation', () => {
+  it('throws when task is missing type', () => {
     expect(() =>
       defineEval({
         tasks: [{ name: 'x', graders: [{ type: 'deterministic', run: 'x' }] }],
       })
-    ).toThrow('missing an "instruction"');
+    ).toThrow('missing a "type"');
   });
 
   it('throws when task has no graders', () => {
     expect(() =>
-      defineEval({ tasks: [{ name: 'x', instruction: 'x', graders: [] }] })
+      defineEval({ tasks: [{ name: 'x', type: 'instruction', instruction: 'x', graders: [] }] })
     ).toThrow('at least one grader');
   });
 
@@ -94,6 +96,7 @@ describe('defineEval', () => {
       tasks: [
         {
           name: 'test',
+          type: 'instruction',
           instruction: 'do it',
           graders: [{ type: 'deterministic', run: 'echo ok' }],
         },
@@ -109,6 +112,7 @@ describe('defineEval', () => {
       tasks: [
         {
           name: 'test',
+          type: 'instruction',
           instruction: 'do it',
           graders: [{ type: 'deterministic', run: 'echo ok' }],
         },
@@ -124,6 +128,7 @@ describe('defineEval', () => {
       tasks: [
         {
           name: 'chat-task',
+          type: 'conversation',
           conversation: {
             opener: 'Hello agent',
             completion: { max_turns: 3 },
@@ -145,6 +150,7 @@ describe('defineEval', () => {
       tasks: [
         {
           name: 'persona-task',
+          type: 'conversation',
           conversation: {
             opener: 'Start here',
             completion: { max_turns: 5 },

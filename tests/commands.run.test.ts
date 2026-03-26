@@ -28,6 +28,7 @@ describe('prepareTempTaskDir', () => {
 
   function makeResolvedTask(overrides?: Partial<ResolvedTask>): ResolvedTask {
     return {
+      type: 'instruction' as const,
       name: 'test-task',
       instruction: 'do it',
       workspace: [],
@@ -152,6 +153,7 @@ describe('prepareTempTaskDir', () => {
 
     const resolved: ResolvedTask = {
       ...makeResolvedTask(),
+      type: 'conversation' as const,
       graders: [{ type: 'deterministic', run: 'echo final', weight: 1.0 }],
       conversation: {
         opener: 'Hello',

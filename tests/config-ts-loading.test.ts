@@ -30,6 +30,7 @@ describe('loadEvalConfig with eval.ts', () => {
         version: '1',
         tasks: [{
           name: 'ts-task',
+          type: 'instruction',
           instruction: 'from typescript',
           graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
         }],
@@ -50,6 +51,7 @@ describe('loadEvalConfig with eval.ts', () => {
         version: '1',
         tasks: [{
           name: 'from-ts',
+          type: 'instruction',
           instruction: 'typescript wins',
           graders: [{ type: 'deterministic', run: 'echo ok' }],
         }],

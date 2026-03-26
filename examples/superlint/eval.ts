@@ -25,6 +25,7 @@ export default defineEval({
   tasks: [
     {
       name: 'fix-linting-errors',
+      type: 'instruction',
       instruction: `Our internal app.js violates our coding standards (double quotes, var usage).
 Use our proprietary superlint tool to fix these issues.
 

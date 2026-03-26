@@ -10,6 +10,7 @@ export default defineEval({
   tasks: [
     {
       name: 'example-task',
+      type: 'instruction',
       instruction: `This is an example eval.ts config.
 It demonstrates a simple pathgrade eval configuration.
 

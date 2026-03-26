@@ -88,11 +88,14 @@ export function validateConfig(raw: any): EvalConfig {
 
     const tasks: EvalTaskConfig[] = raw.tasks.map((t: any, i: number) => {
         if (!t.name) throw new Error(`Task ${i} is missing a "name"`);
-        if (t.instruction && t.conversation) {
-            throw new Error(`Task "${t.name}" must define exactly one of "instruction" or "conversation"`);
+        if (!t.type || (t.type !== 'instruction' && t.type !== 'conversation')) {
+            throw new Error(`Task "${t.name || i}" is missing a "type" field. Must be 'instruction' or 'conversation'. Got: ${JSON.stringify(t.type)}`);
         }
-        if (!t.instruction && !t.conversation) {
-            throw new Error(`Task "${t.name}" is missing an "instruction" or "conversation"`);
+        if (t.type === 'instruction' && !t.instruction) {
+            throw new Error(`Task "${t.name}" has type "instruction" but is missing an "instruction" field`);
+        }
+        if (t.type === 'conversation' && !t.conversation) {
+            throw new Error(`Task "${t.name}" has type "conversation" but is missing a "conversation" block`);
         }
         if (t.agent && !(VALID_AGENTS as readonly string[]).includes(t.agent)) {
             throw new Error(`Invalid agent "${t.agent}" in task "${t.name}". Must be one of: ${VALID_AGENTS.join(', ')}`);
@@ -154,43 +157,8 @@ export function validateConfig(raw: any): EvalConfig {
             return { src: w.src, dest: w.dest, chmod: w.chmod };
         });
 
-        return {
+        const base = {
             name: t.name,
-            instruction: t.instruction,
-            conversation: t.conversation ? {
-                opener: t.conversation.opener,
-                completion: {
-                    max_turns: t.conversation.completion.max_turns,
-                    signal: t.conversation.completion.signal,
-                    done_phrase: t.conversation.completion.done_phrase,
-                    timeout: t.conversation.completion.timeout,
-                },
-                replies: t.conversation.replies?.map((reply: any) => {
-                    if (!reply?.content) {
-                        throw new Error(`Task "${t.name}" conversation replies must include "content"`);
-                    }
-                    return {
-                        content: reply.content,
-                        when: reply.when,
-                    };
-                }),
-                persona: t.conversation.persona ? {
-                    description: t.conversation.persona.description,
-                    facts: t.conversation.persona.facts,
-                    model: t.conversation.persona.model,
-                } : undefined,
-                step_graders: t.conversation.step_graders?.map((sg: any) => ({
-                    after_turn: sg.after_turn,
-                    graders: sg.graders.map((g: any) => ({
-                        type: g.type,
-                        setup: g.setup,
-                        run: g.run,
-                        rubric: g.rubric,
-                        model: g.model,
-                        weight: g.weight ?? 1.0,
-                    })),
-                })),
-            } : undefined,
             workspace,
             graders: t.graders.map((g: any) => ({
                 type: g.type,
@@ -206,6 +174,47 @@ export function validateConfig(raw: any): EvalConfig {
             timeout: t.timeout,
             grader_model: t.grader_model,
             environment: t.environment,
+        };
+
+        if (t.type === 'conversation') {
+            return {
+                ...base,
+                type: 'conversation' as const,
+                conversation: {
+                    opener: t.conversation.opener,
+                    completion: { ...t.conversation.completion },
+                    replies: t.conversation.replies?.map((reply: any) => {
+                        if (!reply?.content) {
+                            throw new Error(`Task "${t.name}" conversation replies must include "content"`);
+                        }
+                        return {
+                            content: reply.content,
+                            when: reply.when,
+                        };
+                    }),
+                    persona: t.conversation.persona ? {
+                        description: t.conversation.persona.description,
+                        facts: t.conversation.persona.facts,
+                        model: t.conversation.persona.model,
+                    } : undefined,
+                    step_graders: t.conversation.step_graders?.map((sg: any) => ({
+                        after_turn: sg.after_turn,
+                        graders: sg.graders.map((g: any) => ({
+                            type: g.type,
+                            setup: g.setup,
+                            run: g.run,
+                            rubric: g.rubric,
+                            model: g.model,
+                            weight: g.weight ?? 1.0,
+                        })),
+                    })),
+                },
+            };
+        }
+        return {
+            ...base,
+            type: 'instruction' as const,
+            instruction: t.instruction,
         };
     });
 
@@ -262,10 +271,25 @@ export async function resolveTask(
         ? path.resolve(baseDir, task.solution)
         : undefined;
 
+    if (task.type === 'conversation') {
+        return {
+            type: 'conversation' as const,
+            name: task.name,
+            conversation: conversation!,
+            workspace: task.workspace || [],
+            graders,
+            solution,
+            agent,
+            trials,
+            timeout,
+            grader_model,
+            environment,
+        };
+    }
     return {
+        type: 'instruction' as const,
         name: task.name,
-        instruction,
-        conversation,
+        instruction: instruction!,
         workspace: task.workspace || [],
         graders,
         solution,

@@ -2,6 +2,7 @@ export { defineEval } from './define-eval';
 export { loadEvalConfig, resolveTask } from './config';
 export type {
     AgentName,
+    TaskMode,
     DefineEvalInput,
     DefineEvalTaskInput,
     DefineEvalGraderInput,

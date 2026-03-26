@@ -123,8 +123,9 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const filteredGraders = opts.grader
             ? resolved.graders.filter(g => g.type === opts.grader)
             : resolved.graders;
-        const evalOpts: EvalRunOptions = resolved.conversation
-            ? {
+        let evalOpts: EvalRunOptions;
+        if (resolved.type === 'conversation') {
+            evalOpts = {
                 instruction: undefined,
                 conversation: resolved.conversation,
                 graders: filteredGraders,
@@ -132,8 +133,9 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 graderModel: resolved.grader_model,
                 environment: resolved.environment,
                 authMode: useHostAuth ? 'host' : undefined,
-            }
-            : {
+            };
+        } else {
+            evalOpts = {
                 instruction: resolved.instruction,
                 graders: filteredGraders,
                 timeoutSec: resolved.timeout,
@@ -141,6 +143,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 environment: resolved.environment,
                 authMode: useHostAuth ? 'host' : undefined,
             };
+        }
 
         const provider = new LocalProvider();
 
@@ -152,7 +155,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no solution defined`);
                 continue;
             }
-            if (resolved.conversation) {
+            if (resolved.type === 'conversation') {
                 console.error(`  ${fmt.red('error')}  validation mode does not support conversation tasks yet`);
                 allPassed = false;
                 continue;
@@ -274,10 +277,11 @@ export async function prepareTempTaskDir(
     }
 
     // Write step grader assets into namespaced subdirectories
-    if (resolved.conversation?.step_graders) {
+    const stepGraders = resolved.type === 'conversation' ? resolved.conversation.step_graders : undefined;
+    if (stepGraders) {
         await fs.ensureDir(path.join(graderRoot, 'tests', 'steps'));
         await fs.ensureDir(path.join(graderRoot, 'prompts', 'steps'));
-        for (const sg of resolved.conversation.step_graders) {
+        for (const sg of stepGraders) {
             for (let gIdx = 0; gIdx < sg.graders.length; gIdx++) {
                 const g = sg.graders[gIdx];
                 if (g.type === 'deterministic' && g.run) {

@@ -15,26 +15,30 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
                 ...input.defaults.environment,
             } : undefined,
         } : undefined,
-        tasks: input.tasks.map(t => ({
-            name: t.name,
-            instruction: t.instruction,
-            conversation: t.conversation,
-            workspace: t.workspace,
-            graders: t.graders.map(g => ({
-                type: g.type,
-                setup: g.setup,
-                run: g.run,
-                rubric: g.rubric,
-                model: g.model,
-                weight: g.weight,  // validateConfig defaults to 1.0
-            })),
-            solution: t.solution,
-            agent: t.agent,
-            trials: t.trials,
-            timeout: t.timeout,
-            grader_model: t.grader_model,
-            environment: t.environment,
-        })),
+        tasks: input.tasks.map(t => {
+            const base = {
+                name: t.name,
+                workspace: t.workspace,
+                graders: t.graders.map(g => ({
+                    type: g.type,
+                    setup: g.setup,
+                    run: g.run,
+                    rubric: g.rubric,
+                    model: g.model,
+                    weight: g.weight,
+                })),
+                solution: t.solution,
+                agent: t.agent,
+                trials: t.trials,
+                timeout: t.timeout,
+                grader_model: t.grader_model,
+                environment: t.environment,
+            };
+            if (t.type === 'conversation') {
+                return { ...base, type: 'conversation' as const, conversation: t.conversation };
+            }
+            return { ...base, type: t.type, instruction: t.instruction };
+        }),
     };
 
     return validateConfig(raw);

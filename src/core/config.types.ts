@@ -9,6 +9,9 @@
 export const VALID_AGENTS = ['claude', 'gemini', 'codex'] as const;
 export type AgentName = typeof VALID_AGENTS[number];
 
+/** Task execution mode */
+export type TaskMode = 'conversation' | 'instruction';
+
 /** Workspace file mapping: copy a local file into the trial workspace */
 export interface WorkspaceMapping {
     src: string;        // relative to eval.ts
@@ -82,22 +85,33 @@ export interface EnvironmentConfig {
     memory_mb: number;
 }
 
-/** Single eval task */
-export interface EvalTaskConfig {
+/** Shared fields for all task types */
+interface EvalTaskBase {
     name: string;
-    instruction?: string;   // inline text or path to .md file
-    conversation?: ConversationConfig;
     workspace?: WorkspaceMapping[];
     graders: EvalGraderConfig[];
-    solution?: string;      // path to reference solution script
-
-    // Per-task overrides
+    solution?: string;
     agent?: AgentName;
     trials?: number;
     timeout?: number;
     grader_model?: string;
     environment?: Partial<EnvironmentConfig>;
 }
+
+/** Instruction task — agent receives a one-shot instruction */
+export interface InstructionTaskConfig extends EvalTaskBase {
+    type: 'instruction';
+    instruction: string;
+}
+
+/** Conversation task — agent participates in multi-turn dialogue */
+export interface ConversationTaskConfig extends EvalTaskBase {
+    type: 'conversation';
+    conversation: ConversationConfig;
+}
+
+/** Single eval task (discriminated union) */
+export type EvalTaskConfig = InstructionTaskConfig | ConversationTaskConfig;
 
 /** Top-level defaults */
 export interface EvalDefaults {
@@ -117,20 +131,30 @@ export interface EvalConfig {
     tasks: EvalTaskConfig[];
 }
 
-/** Resolved task — all defaults applied, file references resolved to content */
-export interface ResolvedTask {
+/** Shared resolved fields */
+interface ResolvedTaskBase {
     name: string;
-    instruction?: string;   // actual content (not file path)
-    conversation?: ResolvedConversation;
     workspace: WorkspaceMapping[];
     graders: ResolvedGrader[];
-    solution?: string;      // resolved file path
+    solution?: string;
     agent: AgentName;
     trials: number;
     timeout: number;
-    grader_model?: string;  // inherited default model for LLM graders
+    grader_model?: string;
     environment: EnvironmentConfig;
 }
+
+export interface ResolvedInstructionTask extends ResolvedTaskBase {
+    type: 'instruction';
+    instruction: string;
+}
+
+export interface ResolvedConversationTask extends ResolvedTaskBase {
+    type: 'conversation';
+    conversation: ResolvedConversation;
+}
+
+export type ResolvedTask = ResolvedInstructionTask | ResolvedConversationTask;
 
 export interface ResolvedGrader {
     type: 'deterministic' | 'llm_rubric';
@@ -159,10 +183,9 @@ export interface DefineEvalConversationInput {
     step_graders?: StepGraderConfig[];
 }
 
-export interface DefineEvalTaskInput {
+/** Shared fields for defineEval task input */
+interface DefineEvalTaskBase {
     name: string;
-    instruction?: string;
-    conversation?: DefineEvalConversationInput;
     workspace?: WorkspaceMapping[];
     graders: DefineEvalGraderInput[];
     solution?: string;
@@ -172,6 +195,18 @@ export interface DefineEvalTaskInput {
     grader_model?: string;
     environment?: Partial<EnvironmentConfig>;
 }
+
+export interface DefineEvalInstructionTaskInput extends DefineEvalTaskBase {
+    type: 'instruction';
+    instruction: string;
+}
+
+export interface DefineEvalConversationTaskInput extends DefineEvalTaskBase {
+    type: 'conversation';
+    conversation: DefineEvalConversationInput;
+}
+
+export type DefineEvalTaskInput = DefineEvalInstructionTaskInput | DefineEvalConversationTaskInput;
 
 export interface DefineEvalInput {
     version?: string;           // defaults to '1'

@@ -14,6 +14,7 @@ export default defineEval({
     // ── Scripted: all answers pre-defined ─────────────────────────
     {
       name: 'scripted-gift-card',
+      type: 'conversation',
       conversation: {
         opener: `I want to start a new project. I have an idea for a gift card feature.\n`,
 
@@ -93,6 +94,7 @@ Conversation Quality (0-0.2):
     // ── Persona: LLM-simulated PM ────────────────────────────────
     {
       name: 'persona-gift-card',
+      type: 'conversation',
       conversation: {
         opener: `I want to start a new project. I have an idea for a feature
 related to gift cards for online stores.\n`,
