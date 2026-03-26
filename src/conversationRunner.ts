@@ -211,6 +211,9 @@ async function pickReply(
                     env,
                     graderModel
                 );
+                if (!personaReply.content.trim()) {
+                    throw new Error('Persona returned empty content');
+                }
                 return {
                     content: personaReply.content,
                     source: 'persona_llm',

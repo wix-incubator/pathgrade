@@ -97,6 +97,11 @@ async function callGemini(
             }),
         });
 
+        if (!response.ok) {
+            const errBody = await response.text().catch(() => '');
+            throw new Error(`Gemini API error (${response.status}): ${errBody.slice(0, 300)}`);
+        }
+
         const data = await response.json() as any;
         return {
             text: data?.candidates?.[0]?.content?.parts?.[0]?.text || '',
@@ -131,6 +136,11 @@ async function callAnthropic(
                 messages: [{ role: 'user', content: prompt }],
             }),
         });
+
+        if (!response.ok) {
+            const errBody = await response.text().catch(() => '');
+            throw new Error(`Anthropic API error (${response.status}): ${errBody.slice(0, 300)}`);
+        }
 
         const data = await response.json() as any;
         return {
@@ -168,6 +178,11 @@ async function callOpenAI(
                 messages: [{ role: 'user', content: prompt }],
             }),
         });
+
+        if (!response.ok) {
+            const errBody = await response.text().catch(() => '');
+            throw new Error(`OpenAI API error (${response.status}): ${errBody.slice(0, 300)}`);
+        }
 
         const data = await response.json() as any;
         return {

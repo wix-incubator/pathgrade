@@ -91,8 +91,6 @@ Conversation Quality (0-0.2):
     },
 
     // ── Persona: LLM-simulated PM ────────────────────────────────
-    // NOTE: This task uses model: 'gpt-4o' for the persona, which requires
-    // OPENAI_API_KEY to be set in the environment.
     {
       name: 'persona-gift-card',
       conversation: {
@@ -121,7 +119,6 @@ collaborative but don't volunteer extra information unless asked.\n`,
             'No gameplan link available',
             'The project name should be \'gift-card\' or similar',
           ],
-          model: 'gpt-4o',
         },
 
       },
