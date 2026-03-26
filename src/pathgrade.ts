@@ -4,8 +4,8 @@
  * pathgrade CLI
  *
  * Usage:
- *   pathgrade                     Run all eval tasks from eval.yaml
- *   pathgrade init                Generate eval.yaml from detected skills
+ *   pathgrade                     Run all eval tasks from eval.ts
+ *   pathgrade init                Generate eval.ts from detected skills
  *   pathgrade preview [browser]   View results (CLI default, or browser)
  *   pathgrade <task-name>         Run a specific eval
  *
@@ -113,8 +113,8 @@ function printHelp() {
   pathgrade - The easiest way to evaluate your Agent Skills
 
   Usage:
-    pathgrade                     Run all evals from eval.yaml
-    pathgrade init [--force]      Generate eval.yaml (--force to overwrite)
+    pathgrade                     Run all evals from eval.ts
+    pathgrade init [--force]      Generate eval.ts (--force to overwrite)
     pathgrade preview [browser]   View results (CLI default, or browser)
     pathgrade <eval-name>         Run a specific eval
 
@@ -137,8 +137,8 @@ function printHelp() {
     --preview          Open CLI results after running
 
   Examples:
-    pathgrade init                # scaffold eval.yaml
-    pathgrade init --force        # overwrite existing eval.yaml
+    pathgrade init                # scaffold eval.ts
+    pathgrade init --force        # overwrite existing eval.ts
     pathgrade                     # run all evals
     pathgrade --smoke             # quick 5-trial smoke test
     pathgrade --eval=fix-linting  # run a specific eval

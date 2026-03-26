@@ -1,13 +1,13 @@
 /**
- * eval.yaml configuration types.
+ * Eval configuration types.
  *
- * These types define the schema for the eval.yaml file that developers
+ * These types define the schema for the eval.ts config that developers
  * create to define evaluation tasks for their skills.
  */
 
 /** Workspace file mapping: copy a local file into the trial workspace */
 export interface WorkspaceMapping {
-    src: string;        // relative to eval.yaml
+    src: string;        // relative to eval.ts
     dest: string;       // path in the trial workspace
     chmod?: string;     // e.g. "+x"
 }
@@ -105,7 +105,7 @@ export interface EvalDefaults {
     environment: EnvironmentConfig;
 }
 
-/** Top-level eval.yaml */
+/** Top-level eval config */
 export interface EvalConfig {
     version: string;
     skill?: string;         // optional path to SKILL.md (defaults to auto-detection)

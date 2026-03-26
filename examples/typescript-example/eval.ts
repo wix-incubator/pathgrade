@@ -11,7 +11,7 @@ export default defineEval({
     {
       name: 'example-task',
       instruction: `This is an example eval.ts config.
-It demonstrates the TypeScript alternative to eval.yaml.
+It demonstrates a simple pathgrade eval configuration.
 
 The agent should create a file called output.txt with "hello world".`,
       graders: [

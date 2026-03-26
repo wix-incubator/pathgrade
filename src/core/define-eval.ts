@@ -3,7 +3,7 @@ import { validateConfig } from './config';
 
 /**
  * Define a pathgrade evaluation config in TypeScript.
- * All defaults are optional — same defaults as eval.yaml.
+ * All defaults are optional — same defaults as EvalConfig.
  */
 export function defineEval(input: DefineEvalInput): EvalConfig {
     const raw: Record<string, any> = {

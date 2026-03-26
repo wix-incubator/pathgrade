@@ -1,7 +1,7 @@
 /**
  * `pathgrade` (run) command.
  *
- * Reads eval.yaml, resolves tasks, and executes evals.
+ * Reads eval.ts, resolves tasks, and executes evals.
  */
 import * as fs from 'fs-extra';
 import * as path from 'path';
@@ -40,7 +40,7 @@ async function loadEnvFile(filePath: string): Promise<Record<string, string>> {
 export async function runEvals(dir: string, opts: RunOptions) {
     console.log(`\n${fmt.bold('pathgrade')}\n`);
 
-    // Load eval.yaml
+    // Load eval config
     const config = await loadEvalConfig(dir);
 
     // Load environment variables
