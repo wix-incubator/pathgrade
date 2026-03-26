@@ -79,54 +79,61 @@ Short description.`;
 describe('getInlineTemplate', () => {
   // Replicate the function since it's not exported
   function getInlineTemplate(): string {
-    return `version: "1"
+    return `import { defineEval } from '@wix/pathgrade';
 
-defaults:
-  agent: gemini
-  trials: 5
-  timeout: 300
-  threshold: 0.8
+export default defineEval({
+  defaults: {
+    agent: 'gemini',
+    trials: 5,
+    timeout: 300,
+    threshold: 0.8,
+  },
 
-tasks:
-  - name: {{TASK_NAME}}
-    instruction: |
-      {{INSTRUCTION}}
+  tasks: [
+    {
+      name: '{{TASK_NAME}}',
+      instruction: \`{{INSTRUCTION}}\`,
 
-    graders:
-      - type: deterministic
-        run: |
-          # Grader must output JSON: {"score": 0.0-1.0, "details": "...", "checks": [...]}
-          echo '{"score": 0.0, "details": "TODO: implement grader"}'
-        weight: 0.7
-
-      - type: llm_rubric
-        rubric: |
-          TODO: Write evaluation criteria.
-        weight: 0.3
+      graders: [
+        {
+          type: 'deterministic',
+          // Grader must output JSON: { "score": 0.0-1.0, "details": "...", "checks": [...] }
+          run: \`echo '{"score": 0.0, "details": "TODO: implement grader"}'\`,
+          weight: 0.7,
+        },
+        {
+          type: 'llm_rubric',
+          rubric: \`TODO: Write evaluation criteria.\`,
+          weight: 0.3,
+        },
+      ],
+    },
+  ],
+});
 `;
   }
 
-  it('returns valid YAML template', () => {
+  it('returns valid TypeScript template', () => {
     const template = getInlineTemplate();
-    expect(template).toContain('version: "1"');
+    expect(template).toContain('defineEval');
     expect(template).toContain('{{TASK_NAME}}');
     expect(template).toContain('{{INSTRUCTION}}');
   });
 
   it('includes default configuration', () => {
     const template = getInlineTemplate();
-    expect(template).toContain('agent: gemini');
+    expect(template).toContain("agent: 'gemini'");
     expect(template).toContain('trials: 5');
     expect(template).toContain('timeout: 300');
     expect(template).toContain('threshold: 0.8');
     expect(template).not.toContain('provider: local');
-    expect(template).not.toContain('docker:');
+    expect(template).not.toContain('provider: docker');
   });
 
   it('includes both grader types', () => {
     const template = getInlineTemplate();
-    expect(template).toContain('type: deterministic');
-    expect(template).toContain('type: llm_rubric');
+    expect(template).toContain("type: 'deterministic'");
+    expect(template).toContain("type: 'llm_rubric'");
   });
 
   it('has placeholder grader that outputs JSON', () => {

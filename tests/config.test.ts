@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { validateConfig, resolveTask } from '../src/core/config';
+import { EvalTaskConfig, EvalDefaults } from '../src/core/config.types';
 
-// Mock fs-extra before importing
+// Mock fs-extra for resolveTask tests only (file reference resolution)
 vi.mock('fs-extra', () => ({
   pathExists: vi.fn(),
   readFile: vi.fn(),
 }));
 
 import * as fs from 'fs-extra';
-import { loadEvalConfig, resolveTask } from '../src/core/config';
-import { EvalTaskConfig, EvalDefaults } from '../src/core/config.types';
 
 const mockPathExists = vi.mocked(fs.pathExists);
 const mockReadFile = vi.mocked(fs.readFile);
@@ -17,79 +17,47 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
-/** Mock pathExists to return false for eval.ts (skip TS loading) and true for eval.yaml */
-function mockYamlOnly() {
-  mockPathExists.mockImplementation(async (p: any) => !String(p).endsWith('eval.ts'));
-}
-
-describe('loadEvalConfig', () => {
-  it('throws when no config file is found', async () => {
-    mockPathExists.mockResolvedValue(false as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('No eval.ts or eval.yaml found');
+describe('validateConfig', () => {
+  it('throws when config is not an object', () => {
+    expect(() => validateConfig(null)).toThrow('must be an object');
+    expect(() => validateConfig('string')).toThrow('must be an object');
   });
 
-  it('throws when YAML is not an object', async () => {
-    mockYamlOnly();
-    mockReadFile.mockResolvedValue('just a string' as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('must be an object');
+  it('throws when tasks array is missing', () => {
+    expect(() => validateConfig({ version: '1' })).toThrow('at least one task');
   });
 
-  it('throws when tasks array is missing', async () => {
-    mockYamlOnly();
-    mockReadFile.mockResolvedValue('version: "1"\n' as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('at least one task');
+  it('throws when tasks array is empty', () => {
+    expect(() => validateConfig({ version: '1', tasks: [] })).toThrow('at least one task');
   });
 
-  it('throws when tasks array is empty', async () => {
-    mockYamlOnly();
-    mockReadFile.mockResolvedValue('version: "1"\ntasks: []\n' as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('at least one task');
+  it('throws when task is missing name', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{ instruction: 'do something', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+    })).toThrow('missing a "name"');
   });
 
-  it('throws when task is missing name', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - instruction: "do something"
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('missing a "name"');
+  it('throws when task is missing instruction', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{ name: 'test-task', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+    })).toThrow('missing an "instruction"');
   });
 
-  it('throws when task is missing instruction', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('missing an "instruction"');
-  });
-
-  it('accepts conversation tasks without instruction', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    conversation:
-      opener: "Start here"
-      completion:
-        max_turns: 3
-      replies:
-        - content: "First reply"
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
+  it('accepts conversation tasks without instruction', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        conversation: {
+          opener: 'Start here',
+          completion: { max_turns: 3 },
+          replies: [{ content: 'First reply' }],
+        },
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
     expect(config.tasks[0].instruction).toBeUndefined();
     expect(config.tasks[0].conversation).toEqual({
       opener: 'Start here',
@@ -98,250 +66,169 @@ tasks:
     });
   });
 
-  it('accepts conversation tasks with persona fallback and no scripted replies', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    conversation:
-      opener: "Start here"
-      completion:
-        max_turns: 3
-      persona:
-        description: "You are a concise product manager."
-        facts:
-          - "The feature is for Wix Stores"
-          - "You do not know the implementation details"
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
-    expect(config.tasks[0].instruction).toBeUndefined();
+  it('accepts conversation tasks with persona fallback and no scripted replies', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        conversation: {
+          opener: 'Start here',
+          completion: { max_turns: 3 },
+          persona: {
+            description: 'You are a concise product manager.',
+            facts: ['The feature is for Wix Stores', 'You do not know the implementation details'],
+          },
+        },
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
     expect(config.tasks[0].conversation).toEqual({
       opener: 'Start here',
       completion: { max_turns: 3 },
       persona: {
         description: 'You are a concise product manager.',
-        facts: [
-          'The feature is for Wix Stores',
-          'You do not know the implementation details',
-        ],
+        facts: ['The feature is for Wix Stores', 'You do not know the implementation details'],
       },
     });
   });
 
-  it('rejects conversation tasks with neither scripted replies nor persona', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    conversation:
-      opener: "Start here"
-      completion:
-        max_turns: 3
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    await expect(loadEvalConfig('/test')).rejects.toThrow(
-      'must include at least one of "replies" or "persona"'
-    );
+  it('rejects conversation tasks with neither scripted replies nor persona', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        conversation: { opener: 'Start here', completion: { max_turns: 3 } },
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    })).toThrow('must include at least one of "replies" or "persona"');
   });
 
-  it('throws when task has no graders', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: "do something"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('at least one grader');
+  it('throws when task has no graders', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{ name: 'test-task', instruction: 'do something' }],
+    })).toThrow('at least one grader');
   });
 
-  it('throws on workspace mapping without src/dest', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: "do something"
-    workspace:
-      - { foo: bar }
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-    await expect(loadEvalConfig('/test')).rejects.toThrow('without src/dest');
+  it('throws on workspace mapping without src/dest', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        instruction: 'do something',
+        workspace: [{ foo: 'bar' }],
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    })).toThrow('without src/dest');
   });
 
-  it('parses valid config correctly', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-skill: ./SKILL.md
-defaults:
-  agent: claude
-  trials: 10
-tasks:
-  - name: test-task
-    instruction: "install the app"
-    graders:
-      - type: deterministic
-        run: "echo ok"
-        weight: 0.7
-      - type: llm_rubric
-        rubric: "check quality"
-        weight: 0.3
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
+  it('parses valid config correctly', () => {
+    const config = validateConfig({
+      version: '1',
+      skill: './SKILL.md',
+      defaults: { agent: 'claude', trials: 10 },
+      tasks: [{
+        name: 'test-task',
+        instruction: 'install the app',
+        graders: [
+          { type: 'deterministic', run: 'echo ok', weight: 0.7 },
+          { type: 'llm_rubric', rubric: 'check quality', weight: 0.3 },
+        ],
+      }],
+    });
     expect(config.version).toBe('1');
     expect(config.skill).toBe('./SKILL.md');
     expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.trials).toBe(10);
     expect(config.tasks).toHaveLength(1);
-    expect(config.tasks[0].name).toBe('test-task');
-    expect(config.tasks[0].graders).toHaveLength(2);
     expect(config.tasks[0].graders[0].weight).toBe(0.7);
     expect(config.tasks[0].graders[1].type).toBe('llm_rubric');
   });
 
-  it('applies default values when defaults not specified', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: do it
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
+  it('applies default values when defaults not specified', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        instruction: 'do it',
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
     expect(config.defaults.agent).toBe('gemini');
     expect(config.defaults.trials).toBe(5);
     expect(config.defaults.timeout).toBe(300);
     expect(config.defaults.threshold).toBe(0.8);
     expect(config.defaults.environment).toEqual({ cpus: 2, memory_mb: 2048 });
-    expect(config.defaults).not.toHaveProperty('provider');
-    expect(config.defaults).not.toHaveProperty('docker');
   });
 
-  it('rejects deprecated defaults.provider', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-defaults:
-  provider: local
-tasks:
-  - name: test-task
-    instruction: do it
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    await expect(loadEvalConfig('/test')).rejects.toThrow('defaults.provider');
+  it('rejects deprecated defaults.provider', () => {
+    expect(() => validateConfig({
+      version: '1',
+      defaults: { provider: 'local' },
+      tasks: [{ name: 'test-task', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+    })).toThrow('defaults.provider');
   });
 
-  it('rejects deprecated defaults.docker', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-defaults:
-  docker:
-    base: node:20-slim
-tasks:
-  - name: test-task
-    instruction: do it
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    await expect(loadEvalConfig('/test')).rejects.toThrow('defaults.docker');
+  it('rejects deprecated defaults.docker', () => {
+    expect(() => validateConfig({
+      version: '1',
+      defaults: { docker: { base: 'node:20-slim' } },
+      tasks: [{ name: 'test-task', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+    })).toThrow('defaults.docker');
   });
 
-  it('rejects deprecated task-level provider and docker fields', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: do it
-    provider: docker
-    docker:
-      base: node:20-slim
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    await expect(loadEvalConfig('/test')).rejects.toThrow('Task "test-task" uses deprecated');
+  it('rejects deprecated task-level provider and docker fields', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        instruction: 'do it',
+        provider: 'docker',
+        docker: { base: 'node:20-slim' },
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    })).toThrow('Task "test-task" uses deprecated');
   });
 
-  it('handles workspace string shorthand', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: do it
-    workspace:
-      - fixtures/app.js
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
+  it('handles workspace string shorthand', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        instruction: 'do it',
+        workspace: ['fixtures/app.js'],
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
     expect(config.tasks[0].workspace).toEqual([
       { src: 'fixtures/app.js', dest: 'app.js' },
     ]);
   });
 
-  it('handles workspace objects with chmod', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: do it
-    workspace:
-      - src: scripts/run.sh
-        dest: /workspace/run.sh
-        chmod: "+x"
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
+  it('handles workspace objects with chmod', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        instruction: 'do it',
+        workspace: [{ src: 'scripts/run.sh', dest: '/workspace/run.sh', chmod: '+x' }],
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
     expect(config.tasks[0].workspace).toEqual([
       { src: 'scripts/run.sh', dest: '/workspace/run.sh', chmod: '+x' },
     ]);
   });
 
-  it('defaults grader weight to 1.0', async () => {
-    mockYamlOnly();
-    const yaml = `version: "1"
-tasks:
-  - name: test-task
-    instruction: do it
-    graders:
-      - type: deterministic
-        run: "echo ok"
-`;
-    mockReadFile.mockResolvedValue(yaml as any);
-
-    const config = await loadEvalConfig('/test');
+  it('defaults grader weight to 1.0', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        instruction: 'do it',
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    });
     expect(config.tasks[0].graders[0].weight).toBe(1.0);
   });
 });
@@ -358,12 +245,9 @@ describe('resolveTask', () => {
   it('applies defaults when task has no overrides', async () => {
     const task: EvalTaskConfig = {
       name: 'test-task',
-      instruction: 'do it',
+      instruction: 'line 1\nline 2',
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
     };
-
-    // The instruction is inline (multi-line would be caught, single line tries file path)
-    mockPathExists.mockResolvedValue(false as any);
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.agent).toBe('gemini');
@@ -375,7 +259,7 @@ describe('resolveTask', () => {
   it('task overrides take precedence over defaults', async () => {
     const task: EvalTaskConfig = {
       name: 'test-task',
-      instruction: 'do it now',
+      instruction: 'line 1\nline 2',
       agent: 'claude',
       trials: 10,
       timeout: 600,
@@ -383,27 +267,11 @@ describe('resolveTask', () => {
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
     };
 
-    mockPathExists.mockResolvedValue(false as any);
-
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.agent).toBe('claude');
     expect(resolved.trials).toBe(10);
     expect(resolved.timeout).toBe(600);
     expect(resolved.environment).toEqual({ cpus: 2, memory_mb: 4096 });
-  });
-
-  it('resolves instruction from file when it exists', async () => {
-    const task: EvalTaskConfig = {
-      name: 'test-task',
-      instruction: 'instruction.md',
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
-    };
-
-    mockYamlOnly();
-    mockReadFile.mockResolvedValue('File content here' as any);
-
-    const resolved = await resolveTask(task, defaults, '/base');
-    expect(resolved.instruction).toBe('File content here');
   });
 
   it('keeps inline multi-line instruction as-is', async () => {
@@ -417,6 +285,20 @@ describe('resolveTask', () => {
     expect(resolved.instruction).toBe('line 1\nline 2\nline 3');
   });
 
+  it('resolves instruction from file when it exists', async () => {
+    const task: EvalTaskConfig = {
+      name: 'test-task',
+      instruction: 'instruction.md',
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+    };
+
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('File content here' as any);
+
+    const resolved = await resolveTask(task, defaults, '/base');
+    expect(resolved.instruction).toBe('File content here');
+  });
+
   it('resolves deterministic grader run from file', async () => {
     const task: EvalTaskConfig = {
       name: 'test-task',
@@ -424,7 +306,7 @@ describe('resolveTask', () => {
       graders: [{ type: 'deterministic', run: 'test.sh', weight: 1.0 }],
     };
 
-    mockYamlOnly();
+    mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('#!/bin/bash\necho pass' as any);
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -438,7 +320,7 @@ describe('resolveTask', () => {
       graders: [{ type: 'llm_rubric', rubric: 'rubric.md', weight: 1.0 }],
     };
 
-    mockYamlOnly();
+    mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('Evaluate quality...' as any);
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -555,4 +437,3 @@ describe('resolveTask', () => {
     });
   });
 });
-
