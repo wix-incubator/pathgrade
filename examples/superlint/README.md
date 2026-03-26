@@ -7,7 +7,7 @@ A simple example showing how to evaluate a coding standards skill.
 ```
 superlint/
 ├── SKILL.md            # The skill being tested
-├── eval.yaml           # Eval configuration
+├── eval.ts             # Eval configuration
 ├── fixtures/
 │   └── app.js          # Broken file the agent needs to fix
 └── bin/

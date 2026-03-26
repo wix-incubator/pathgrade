@@ -7,7 +7,7 @@ An advanced example showing how to evaluate a skill that requires static analysi
 ```
 angular-signals/
 ├── SKILL.md                           # Angular modern APIs skill
-├── eval.yaml                          # Eval configuration
+├── eval.ts                            # Eval configuration
 ├── fixtures/
 │   └── src/app/
 │       └── user-profile.component.ts  # Legacy component to modernize
@@ -34,12 +34,15 @@ The agent must modernize an Angular component from legacy APIs to modern ones:
 
 The deterministic grader uses the `setup` field to install TypeScript and ts-node during image build:
 
-```yaml
-graders:
-  - type: deterministic
-    setup: npm install typescript ts-node @types/node
-    run: npx ts-node graders/check-modern-apis.ts
-    weight: 0.7
+```ts
+graders: [
+  {
+    type: 'deterministic',
+    setup: 'npm install typescript ts-node @types/node',
+    run: 'npx ts-node graders/check-modern-apis.ts',
+    weight: 0.7,
+  },
+]
 ```
 
 ## Run
