@@ -1,10 +1,15 @@
-# `eval.yaml` Specification
+# `eval.ts` Specification
 
 ## Top-Level Keys
 
-```yaml
-version: "1"
-skill: path/to/my-skill   # Optional, defaults to auto-detecting SKILL.md
+```typescript
+import { defineEval } from '@wix/pathgrade';
+
+export default defineEval({
+  // skill: 'path/to/my-skill',  // Optional, defaults to auto-detecting SKILL.md
+  defaults: { ... },
+  tasks: [ ... ],
+});
 ```
 
 ## `defaults`
@@ -64,10 +69,10 @@ Array of evaluation tasks.
 
 `instruction`, `rubric`, and `run` can point at files. If the value resolves to a real path, Pathgrade reads the file contents automatically.
 
-```yaml
-instruction: instructions/fix-linting.md
-rubric: rubrics/workflow-quality.md
-run: graders/check.sh
+```typescript
+instruction: 'instructions/fix-linting.md',
+rubric: 'rubrics/workflow-quality.md',
+run: 'graders/check.sh',
 ```
 
 ## Deprecated Fields

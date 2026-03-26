@@ -1,6 +1,6 @@
 ---
 name: pathgrade-graders
-description: Authors deterministic and LLM rubric graders for pathgrade evaluations. Use when creating scoring scripts, writing evaluation rubrics, or combining multiple graders with weighted scoring. Don't use for setting up eval pipelines, configuring eval.yaml defaults, or general test writing.
+description: Authors deterministic and LLM rubric graders for pathgrade evaluations. Use when creating scoring scripts, writing evaluation rubrics, or combining multiple graders with weighted scoring. Don't use for setting up eval pipelines, configuring eval.ts defaults, or general test writing.
 ---
 
 # Pathgrade Grader Authoring
@@ -20,11 +20,13 @@ description: Authors deterministic and LLM rubric graders for pathgrade evaluati
 3. `score` (0.0–1.0) and `details` are required. `checks` is optional but recommended.
 4. Read `references/grader-output-schema.md` for the full output specification.
 5. Use `awk` for arithmetic in bash scripts — `bc` is not available in `node:20-slim`.
-6. Reference the grader in eval.yaml:
-   ```yaml
-   - type: deterministic
-     run: bash graders/check.sh
-     weight: 0.7
+6. Reference the grader in eval.ts:
+   ```typescript
+   {
+     type: 'deterministic',
+     run: 'bash graders/check.sh',
+     weight: 0.7,
+   }
    ```
 
 **Step 3: Write an LLM Rubric Grader**
@@ -36,13 +38,14 @@ description: Authors deterministic and LLM rubric graders for pathgrade evaluati
    Efficiency (0-0.5):
    - Completed in ≤5 commands without trial-and-error?
    ```
-3. Reference the rubric in eval.yaml:
-   ```yaml
-   - type: llm_rubric
-     rubric: |
-       [rubric text or file path]
-     weight: 0.3
-     model: gemini-2.0-flash  # optional, auto-detected from API key
+3. Reference the rubric in eval.ts:
+   ```typescript
+   {
+     type: 'llm_rubric',
+     rubric: '[rubric text or file path]',
+     weight: 0.3,
+     model: 'gemini-2.0-flash',  // optional, auto-detected from API key
+   }
    ```
 4. For long rubrics, store in a separate file and reference by path: `rubric: rubrics/quality.md`.
 
@@ -50,14 +53,11 @@ description: Authors deterministic and LLM rubric graders for pathgrade evaluati
 1. Assign weights to each grader based on importance. Weights are normalized automatically.
 2. Final reward is calculated as: `Σ (grader_score × weight) / Σ weight`.
 3. Example configuration:
-   ```yaml
-   graders:
-     - type: deterministic
-       run: bash graders/check.sh
-       weight: 0.7
-     - type: llm_rubric
-       rubric: rubrics/quality.md
-       weight: 0.3
+   ```typescript
+   graders: [
+     { type: 'deterministic', run: 'bash graders/check.sh', weight: 0.7 },
+     { type: 'llm_rubric', rubric: 'rubrics/quality.md', weight: 0.3 },
+   ]
    ```
 
 **Step 5: Validate Graders**

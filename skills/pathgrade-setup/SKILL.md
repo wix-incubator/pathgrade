@@ -17,12 +17,12 @@ description: Sets up and runs Pathgrade evaluation pipelines for Agent Skills. U
 1. Navigate to the skill directory. It should contain a `SKILL.md`.
 2. Export the relevant API key: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`.
 3. Run `pathgrade init`.
-4. If `eval.yaml` already exists, use `pathgrade init --force`.
+4. If `eval.ts` already exists, use `pathgrade init --force`.
 5. Without an API key, Pathgrade creates a commented local-only template.
 
-### Step 3: Configure `eval.yaml`
+### Step 3: Configure `eval.ts`
 
-1. Read `references/eval-yaml-spec.md` for the current schema.
+1. Read `references/eval-ts-spec.md` for the current schema.
 2. Define one or more tasks under `tasks:`.
 3. For each task, provide:
    - `name`

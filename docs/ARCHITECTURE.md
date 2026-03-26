@@ -14,7 +14,7 @@ Pathgrade keeps the entire execution runtime local:
 
 ## Core Flow
 
-1. `pathgrade` loads `eval.yaml` and detects any local `SKILL.md` directories.
+1. `pathgrade` loads `eval.ts` and detects any local `SKILL.md` directories.
 2. `run.ts` resolves each task into concrete instruction text, conversation config, grader content, and workspace mappings.
 3. `EvalRunner` creates one isolated local trial runtime per attempt.
 4. The chosen agent adapter runs inside that runtime and calls back into the local provider for shell execution.
@@ -106,37 +106,44 @@ Important boundary:
 - host-scoped env is for LLM-backed features (grading, persona, init)
 - host-auth passthrough preserves real `HOME` while isolating the workspace via `cwd`
 
-## `eval.yaml` Model
+## `eval.ts` Model
 
-The active task format is still `eval.yaml`.
+The eval config format is `eval.ts` using `defineEval()`.
 
-```yaml
-version: "1"
+```typescript
+import { defineEval } from '@wix/pathgrade';
 
-defaults:
-  agent: gemini
-  trials: 5
-  timeout: 300
-  threshold: 0.8
-  environment:
-    cpus: 2
-    memory_mb: 2048
+export default defineEval({
+  defaults: {
+    agent: 'gemini',
+    trials: 5,
+    timeout: 300,
+    threshold: 0.8,
+    environment: { cpus: 2, memory_mb: 2048 },
+  },
 
-tasks:
-  - name: fix-linting-errors
-    instruction: |
-      Use the provided tool to fix the issue in app.js.
-    workspace:
-      - src: fixtures/app.js
-        dest: app.js
-    graders:
-      - type: deterministic
-        run: bash graders/check.sh
-        weight: 0.7
-      - type: llm_rubric
-        rubric: |
-          Did the agent solve the task cleanly and correctly?
-        weight: 0.3
+  tasks: [
+    {
+      name: 'fix-linting-errors',
+      instruction: `Use the provided tool to fix the issue in app.js.`,
+      workspace: [
+        { src: 'fixtures/app.js', dest: 'app.js' },
+      ],
+      graders: [
+        {
+          type: 'deterministic',
+          run: 'bash graders/check.sh',
+          weight: 0.7,
+        },
+        {
+          type: 'llm_rubric',
+          rubric: `Did the agent solve the task cleanly and correctly?`,
+          weight: 0.3,
+        },
+      ],
+    },
+  ],
+});
 ```
 
 Conversation tasks add:
@@ -146,9 +153,9 @@ Conversation tasks add:
 - scripted `conversation.replies`
 - optional `conversation.persona`
 
-Pathgrade no longer accepts `provider` or `docker` fields in `eval.yaml`. The agent runtime is always local.
+Pathgrade no longer accepts `provider` or `docker` fields in `eval.ts`. The agent runtime is always local.
 
-LLM backend selection (CLI vs API keys) is determined at runtime by `callLLM()` in `src/utils/llm.ts`, not by `eval.yaml`.
+LLM backend selection (CLI vs API keys) is determined at runtime by `callLLM()` in `src/utils/llm.ts`, not by `eval.ts`.
 
 ## Main Components
 
@@ -158,7 +165,7 @@ LLM backend selection (CLI vs API keys) is determined at runtime by `callLLM()` 
 
 ### Config Resolution
 
-`src/core/config.ts` validates `eval.yaml`, rejects deprecated runtime fields, applies defaults, and resolves file references for instructions, conversations, and graders.
+`src/core/config.ts` validates `eval.ts`, rejects deprecated runtime fields, applies defaults, and resolves file references for instructions, conversations, and graders.
 
 ### Trial Execution
 

@@ -21,7 +21,7 @@ Initialize from a skill directory:
 ```bash
 cd my-skill/
 GEMINI_API_KEY=your-key pathgrade init
-# Use --force to overwrite an existing eval.yaml
+# Use --force to overwrite an existing eval.ts
 ```
 
 Run your evals:
@@ -70,70 +70,73 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/` by default. Overr
 | `--threshold=0.8` | Pass rate threshold for `--ci` |
 | `--preview` | Show the CLI preview after the run |
 
-## `eval.yaml` Reference
+## `eval.ts` Reference
 
-```yaml
-version: "1"
+```typescript
+import { defineEval } from '@wix/pathgrade';
 
-# Optional: explicit path to the skill directory
-# skill: path/to/my-skill
+export default defineEval({
+  // Optional: explicit path to the skill directory
+  // skill: 'path/to/my-skill',
 
-defaults:
-  agent: gemini
-  trials: 5
-  timeout: 300
-  threshold: 0.8
-  grader_model: gemini-3-flash-preview
-  environment:
-    cpus: 2
-    memory_mb: 2048
+  defaults: {
+    agent: 'gemini',
+    trials: 5,
+    timeout: 300,
+    threshold: 0.8,
+    grader_model: 'gemini-3-flash-preview',
+    environment: { cpus: 2, memory_mb: 2048 },
+  },
 
-tasks:
-  - name: fix-linting-errors
-    instruction: |
-      Use the provided tool to fix coding-standard violations in app.js.
-
-    workspace:
-      - src: fixtures/broken-app.js
-        dest: app.js
-      - src: bin/superlint
-        dest: /usr/local/bin/superlint
-        chmod: "+x"
-
-    graders:
-      - type: deterministic
-        setup: npm install typescript
-        run: npx ts-node graders/check.ts
-        weight: 0.7
-      - type: llm_rubric
-        rubric: |
-          Did the agent follow the expected workflow and solve the task cleanly?
-        model: gemini-2.0-flash
-        weight: 0.3
-
-    agent: claude
-    trials: 10
-    timeout: 600
+  tasks: [
+    {
+      name: 'fix-linting-errors',
+      instruction: `Use the provided tool to fix coding-standard violations in app.js.`,
+      workspace: [
+        { src: 'fixtures/broken-app.js', dest: 'app.js' },
+        { src: 'bin/superlint', dest: '/usr/local/bin/superlint', chmod: '+x' },
+      ],
+      graders: [
+        {
+          type: 'deterministic',
+          setup: 'npm install typescript',
+          run: 'npx ts-node graders/check.ts',
+          weight: 0.7,
+        },
+        {
+          type: 'llm_rubric',
+          rubric: `Did the agent follow the expected workflow and solve the task cleanly?`,
+          model: 'gemini-2.0-flash',
+          weight: 0.3,
+        },
+      ],
+      agent: 'claude',
+      trials: 10,
+      timeout: 600,
+    },
+  ],
+});
 ```
-
-Pathgrade no longer supports `provider` or `docker` fields in `eval.yaml`.
 
 String values for `instruction`, `rubric`, and `run` support file references:
 
-```yaml
-instruction: instructions/fix-linting.md
-rubric: rubrics/workflow-quality.md
-run: graders/check.sh
+```typescript
+// instruction, rubric, and run accept file paths — Pathgrade reads the file automatically
+instruction: 'instructions/fix-linting.md',
+rubric: 'rubrics/workflow-quality.md',
+run: 'graders/check.sh',
 ```
 
 ## Graders
 
 Deterministic graders execute a command and parse JSON from stdout:
 
-```yaml
-- type: deterministic
-  run: bash graders/check.sh
-  weight: 0.7
+```typescript
+{
+  type: 'deterministic',
+  run: 'bash graders/check.sh',
+  weight: 0.7,
+}
 ```
 
 Expected output:
@@ -153,15 +156,16 @@ Use `awk` for floating-point arithmetic in shell graders.
 
 Rubric graders score qualitative behavior from the session transcript:
 
-```yaml
-- type: llm_rubric
-  rubric: |
-    Workflow Compliance (0-0.5):
-    - Did the agent follow the expected steps?
+```typescript
+{
+  type: 'llm_rubric',
+  rubric: `Workflow Compliance (0-0.5):
+- Did the agent follow the expected steps?
 
-    Efficiency (0-0.5):
-    - Did it avoid unnecessary commands?
-  weight: 0.3
+Efficiency (0-0.5):
+- Did it avoid unnecessary commands?`,
+  weight: 0.3,
+}
 ```
 
 ## CI
