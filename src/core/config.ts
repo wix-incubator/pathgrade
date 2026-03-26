@@ -14,6 +14,8 @@ import {
     ResolvedStepGrader,
     WorkspaceMapping,
     EnvironmentConfig,
+    AgentName,
+    VALID_AGENTS,
 } from './config.types';
 import { DEFAULT_CONFIG } from './defaults';
 
@@ -76,6 +78,10 @@ export function validateConfig(raw: any): EvalConfig {
         },
     };
 
+    if (defaults.agent && !(VALID_AGENTS as readonly string[]).includes(defaults.agent)) {
+        throw new Error(`Invalid agent "${defaults.agent}". Must be one of: ${VALID_AGENTS.join(', ')}`);
+    }
+
     if (!raw.tasks || !Array.isArray(raw.tasks) || raw.tasks.length === 0) {
         throw new Error('Config must have at least one task in the "tasks" array');
     }
@@ -87,6 +93,9 @@ export function validateConfig(raw: any): EvalConfig {
         }
         if (!t.instruction && !t.conversation) {
             throw new Error(`Task "${t.name}" is missing an "instruction" or "conversation"`);
+        }
+        if (t.agent && !(VALID_AGENTS as readonly string[]).includes(t.agent)) {
+            throw new Error(`Invalid agent "${t.agent}" in task "${t.name}". Must be one of: ${VALID_AGENTS.join(', ')}`);
         }
         if (!t.graders || !Array.isArray(t.graders) || t.graders.length === 0) {
             throw new Error(`Task "${t.name}" must have at least one grader`);

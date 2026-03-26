@@ -5,6 +5,10 @@
  * create to define evaluation tasks for their skills.
  */
 
+/** Supported agent names — single source of truth for both type and runtime validation */
+export const VALID_AGENTS = ['claude', 'gemini', 'codex'] as const;
+export type AgentName = typeof VALID_AGENTS[number];
+
 /** Workspace file mapping: copy a local file into the trial workspace */
 export interface WorkspaceMapping {
     src: string;        // relative to eval.ts
@@ -88,7 +92,7 @@ export interface EvalTaskConfig {
     solution?: string;      // path to reference solution script
 
     // Per-task overrides
-    agent?: string;
+    agent?: AgentName;
     trials?: number;
     timeout?: number;
     grader_model?: string;
@@ -97,7 +101,7 @@ export interface EvalTaskConfig {
 
 /** Top-level defaults */
 export interface EvalDefaults {
-    agent: string;      // 'gemini' | 'claude' | 'codex'
+    agent: AgentName;
     trials: number;
     timeout: number;
     threshold: number;  // for --ci mode
@@ -121,7 +125,7 @@ export interface ResolvedTask {
     workspace: WorkspaceMapping[];
     graders: ResolvedGrader[];
     solution?: string;      // resolved file path
-    agent: string;
+    agent: AgentName;
     trials: number;
     timeout: number;
     grader_model?: string;  // inherited default model for LLM graders
@@ -162,7 +166,7 @@ export interface DefineEvalTaskInput {
     workspace?: WorkspaceMapping[];
     graders: DefineEvalGraderInput[];
     solution?: string;
-    agent?: string;
+    agent?: AgentName;
     trials?: number;
     timeout?: number;
     grader_model?: string;

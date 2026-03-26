@@ -12,7 +12,7 @@ import { LocalProvider } from '../providers/local';
 import { EvalRunner, EvalRunOptions } from '../evalRunner';
 import { createAgent } from '../agents/registry';
 import { BaseAgent, EvalReport } from '../types';
-import { ResolvedTask } from '../core/config.types';
+import { ResolvedTask, AgentName } from '../core/config.types';
 import { parseEnvFile } from '../utils/env';
 import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
 import { isClaudeCliAvailable } from '../utils/cli-llm';
@@ -25,7 +25,7 @@ interface RunOptions {
     ci?: boolean;
     threshold?: number;
     preset?: 'smoke' | 'reliable' | 'regression';
-    agent?: string;      // override agent (gemini|claude)
+    agent?: AgentName;   // override agent (gemini|claude|codex)
     output?: string;     // output directory for reports and temp files
     grader?: string;     // filter graders by type (deterministic|llm_rubric)
 }
@@ -113,7 +113,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
         // Pick agent: CLI flag > task-level override > default
         // Currently only Claude is supported as the solver agent.
-        const agentName = opts.agent || resolved.agent || 'claude';
+        const agentName: AgentName = opts.agent || resolved.agent || 'claude';
 
         // Host-auth passthrough for CLI-authenticated agents
         const cliAgents = ['claude', 'codex'];

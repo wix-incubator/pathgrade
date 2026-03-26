@@ -220,6 +220,27 @@ describe('validateConfig', () => {
     ]);
   });
 
+  it('rejects invalid agent name in defaults', () => {
+    expect(() => validateConfig({
+      version: '1',
+      defaults: { agent: 'unknown-agent' },
+      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+    })).toThrow('Invalid agent');
+  });
+
+  it('rejects invalid agent name in task override', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'instruction',
+        instruction: 'do it',
+        agent: 'unknown-agent',
+        graders: [{ type: 'deterministic', run: 'echo ok' }],
+      }],
+    })).toThrow('Invalid agent');
+  });
+
   it('defaults grader weight to 1.0', () => {
     const config = validateConfig({
       version: '1',
