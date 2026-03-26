@@ -1,0 +1,15 @@
+{
+  "name": "ck-new",
+  "version": "1.0.0",
+  "description": "Plugin-style metadata for the ck-new skill.",
+  "mcpServers": {
+    "jira": {
+      "type": "http",
+      "url": "https://mcp-s.wewix.net/mcp?mcp=jira"
+    },
+    "kb-retrieval": {
+      "type": "http",
+      "url": "https://mcp-s.wewix.net/mcp?mcp=kb-retrieval"
+    }
+  }
+}
