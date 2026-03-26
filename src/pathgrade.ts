@@ -20,6 +20,7 @@
 
 import { runInit } from './commands/init';
 import { runEvals } from './commands/run';
+import { AgentName } from './core/config.types';
 import { runPreview } from './commands/preview';
 import { fmt } from './utils/cli';
 import * as os from 'os';
@@ -98,7 +99,7 @@ async function main() {
         ci: hasFlag('ci'),
         threshold: getFlag('threshold') ? parseFloat(getFlag('threshold')!) : undefined,
         preset,
-        agent: getFlag('agent'),
+        agent: getFlag('agent') as AgentName | undefined,
         grader: getFlag('grader'),
         output: outputDir,
     });

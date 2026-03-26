@@ -239,11 +239,11 @@ export async function resolveTask(
     };
     const grader_model = task.grader_model || defaults.grader_model;
 
-    // Resolve instruction — could be inline text or file path
-    const instruction = task.instruction
+    // Resolve instruction or conversation based on task type
+    const instruction = task.type === 'instruction'
         ? await resolveFileOrInline(task.instruction, baseDir)
         : undefined;
-    const conversation = task.conversation
+    const conversation = task.type === 'conversation'
         ? await resolveConversation(task.conversation, baseDir)
         : undefined;
 

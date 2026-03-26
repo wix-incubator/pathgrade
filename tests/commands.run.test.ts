@@ -26,7 +26,7 @@ describe('prepareTempTaskDir', () => {
     return dir;
   }
 
-  function makeResolvedTask(overrides?: Partial<ResolvedTask>): ResolvedTask {
+  function makeResolvedTask(overrides?: Record<string, any>): ResolvedTask {
     return {
       type: 'instruction' as const,
       name: 'test-task',
@@ -38,7 +38,7 @@ describe('prepareTempTaskDir', () => {
       timeout: 300,
       environment: { cpus: 2, memory_mb: 2048 },
       ...overrides,
-    };
+    } as ResolvedTask;
   }
 
   it('stages deterministic grader scripts into .pathgrade/tests/', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateConfig, resolveTask } from '../src/core/config';
-import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig } from '../src/core/config.types';
+import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig, ResolvedInstructionTask, ResolvedConversationTask } from '../src/core/config.types';
 
 // Mock fs-extra for resolveTask tests only (file reference resolution)
 vi.mock('fs-extra', () => ({
@@ -359,7 +359,7 @@ describe('resolveTask', () => {
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
     };
 
-    const resolved = await resolveTask(task, defaults, '/base');
+    const resolved = await resolveTask(task, defaults, '/base') as ResolvedInstructionTask;
     expect(resolved.instruction).toBe('line 1\nline 2\nline 3');
   });
 
@@ -374,7 +374,7 @@ describe('resolveTask', () => {
     mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('File content here' as any);
 
-    const resolved = await resolveTask(task, defaults, '/base');
+    const resolved = await resolveTask(task, defaults, '/base') as ResolvedInstructionTask;
     expect(resolved.instruction).toBe('File content here');
   });
 
@@ -476,8 +476,8 @@ describe('resolveTask', () => {
       return '';
     });
 
-    const resolved = await resolveTask(task, defaults, '/base');
-    expect(resolved.instruction).toBeUndefined();
+    const resolved = await resolveTask(task, defaults, '/base') as ResolvedConversationTask;
+    expect(resolved.type).toBe('conversation');
     expect(resolved.conversation).toEqual({
       opener: 'Opened from file',
       completion: { max_turns: 4, done_phrase: 'done' },
@@ -512,7 +512,7 @@ describe('resolveTask', () => {
       return '';
     });
 
-    const resolved = await resolveTask(task, defaults, '/base');
+    const resolved = await resolveTask(task, defaults, '/base') as ResolvedConversationTask;
     expect(resolved.conversation).toEqual({
       opener: 'Opened inline',
       completion: { max_turns: 4 },

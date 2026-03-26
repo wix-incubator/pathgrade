@@ -80,7 +80,7 @@ describe('defineEval', () => {
   it('throws when task is missing type', () => {
     expect(() =>
       defineEval({
-        tasks: [{ name: 'x', graders: [{ type: 'deterministic', run: 'x' }] }],
+        tasks: [{ name: 'x', graders: [{ type: 'deterministic', run: 'x' }] } as any],
       })
     ).toThrow('missing a "type"');
   });
@@ -139,10 +139,11 @@ describe('defineEval', () => {
       ],
     });
 
-    expect(config.tasks[0].instruction).toBeUndefined();
-    expect(config.tasks[0].conversation?.opener).toBe('Hello agent');
-    expect(config.tasks[0].conversation?.completion.max_turns).toBe(3);
-    expect(config.tasks[0].conversation?.replies).toHaveLength(1);
+    const task = config.tasks[0] as import('../src/core/config.types').ConversationTaskConfig;
+    expect(task.type).toBe('conversation');
+    expect(task.conversation.opener).toBe('Hello agent');
+    expect(task.conversation.completion.max_turns).toBe(3);
+    expect(task.conversation.replies).toHaveLength(1);
   });
 
   it('supports conversation tasks with persona', () => {
@@ -164,7 +165,8 @@ describe('defineEval', () => {
       ],
     });
 
-    expect(config.tasks[0].conversation?.persona?.description).toBe('You are a product manager.');
-    expect(config.tasks[0].conversation?.persona?.facts).toHaveLength(1);
+    const task = config.tasks[0] as import('../src/core/config.types').ConversationTaskConfig;
+    expect(task.conversation.persona?.description).toBe('You are a product manager.');
+    expect(task.conversation.persona?.facts).toHaveLength(1);
   });
 });
