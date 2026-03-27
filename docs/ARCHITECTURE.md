@@ -214,13 +214,14 @@ Current continuation behavior:
 
 `src/utils/llm.ts` is the shared LLM call boundary used by:
 
+- `src/commands/init.ts`
 - `src/persona.ts`
 - `src/graders/index.ts`
 
 Current behavior:
 
-- CLI-first: when no API keys are available and Claude CLI is installed with an active OAuth session, `callLLM()` routes through `callClaudeCli()` in `src/utils/cli-llm.ts`
-- API-key fallback: when API keys are present (CI), uses direct provider HTTP calls (Gemini -> Anthropic -> OpenAI)
+- CLI-first: when Claude CLI is installed with an active OAuth session, `callLLM()` routes through `callClaudeCli()` in `src/utils/cli-llm.ts` unless a non-Claude model is explicitly requested
+- API-key fallback: when Claude CLI is unavailable, or when a non-Claude model is explicitly requested, uses direct provider HTTP calls (Gemini -> Anthropic -> OpenAI)
 - model guard: non-Claude models requested without API keys throw a clear error instead of silently substituting Claude
 
 ### Graders

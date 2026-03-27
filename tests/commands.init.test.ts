@@ -1,4 +1,33 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'fs-extra';
+import * as os from 'os';
+import * as path from 'path';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const { mockDetectSkills, mockCallLLM } = vi.hoisted(() => ({
+  mockDetectSkills: vi.fn(),
+  mockCallLLM: vi.fn(),
+}));
+
+vi.mock('../src/core/skills', () => ({
+  detectSkills: mockDetectSkills,
+}));
+
+vi.mock('../src/utils/llm', () => ({
+  callLLM: mockCallLLM,
+}));
+
+vi.mock('../src/utils/cli', () => ({
+  Spinner: class {
+    constructor(_scope: string, _label: string) {}
+    stop(_message: string) {}
+  },
+  fmt: {
+    green: (value: string) => value,
+    red: (value: string) => value,
+  },
+}));
+
+import { runInit } from '../src/commands/init';
 
 // We test extractInstructionHint and getInlineTemplate
 // These functions are not exported so we need to test them via runInit or replicate them
@@ -140,5 +169,56 @@ export default defineEval({
     const template = getInlineTemplate();
     expect(template).toContain('"score"');
     expect(template).toContain('"details"');
+  });
+});
+
+describe('runInit LLM selection', () => {
+  const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pathgrade-init-test-'));
+    mockDetectSkills.mockResolvedValue([
+      {
+        name: 'sample-skill',
+        skillMd: '# Sample Skill\n\nUse the skill when asked.',
+      },
+    ]);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    if (originalOpenAiApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    }
+    await fs.remove(tmpDir);
+  });
+
+  it('uses the shared callLLM path even when OPENAI_API_KEY is set', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'provider response' } }],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.OPENAI_API_KEY = 'sk-test';
+    mockCallLLM.mockResolvedValue({
+      text: "import { defineEval } from '@wix/pathgrade';\nexport default defineEval({ tasks: [] });\n",
+      provider: 'cli',
+      model: 'claude-cli',
+    });
+
+    await runInit(tmpDir);
+
+    expect(mockCallLLM).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(tmpDir, 'eval.ts'), 'utf-8')).toContain('defineEval');
   });
 });
