@@ -62,7 +62,8 @@ export class ClaudeAgent extends BaseAgent {
 
         // Use --output-format json to capture session_id from the response envelope.
         // For continuation, use --resume to target the exact session from turn 1.
-        const sessionFlag = sessionId ? ` --resume ${sessionId}` : '';
+        const sanitized = sessionId ? this.sanitizeSessionId(sessionId) : undefined;
+        const sessionFlag = sanitized ? ` --resume ${sanitized}` : '';
         const command = `claude -p${sessionFlag} --output-format json --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
         const result = await runCommand(command);
 
@@ -83,6 +84,15 @@ export class ClaudeAgent extends BaseAgent {
             exitCode: result.exitCode,
             sessionId: parsed.extractedSessionId,
         };
+    }
+
+    private sanitizeSessionId(id: string): string {
+        // Claude session IDs are alphanumeric with hyphens and underscores
+        const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, '');
+        if (sanitized !== id) {
+            console.warn(`ClaudeAgent: sanitized suspicious session_id: ${id.substring(0, 50)}`);
+        }
+        return sanitized;
     }
 
     private parseJsonEnvelope(stdout: string): { text: string; extractedSessionId?: string; envelopeFound: boolean } {

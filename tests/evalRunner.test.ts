@@ -602,6 +602,51 @@ describe('EvalRunner', () => {
     // Should not throw even without prepare/teardown
   });
 
+  it('passes abort signal to grader on timeout', async () => {
+    let receivedSignal: AbortSignal | undefined;
+
+    const mockProvider = {
+      setup: vi.fn().mockResolvedValue({ handle: '/tmp/test', workspacePath: '/tmp/test/workspace', env: {} }),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      runCommand: vi.fn(async (_ws: any, _cmd: string, _env: any, options?: any) => {
+        receivedSignal = options?.signal;
+        // Simulate a slow grader -- wait for abort
+        return new Promise((resolve) => {
+          const timer = setTimeout(() => resolve({ stdout: '{"score": 1}', stderr: '', exitCode: 0 }), 10000);
+          if (options?.signal) {
+            options.signal.addEventListener('abort', () => {
+              clearTimeout(timer);
+              resolve({ stdout: '', stderr: '', exitCode: 124, timedOut: true });
+            });
+          }
+        });
+      }),
+    };
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue(new gradersModule.DeterministicGrader());
+
+    const runner = new EvalRunner(mockProvider as any);
+    const report = await runner.runEval(
+      () => makeMockAgent('output'),
+      '/tmp/task',
+      [],
+      {
+        instruction: 'test',
+        graders: [{ type: 'deterministic', run: 'sleep 999', weight: 1 }],
+        timeoutSec: 60,
+        graderTimeoutSec: 0.1, // 100ms grader timeout
+        environment: { cpus: 1, memory_mb: 512 },
+      },
+      1,
+      {},
+    );
+
+    // The grader should have received an abort signal
+    expect(receivedSignal).toBeDefined();
+    expect(report.trials[0].reward).toBe(0);
+  });
+
   it('handles multiple graders of each type', async () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();

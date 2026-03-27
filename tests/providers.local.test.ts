@@ -218,6 +218,58 @@ describe('LocalProvider', () => {
       ]);
     });
 
+    it('does not leak host env vars to child process in isolated mode', async () => {
+      // Set a secret env var on the host
+      process.env.__TEST_SECRET_KEY = 'super-secret-value';
+
+      const taskDir = path.join(os.tmpdir(), `pathgrade-isolation-env-task-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.writeFile(path.join(taskDir, 'task.toml'), 'version = "1"');
+      tempDirs.push(taskDir);
+
+      const provider2 = new LocalProvider();
+      const runtime = await provider2.setup(taskDir, [], {
+        timeoutSec: 10,
+        environment: { cpus: 1, memory_mb: 512 },
+        authMode: 'isolated',
+      });
+      tempDirs.push(runtime.handle);
+
+      try {
+        const result = await provider2.runCommand(runtime, 'printenv __TEST_SECRET_KEY');
+        // The secret should NOT be in the child process output
+        expect(result.stdout.trim()).not.toContain('super-secret-value');
+      } finally {
+        await provider2.cleanup(runtime);
+        delete process.env.__TEST_SECRET_KEY;
+      }
+    });
+
+    it('passes host env vars in host auth mode', async () => {
+      process.env.__TEST_HOST_KEY = 'host-value';
+
+      const taskDir = path.join(os.tmpdir(), `pathgrade-host-env-task-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.writeFile(path.join(taskDir, 'task.toml'), 'version = "1"');
+      tempDirs.push(taskDir);
+
+      const provider2 = new LocalProvider();
+      const runtime = await provider2.setup(taskDir, [], {
+        timeoutSec: 10,
+        environment: { cpus: 1, memory_mb: 512 },
+        authMode: 'host',
+      });
+      tempDirs.push(runtime.handle);
+
+      try {
+        const result = await provider2.runCommand(runtime, 'printenv __TEST_HOST_KEY');
+        expect(result.stdout.trim()).toContain('host-value');
+      } finally {
+        await provider2.cleanup(runtime);
+        delete process.env.__TEST_HOST_KEY;
+      }
+    });
+
     it('aborts long-running commands when the signal is canceled', async () => {
       const tempDir = path.join(os.tmpdir(), `pathgrade-cmd-abort-${Date.now()}`);
       await fsExtra.ensureDir(tempDir);

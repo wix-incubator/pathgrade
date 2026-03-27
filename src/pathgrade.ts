@@ -23,10 +23,12 @@ import { runEvals } from './commands/run';
 import { AgentName } from './core/config.types';
 import { runPreview } from './commands/preview';
 import { fmt } from './utils/cli';
+import { shutdown } from './utils/shutdown';
 import * as os from 'os';
 import * as path from 'path';
 
 async function main() {
+    shutdown.install();
     const args = process.argv.slice(2);
     const command = args[0];
     const cwd = process.cwd();

@@ -104,14 +104,14 @@ describe('DeterministicGrader', () => {
     const config: GraderConfig = { type: 'deterministic', command: 'node test.js', weight: 1.0 };
     await grader.grade('/workspace', provider, config, '/task', []);
 
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'node test.js', undefined);
+    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'node test.js', undefined, { signal: undefined });
   });
 
   it('uses default command bash .pathgrade/tests/test.sh when command not set', async () => {
     const provider = makeProvider('{"score": 1.0, "details": "pass"}');
     await grader.grade('/workspace', provider, baseConfig, '/task', []);
 
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', undefined);
+    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', undefined, { signal: undefined });
   });
 
   it('generates default details from score when details not in JSON', async () => {
@@ -133,7 +133,7 @@ describe('DeterministicGrader', () => {
     const env = { FOO: 'bar' };
     await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', env);
+    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', env, { signal: undefined });
   });
 });
 
