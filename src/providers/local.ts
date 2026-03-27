@@ -137,12 +137,33 @@ export class LocalProvider implements EnvironmentProvider {
         options?: CommandExecutionOptions
     ): Promise<CommandResult> {
         const workspacePath = getWorkspacePath(runtime);
+        const runtimeEnv = getRuntimeEnv(runtime);
+
+        // Build the child process environment.
+        // In isolated mode (HOME is overridden), use a minimal allowlist
+        // to prevent leaking host secrets like API keys and credentials.
+        // In host mode, inherit the full host environment.
+        const isIsolated = runtimeEnv.HOME !== undefined && runtimeEnv.HOME !== process.env.HOME;
+        let childEnv: NodeJS.ProcessEnv;
+        if (isIsolated) {
+            const SAFE_HOST_VARS = [
+                'PATH', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'USER', 'LOGNAME',
+            ];
+            const baseEnv: Record<string, string> = {};
+            for (const key of SAFE_HOST_VARS) {
+                if (process.env[key]) baseEnv[key] = process.env[key]!;
+            }
+            childEnv = { ...baseEnv, ...env, ...runtimeEnv } as NodeJS.ProcessEnv;
+        } else {
+            childEnv = { ...process.env, ...env, ...runtimeEnv } as NodeJS.ProcessEnv;
+        }
+
         return new Promise((resolve) => {
             const child = spawn(command, {
                 shell: true,
                 detached: process.platform !== 'win32',
                 cwd: workspacePath,
-                env: { ...process.env, ...env, ...getRuntimeEnv(runtime) }
+                env: childEnv,
             });
 
             let stdout = '';
