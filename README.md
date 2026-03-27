@@ -60,7 +60,7 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/` by default. Overr
 | Flag | Description |
 |------|-------------|
 | `--eval=NAME[,NAME]` | Run specific evals by name |
-| `--grader=TYPE` | Run only `deterministic` or `llm_rubric` graders |
+| `--grader=TYPE` | Run only `deterministic`, `llm_rubric`, or `tool_usage` graders |
 | `--trials=N` | Override trial count |
 | `--parallel=N` | Run trials concurrently |
 | `--agent=gemini\|claude\|codex` | Override agent selection |
@@ -166,6 +166,22 @@ Rubric graders score qualitative behavior from the session transcript:
 Efficiency (0-0.5):
 - Did it avoid unnecessary commands?`,
   weight: 0.3,
+}
+```
+
+Tool-usage graders score normalized agent tool events against declarative expectations.
+Support is hybrid/best-effort — Codex and Gemini traces are extracted; Claude is unsupported in MVP.
+Normalized actions (`run_shell`, `read_file`, `edit_file`, etc.) are the contract, not provider tool names:
+
+```typescript
+{
+  type: 'tool_usage',
+  weight: 0.4,
+  expectations: [
+    { action: 'read_file', min: 1, weight: 0.3 },
+    { action: 'edit_file', min: 1, weight: 0.3 },
+    { action: 'run_shell', command_contains: 'test', min: 1, weight: 0.4 },
+  ],
 }
 ```
 

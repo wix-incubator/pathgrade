@@ -44,6 +44,14 @@ describe('local-first CLI surface', () => {
     expect(readme).not.toContain('Use `docker` (the default)');
   });
 
+  it('documents tool_usage in README and CLI help', () => {
+    const readme = readRepoFile('README.md');
+    const output = getHelpOutput();
+
+    expect(readme).toContain('tool_usage');
+    expect(output).toContain('tool_usage');
+  });
+
   it('frames the architecture guide around local-only execution', () => {
     const architecture = readRepoFile('docs/ARCHITECTURE.md');
 
