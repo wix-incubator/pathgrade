@@ -35,7 +35,7 @@ interface RunOptions {
     preset?: 'smoke' | 'reliable' | 'regression';
     agent?: AgentName;   // override agent (gemini|claude|codex)
     output?: string;     // output directory for reports and temp files
-    grader?: string;     // filter graders by type (deterministic|llm_rubric)
+    grader?: string;     // filter graders by type (deterministic|llm_rubric|tool_usage)
 }
 
 async function loadEnvFile(filePath: string): Promise<Record<string, string>> {

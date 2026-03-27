@@ -411,7 +411,75 @@ describe('getGrader', () => {
     expect(grader).toBeInstanceOf(LLMGrader);
   });
 
+  it('returns ToolUsageGrader for "tool_usage"', () => {
+    const grader = getGrader('tool_usage');
+    expect(grader).toBeDefined();
+  });
+
   it('throws for unknown grader type', () => {
     expect(() => getGrader('unknown')).toThrow('Unknown grader type');
+  });
+});
+
+describe('ToolUsageGrader', () => {
+  it('scores tool_usage expectations against normalized tool events', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'search_code', min: 1, weight: 0.4 },
+        { action: 'read_file', min: 1, weight: 0.6 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'search_code', provider: 'codex', providerToolName: 'localSearchCode', summary: 'search', confidence: 'high', rawSnippet: '...' } },
+      { type: 'tool_event', timestamp: 't2', tool_event: { action: 'read_file', provider: 'codex', providerToolName: 'localGetFileContent', summary: 'read', confidence: 'high', rawSnippet: '...' } },
+    ]);
+
+    expect(result.score).toBe(1);
+    expect(result.grader_type).toBe('tool_usage');
+  });
+
+  it('returns score 0 when no tool events captured', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [{ action: 'run_shell', min: 1 }],
+    }, '/task', []);
+
+    expect(result.score).toBe(0);
+    expect(result.details).toContain('No tool events captured');
+  });
+
+  it('returns partial score when some expectations fail', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'run_shell', min: 1, weight: 0.5 },
+        { action: 'read_file', min: 1, weight: 0.5 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+    ]);
+
+    expect(result.score).toBe(0.5);
+  });
+
+  it('checks max constraint on expectations', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'ask_user', max: 0, weight: 1 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'ask_user', provider: 'codex', providerToolName: 'ask_user', summary: 'asked', confidence: 'high', rawSnippet: '...' } },
+    ]);
+
+    expect(result.score).toBe(0);
   });
 });

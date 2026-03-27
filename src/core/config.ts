@@ -85,6 +85,7 @@ interface RawGrader {
     rubric?: string;
     model?: string;
     weight?: number;
+    expectations?: Array<Record<string, unknown>>;
 }
 
 /**
@@ -241,6 +242,7 @@ export function validateConfig(raw: unknown): EvalConfig {
                     rubric: g.rubric,
                     model: g.model,
                     weight: g.weight ?? 1.0,
+                    expectations: g.expectations,
                 };
             }),
             solution: t.solution,
@@ -285,6 +287,7 @@ export function validateConfig(raw: unknown): EvalConfig {
                                 rubric: g.rubric,
                                 model: g.model,
                                 weight: g.weight ?? 1.0,
+                                expectations: g.expectations,
                             };
                         }),
                     })),
@@ -313,6 +316,9 @@ async function resolveGrader(g: EvalGraderConfig, baseDir: string): Promise<Reso
     }
     if (g.type === 'llm_rubric' && g.rubric) {
         resolved.rubric = await resolveFileOrInline(g.rubric, baseDir);
+    }
+    if (g.type === 'tool_usage' && g.expectations) {
+        resolved.expectations = g.expectations;
     }
     return resolved;
 }

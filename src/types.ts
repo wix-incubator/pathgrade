@@ -39,11 +39,12 @@ export type ConversationCompletionReason =
     | 'error';
 
 export interface GraderConfig {
-    type: 'deterministic' | 'llm_rubric';
+    type: 'deterministic' | 'llm_rubric' | 'tool_usage';
     command?: string;         // for deterministic: shell command to execute (e.g. 'bash tests/test.sh')
     rubric?: string;          // for llm_rubric: file path to rubric (e.g. 'prompts/quality.md')
     model?: string;           // for llm_rubric: LLM model override
     weight: number;
+    expectations?: import('./core/config.types').ToolUsageExpectation[];  // for tool_usage
 }
 
 export interface GraderResult {

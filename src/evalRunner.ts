@@ -361,6 +361,7 @@ export class EvalRunner {
                 type: graderDef.type,
                 command: graderDef.type === 'deterministic' ? deterministicCommand(detIndex) : undefined,
                 rubric: graderDef.type === 'llm_rubric' ? llmRubricPath(llmIndex) : undefined,
+                expectations: graderDef.type === 'tool_usage' ? graderDef.expectations : undefined,
                 model: graderDef.model || opts.graderModel,
                 weight: graderDef.weight,
             };
