@@ -348,18 +348,28 @@ export class EvalRunner {
                 weight: graderDef.weight,
             };
 
-            const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
-            const result = await withAbortTimeout(
-                async (signal) => grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env, signal),
-                graderTimeoutMs,
-                `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
-            );
-            graderResults.push(result);
+            try {
+                const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
+                const result = await withAbortTimeout(
+                    async (signal) => grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env, signal),
+                    graderTimeoutMs,
+                    `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
+                );
+                graderResults.push(result);
+            } catch (err: unknown) {
+                const errorMsg = (err as Error)?.message || String(err);
+                graderResults.push({
+                    grader_type: graderDef.type,
+                    score: 0,
+                    weight: graderDef.weight,
+                    details: `[grader error] ${errorMsg}`,
+                });
+            }
 
             sessionLog.push({
                 type: 'grader',
                 timestamp: this.timestamp(),
-                grader_result: result,
+                grader_result: graderResults[graderResults.length - 1],
             });
         }
 

@@ -648,6 +648,44 @@ describe('EvalRunner', () => {
     expect(report.trials[0].reward).toBe(0);
   });
 
+  it('preserves passing grader results when a later grader fails', async () => {
+    const mockProvider = makeMockProvider();
+    const callCount = { n: 0 };
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockImplementation((type: string) => ({
+      grade: async () => {
+        callCount.n++;
+        if (callCount.n === 2) throw new Error('LLM API failed');
+        return { grader_type: type, score: 1.0, weight: 1.0, details: 'passed' };
+      },
+    }));
+
+    const runner = new EvalRunner(mockProvider);
+    const report = await runner.runEval(
+      () => makeMockAgent('output'),
+      '/tmp/task',
+      [],
+      {
+        instruction: 'test',
+        graders: [
+          { type: 'deterministic', run: 'test.sh', weight: 1.0 },
+          { type: 'llm_rubric', rubric: 'rubric.md', weight: 1.0 },
+        ],
+        timeoutSec: 60,
+        environment: { cpus: 1, memory_mb: 512 },
+      },
+      1,
+      {},
+    );
+
+    // First grader passed, second failed -- reward should be 0.5 not 0
+    expect(report.trials[0].grader_results).toHaveLength(2);
+    expect(report.trials[0].grader_results[0].score).toBe(1.0);
+    expect(report.trials[0].grader_results[1].score).toBe(0);
+    expect(report.trials[0].reward).toBe(0.5);
+  });
+
   it('handles multiple graders of each type', async () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();
