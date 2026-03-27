@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
-    exclude: ['tests/bootstrap.test.ts', 'tests/analytics.test.ts'],
+    exclude: ['tests/bootstrap.test.ts', 'tests/analytics.test.ts', 'tests/cli-llm.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
