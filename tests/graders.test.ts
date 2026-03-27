@@ -538,6 +538,37 @@ describe('ToolUsageGrader', () => {
     expect(result.score).toBe(0.5);
   });
 
+  it('matches argument_pattern regex against tool arguments', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'run_shell', argument_pattern: 'npm\\s+test', min: 1, weight: 1 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...', arguments: { cmd: 'npm test' } } },
+      { type: 'tool_event', timestamp: 't2', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'ls', confidence: 'high', rawSnippet: '...', arguments: { cmd: 'ls -la' } } },
+    ]);
+
+    expect(result.score).toBe(1);
+  });
+
+  it('fails argument_pattern when no argument values match the regex', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'run_shell', argument_pattern: 'pytest', min: 1, weight: 1 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...', arguments: { cmd: 'npm test' } } },
+    ]);
+
+    expect(result.score).toBe(0);
+  });
+
   it('checks max constraint on expectations', async () => {
     const grader = getGrader('tool_usage');
     const result = await grader.grade('/workspace', makeProvider(''), {

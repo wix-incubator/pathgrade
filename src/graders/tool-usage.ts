@@ -12,6 +12,11 @@ function matchesExpectation(event: ToolEvent, expectation: ToolUsageExpectation)
         const cmd = String(event.arguments?.cmd || event.arguments?.command || '');
         if (!cmd.includes(expectation.command_contains)) return false;
     }
+    if (expectation.argument_pattern) {
+        const re = new RegExp(expectation.argument_pattern);
+        const values = Object.values(event.arguments || {}).filter((v): v is string => typeof v === 'string');
+        if (!values.some((v) => re.test(v))) return false;
+    }
     return true;
 }
 

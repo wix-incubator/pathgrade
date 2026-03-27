@@ -82,6 +82,7 @@ export interface ToolUsageExpectation {
     provider?: AgentName;
     path?: string;
     command_contains?: string;
+    argument_pattern?: string;  // regex tested against all string values in arguments
     tool_name?: string;
     weight?: number;
 }

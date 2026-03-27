@@ -159,6 +159,7 @@ They are best when you care about workflow requirements such as:
 | `max` | `number` | Maximum matching events (optional) |
 | `weight` | `number` | Weight within the expectation set (default: 1) |
 | `command_contains` | `string` | For `run_shell`: substring match on the command |
+| `argument_pattern` | `string` | Regex tested against all string values in the tool's arguments |
 | `path` | `string` | Match on the file path argument |
 | `tool_name` | `string` | Match on the provider-specific tool name |
 
