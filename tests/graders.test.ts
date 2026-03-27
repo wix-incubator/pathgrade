@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { deterministicGrader, llmRubricGrader, toolUsageGrader } from '../src/core/grader-factories';
 import { DeterministicGrader, LLMGrader, getGrader } from '../src/graders/index';
 import { GraderConfig, EnvironmentProvider } from '../src/types';
 
@@ -36,6 +37,52 @@ function makeProvider(stdout: string, stderr = '', exitCode = 0): EnvironmentPro
     runCommand: vi.fn().mockResolvedValue({ stdout, stderr, exitCode }),
   };
 }
+
+describe('grader factories', () => {
+  it('deterministicGrader returns correct type and default weight', () => {
+    const g = deterministicGrader({
+      execute: async () => ({ score: 1 }),
+    });
+    expect(g.type).toBe('deterministic');
+    expect(g.weight).toBe(1.0);
+    expect(typeof g.execute).toBe('function');
+  });
+
+  it('deterministicGrader respects explicit weight', () => {
+    const g = deterministicGrader({
+      weight: 0.5,
+      execute: async () => ({ score: 1 }),
+    });
+    expect(g.weight).toBe(0.5);
+  });
+
+  it('llmRubricGrader returns correct type with rubric', () => {
+    const g = llmRubricGrader({ rubric: 'Evaluate quality' });
+    expect(g.type).toBe('llm_rubric');
+    expect(g.weight).toBe(1.0);
+    expect(g.rubric).toBe('Evaluate quality');
+  });
+
+  it('llmRubricGrader passes model and include_tool_events', () => {
+    const g = llmRubricGrader({
+      rubric: 'test',
+      model: 'gemini-2.0-flash',
+      include_tool_events: true,
+      weight: 0.3,
+    });
+    expect(g.model).toBe('gemini-2.0-flash');
+    expect(g.include_tool_events).toBe(true);
+    expect(g.weight).toBe(0.3);
+  });
+
+  it('toolUsageGrader returns correct type with expectations', () => {
+    const expectations = [{ action: 'read_file' as const, min: 1 }];
+    const g = toolUsageGrader({ expectations, weight: 0.4 });
+    expect(g.type).toBe('tool_usage');
+    expect(g.weight).toBe(0.4);
+    expect(g.expectations).toBe(expectations);
+  });
+});
 
 describe('DeterministicGrader', () => {
   const grader = new DeterministicGrader();
