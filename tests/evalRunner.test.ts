@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'path';
 
 // Mock dependencies
@@ -53,6 +53,12 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('EvalRunner', () => {
@@ -209,9 +215,8 @@ describe('EvalRunner', () => {
       }),
     });
 
-    const originalFetch = globalThis.fetch;
     let capturedBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, options: any) => {
       capturedBody = JSON.parse(options.body);
       return {
         ok: true,
@@ -225,63 +230,59 @@ describe('EvalRunner', () => {
         }),
         text: async () => '',
       } as any;
-    });
+    }));
 
-    try {
-      const runner = new EvalRunner(provider);
-      const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
-        instruction: undefined,
-        conversation: {
-          opener: 'Help me start a new project.',
-          completion: {
-            max_turns: 4,
-            done_phrase: 'brief created',
-          },
-          replies: [
-            { content: 'It is a gift card feature for Wix Stores.' },
-          ],
-          persona: {
-            description: 'You are a concise Wix product manager.',
-            facts: [
-              'The feature is for Wix Stores.',
-              'You do not know the technical implementation details.',
-            ],
-          },
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
+      instruction: undefined,
+      conversation: {
+        opener: 'Help me start a new project.',
+        completion: {
+          max_turns: 4,
+          done_phrase: 'brief created',
         },
-      }), 1, { GEMINI_API_KEY: 'test-key' });
+        replies: [
+          { content: 'It is a gift card feature for Wix Stores.' },
+        ],
+        persona: {
+          description: 'You are a concise Wix product manager.',
+          facts: [
+            'The feature is for Wix Stores.',
+            'You do not know the technical implementation details.',
+          ],
+        },
+      },
+    }), 1, { GEMINI_API_KEY: 'test-key' });
 
-      expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
-      expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        message: 'It is a gift card feature for Wix Stores.',
-        continueSession: true,
-      }));
-      expect(reply).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        message: 'No repo links yet, and I do not know the implementation details.',
-        continueSession: true,
-      }));
-      expect(report.trials[0].conversation).toEqual(expect.objectContaining({
-        total_turns: 3,
-        completion_reason: 'done_phrase',
-      }));
-      expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual([
-        'opener',
-        'scripted',
-        'persona_llm',
-      ]);
-      expect(report.trials[0].persona_input_tokens).toBe(111);
-      expect(report.trials[0].persona_output_tokens).toBe(22);
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      message: 'It is a gift card feature for Wix Stores.',
+      continueSession: true,
+    }));
+    expect(reply).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      message: 'No repo links yet, and I do not know the implementation details.',
+      continueSession: true,
+    }));
+    expect(report.trials[0].conversation).toEqual(expect.objectContaining({
+      total_turns: 3,
+      completion_reason: 'done_phrase',
+    }));
+    expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual([
+      'opener',
+      'scripted',
+      'persona_llm',
+    ]);
+    expect(report.trials[0].persona_input_tokens).toBe(111);
+    expect(report.trials[0].persona_output_tokens).toBe(22);
 
-      const prompt = capturedBody.contents[0].parts[0].text;
-      expect(prompt).toContain('## Who You Are');
-      expect(prompt).toContain('You are a concise Wix product manager.');
-      expect(prompt).toContain('The feature is for Wix Stores.');
-      expect(prompt).toContain('User: Help me start a new project.');
-      expect(prompt).toContain('Assistant: What are you building?');
-      expect(prompt).toContain("## Agent's Latest Message");
-      expect(prompt).toContain('Any technical constraints or repo links?');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).toContain('## Who You Are');
+    expect(prompt).toContain('You are a concise Wix product manager.');
+    expect(prompt).toContain('The feature is for Wix Stores.');
+    expect(prompt).toContain('User: Help me start a new project.');
+    expect(prompt).toContain('Assistant: What are you building?');
+    expect(prompt).toContain("## Agent's Latest Message");
+    expect(prompt).toContain('Any technical constraints or repo links?');
   });
 
   it('counts multi-turn agent tokens from user and assistant messages, not raw outputs', async () => {
@@ -312,8 +313,7 @@ describe('EvalRunner', () => {
       }),
     });
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         candidates: [{ content: { parts: [{ text: 'Repo' }] } }],
@@ -324,35 +324,31 @@ describe('EvalRunner', () => {
         },
       }),
       text: async () => '',
-    } as any);
+    } as any));
 
-    try {
-      const runner = new EvalRunner(provider);
-      const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
-        instruction: undefined,
-        conversation: {
-          opener: 'Idea',
-          completion: {
-            max_turns: 4,
-            done_phrase: 'Done',
-          },
-          replies: [
-            { content: 'Gift' },
-          ],
-          persona: {
-            description: 'Short persona',
-            facts: ['Fact'],
-          },
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
+      instruction: undefined,
+      conversation: {
+        opener: 'Idea',
+        completion: {
+          max_turns: 4,
+          done_phrase: 'Done',
         },
-      }), 1, { GEMINI_API_KEY: 'test-key' });
+        replies: [
+          { content: 'Gift' },
+        ],
+        persona: {
+          description: 'Short persona',
+          facts: ['Fact'],
+        },
+      },
+    }), 1, { GEMINI_API_KEY: 'test-key' });
 
-      expect(report.trials[0].input_tokens).toBe(3);
-      expect(report.trials[0].output_tokens).toBe(3);
-      expect(report.trials[0].persona_input_tokens).toBe(7);
-      expect(report.trials[0].persona_output_tokens).toBe(3);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    expect(report.trials[0].input_tokens).toBe(3);
+    expect(report.trials[0].output_tokens).toBe(3);
+    expect(report.trials[0].persona_input_tokens).toBe(7);
+    expect(report.trials[0].persona_output_tokens).toBe(3);
   });
 
   it('retries conversation turn once on transient empty response with non-zero exit', async () => {
