@@ -2,12 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { deterministicGrader, llmRubricGrader, toolUsageGrader } from '../src/core/grader-factories';
 import { GraderContext } from '../src/core/grader-factories';
 import { LLMGrader } from '../src/graders/index';
-
-// Legacy stubs: DeterministicGrader and getGrader were removed in Task 4.
-// These placeholders keep the legacy test blocks compilable until Task 8 migrates them.
-const DeterministicGrader = class { grade: any = () => { throw new Error('removed'); } };
-const getGrader = (_type: string): any => { throw new Error('getGrader removed — use GraderDescriptor'); };
+import { ToolUsageGrader } from '../src/graders/tool-usage';
 import { GraderConfig, EnvironmentProvider } from '../src/types';
+import { validateConfig } from '../src/core/config';
 
 // Mock fs-extra for LLMGrader rubric loading
 vi.mock('fs-extra', () => ({
@@ -146,112 +143,6 @@ describe('deterministic grader execute dispatch', () => {
 
     await ctx.runCommand('ls');
     expect(mockProvider.runCommand).toHaveBeenCalledWith('/workspace', 'ls', env, { signal });
-  });
-});
-
-describe('DeterministicGrader', () => {
-  const grader = new DeterministicGrader();
-  const baseConfig: GraderConfig = { type: 'deterministic', weight: 1.0 };
-
-  it('parses valid JSON from stdout', async () => {
-    const provider = makeProvider('{"score": 0.8, "details": "good job"}');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(result.grader_type).toBe('deterministic');
-    expect(result.score).toBe(0.8);
-    expect(result.weight).toBe(1.0);
-    expect(result.details).toBe('good job');
-  });
-
-  it('handles JSON with checks array', async () => {
-    const json = JSON.stringify({
-      score: 0.5,
-      details: '1/2 passed',
-      checks: [
-        { name: 'check1', passed: true, message: 'ok' },
-        { name: 'check2', passed: false, message: 'failed' },
-      ],
-    });
-    const provider = makeProvider(json);
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(result.score).toBe(0.5);
-    expect(result.details).toContain('1/2 passed');
-    expect(result.details).toContain('✓ check1');
-    expect(result.details).toContain('✗ check2');
-  });
-
-  it('returns score 0 when no JSON in stdout', async () => {
-    const provider = makeProvider('no json here');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(result.score).toBe(0);
-    expect(result.details).toContain('did not output JSON');
-  });
-
-  it('returns score 0 when stdout is empty', async () => {
-    const provider = makeProvider('', 'some error');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(result.score).toBe(0);
-    expect(result.details).toContain('(empty)');
-  });
-
-  it('clamps score to [0, 1]', async () => {
-    const provider = makeProvider('{"score": 2.5, "details": "over"}');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-    expect(result.score).toBe(1.0);
-  });
-
-  it('clamps negative score to 0', async () => {
-    const provider = makeProvider('{"score": -0.5, "details": "under"}');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-    expect(result.score).toBe(0);
-  });
-
-  it('handles invalid JSON gracefully', async () => {
-    const provider = makeProvider('{ invalid json }');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(result.score).toBe(0);
-    expect(result.details).toContain('Failed to parse grader JSON');
-  });
-
-  it('uses custom command when provided', async () => {
-    const provider = makeProvider('{"score": 1.0, "details": "pass"}');
-    const config: GraderConfig = { type: 'deterministic', command: 'node test.js', weight: 1.0 };
-    await grader.grade('/workspace', provider, config, '/task', []);
-
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'node test.js', undefined, { signal: undefined });
-  });
-
-  it('uses default command bash .pathgrade/tests/test.sh when command not set', async () => {
-    const provider = makeProvider('{"score": 1.0, "details": "pass"}');
-    await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', undefined, { signal: undefined });
-  });
-
-  it('generates default details from score when details not in JSON', async () => {
-    const provider = makeProvider('{"score": 0.75}');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-
-    expect(result.score).toBe(0.75);
-    expect(result.details).toContain('0.75');
-  });
-
-  it('handles NaN score as 0', async () => {
-    const provider = makeProvider('{"score": "not-a-number", "details": "bad"}');
-    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-    expect(result.score).toBe(0);
-  });
-
-  it('passes env to provider.runCommand', async () => {
-    const provider = makeProvider('{"score": 1.0, "details": "ok"}');
-    const env = { FOO: 'bar' };
-    await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
-
-    expect(provider.runCommand).toHaveBeenCalledWith('/workspace', 'bash .pathgrade/tests/test.sh', env, { signal: undefined });
   });
 });
 
@@ -582,30 +473,9 @@ describe('LLMGrader', () => {
   });
 });
 
-describe('getGrader', () => {
-  it('returns DeterministicGrader for "deterministic"', () => {
-    const grader = getGrader('deterministic');
-    expect(grader).toBeInstanceOf(DeterministicGrader);
-  });
-
-  it('returns LLMGrader for "llm_rubric"', () => {
-    const grader = getGrader('llm_rubric');
-    expect(grader).toBeInstanceOf(LLMGrader);
-  });
-
-  it('returns ToolUsageGrader for "tool_usage"', () => {
-    const grader = getGrader('tool_usage');
-    expect(grader).toBeDefined();
-  });
-
-  it('throws for unknown grader type', () => {
-    expect(() => getGrader('unknown')).toThrow('Unknown grader type');
-  });
-});
-
 describe('ToolUsageGrader', () => {
   it('scores tool_usage expectations against normalized tool events', async () => {
-    const grader = getGrader('tool_usage');
+    const grader = new ToolUsageGrader();
     const result = await grader.grade('/workspace', makeProvider(''), {
       type: 'tool_usage',
       weight: 1,
@@ -623,7 +493,7 @@ describe('ToolUsageGrader', () => {
   });
 
   it('returns score 0 when no tool events captured', async () => {
-    const grader = getGrader('tool_usage');
+    const grader = new ToolUsageGrader();
     const result = await grader.grade('/workspace', makeProvider(''), {
       type: 'tool_usage',
       weight: 1,
@@ -635,7 +505,7 @@ describe('ToolUsageGrader', () => {
   });
 
   it('returns partial score when some expectations fail', async () => {
-    const grader = getGrader('tool_usage');
+    const grader = new ToolUsageGrader();
     const result = await grader.grade('/workspace', makeProvider(''), {
       type: 'tool_usage',
       weight: 1,
@@ -651,7 +521,7 @@ describe('ToolUsageGrader', () => {
   });
 
   it('matches argument_pattern regex against tool arguments', async () => {
-    const grader = getGrader('tool_usage');
+    const grader = new ToolUsageGrader();
     const result = await grader.grade('/workspace', makeProvider(''), {
       type: 'tool_usage',
       weight: 1,
@@ -667,7 +537,7 @@ describe('ToolUsageGrader', () => {
   });
 
   it('fails argument_pattern when no argument values match the regex', async () => {
-    const grader = getGrader('tool_usage');
+    const grader = new ToolUsageGrader();
     const result = await grader.grade('/workspace', makeProvider(''), {
       type: 'tool_usage',
       weight: 1,
@@ -682,7 +552,7 @@ describe('ToolUsageGrader', () => {
   });
 
   it('checks max constraint on expectations', async () => {
-    const grader = getGrader('tool_usage');
+    const grader = new ToolUsageGrader();
     const result = await grader.grade('/workspace', makeProvider(''), {
       type: 'tool_usage',
       weight: 1,
@@ -694,5 +564,49 @@ describe('ToolUsageGrader', () => {
     ]);
 
     expect(result.score).toBe(0);
+  });
+});
+
+describe('config validation for grader descriptors', () => {
+  it('throws when deterministic grader is missing execute', () => {
+    expect(() => {
+      validateConfig({
+        version: '1',
+        tasks: [{
+          name: 'test',
+          type: 'instruction',
+          instruction: 'do something',
+          graders: [{ type: 'deterministic', weight: 1.0 }],
+        }],
+      });
+    }).toThrow('must have an "execute" function');
+  });
+
+  it('throws when llm_rubric grader is missing rubric', () => {
+    expect(() => {
+      validateConfig({
+        version: '1',
+        tasks: [{
+          name: 'test',
+          type: 'instruction',
+          instruction: 'do something',
+          graders: [{ type: 'llm_rubric', weight: 1.0 }],
+        }],
+      });
+    }).toThrow('must have a "rubric" string');
+  });
+
+  it('throws when tool_usage grader is missing expectations', () => {
+    expect(() => {
+      validateConfig({
+        version: '1',
+        tasks: [{
+          name: 'test',
+          type: 'instruction',
+          instruction: 'do something',
+          graders: [{ type: 'tool_usage', weight: 1.0 }],
+        }],
+      });
+    }).toThrow('must have an "expectations" array');
   });
 });
