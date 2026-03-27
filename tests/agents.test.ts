@@ -307,6 +307,68 @@ describe('ClaudeAgent', () => {
     expect(result).toBe('');
   });
 
+  it('sanitizes sessionId to prevent shell injection', async () => {
+    const agent = new ClaudeAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn(async (cmd: string) => {
+        commands.push(cmd);
+        // First call: prompt write. Second call: claude -p with injected sessionId.
+        if (commands.length === 1) {
+            return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        // Return a JSON envelope with a malicious session_id
+        return {
+            stdout: JSON.stringify({
+                type: 'result',
+                result: 'hello',
+                session_id: 'legit-id; rm -rf /'
+            }),
+            stderr: '',
+            exitCode: 0
+        };
+    });
+
+    const session = await agent.createSession('workspace', mockRunCommand);
+    // First turn: establishes sessionId from response
+    await session.start({ message: 'hello' });
+    // Second turn: uses sessionId -- this is where injection would happen
+    await session.reply({ message: 'follow up' });
+
+    // The third command (second claude invocation) should have a sanitized sessionId
+    const resumeCommand = commands[3]; // prompt write, claude, prompt write, claude
+    expect(resumeCommand).not.toContain('; rm -rf /');
+    expect(resumeCommand).toMatch(/--resume [a-zA-Z0-9_-]+/);
+  });
+
+  it('omits --resume when sanitized sessionId is empty string', async () => {
+    const agent = new ClaudeAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn(async (cmd: string) => {
+      commands.push(cmd);
+      if (commands.length === 1) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      // Return a session_id made entirely of bad characters — sanitizes to ""
+      return {
+        stdout: JSON.stringify({
+          type: 'result',
+          result: 'hello',
+          session_id: '$()'
+        }),
+        stderr: '',
+        exitCode: 0,
+      };
+    });
+
+    const session = await agent.createSession('workspace', mockRunCommand);
+    await session.start({ message: 'hello' });
+    await session.reply({ message: 'follow up' });
+
+    // The second claude invocation should NOT include --resume at all
+    const resumeCommand = commands[3]; // prompt write, claude, prompt write, claude
+    expect(resumeCommand).not.toContain('--resume');
+  });
+
   it('captures session_id from first turn and uses --resume for continuation', async () => {
     const agent = new ClaudeAgent();
     const commands: string[] = [];
