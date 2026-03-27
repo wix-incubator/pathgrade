@@ -15,11 +15,8 @@ import { AgentCommandRunner, BaseAgent, EvalReport } from '../types';
 import { ResolvedTask, AgentName } from '../core/config.types';
 import { parseEnvFile } from '../utils/env';
 import {
-    TESTS_DIR,
     PROMPTS_DIR,
-    STEP_TESTS_DIR,
     STEP_PROMPTS_DIR,
-    deterministicScriptName,
     llmRubricName,
 } from '../graders/paths';
 import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
@@ -245,8 +242,8 @@ function isContainedIn(childPath: string, parentPath: string): boolean {
 
 /**
  * Create a temp task directory for runtime execution.
- * Contains shared workspace files and grader scripts for the local runtime.
- * No longer writes task.toml or instruction.md — those are passed directly.
+ * Contains shared workspace files and LLM rubric prompts for the local runtime.
+ * No longer writes task.toml, instruction.md, or deterministic scripts — those are passed directly.
  */
 export async function prepareTempTaskDir(
     resolved: ResolvedTask,
@@ -254,36 +251,6 @@ export async function prepareTempTaskDir(
     tmpDir: string
 ) {
     await fs.ensureDir(tmpDir);
-
-    // Stage grader assets in a hidden .pathgrade directory so the agent
-    // doesn't see them when exploring the workspace during conversation evals.
-
-    // Write each deterministic grader script
-    await fs.ensureDir(path.join(tmpDir, TESTS_DIR));
-    const detGraders = resolved.graders.filter(g => g.type === 'deterministic');
-    for (let i = 0; i < detGraders.length; i++) {
-        if (detGraders[i].run) {
-            const script = `#!/bin/bash\n${detGraders[i].run!.trim()}\n`;
-            await fs.writeFile(path.join(tmpDir, TESTS_DIR, deterministicScriptName(i)), script);
-        }
-    }
-
-    // Copy referenced grader files/directories to workspace root (not .pathgrade)
-    // because grader scripts reference them by relative path from the workspace.
-    for (const g of resolved.graders) {
-        if (g.type === 'deterministic' && g.run) {
-            const pathMatches = g.run.match(/[\w./-]+\.\w{1,4}/g) || [];
-            for (const ref of pathMatches) {
-                const refDir = ref.split('/')[0];
-                const srcDir = path.resolve(baseDir, refDir);
-                const destDir = path.join(tmpDir, refDir);
-                if (!isContainedIn(srcDir, baseDir)) continue;
-                if (refDir !== ref && await fs.pathExists(srcDir) && !await fs.pathExists(destDir)) {
-                    await fs.copy(srcDir, destDir);
-                }
-            }
-        }
-    }
 
     // Write each LLM rubric
     await fs.ensureDir(path.join(tmpDir, PROMPTS_DIR));
@@ -294,21 +261,13 @@ export async function prepareTempTaskDir(
         }
     }
 
-    // Write step grader assets into namespaced subdirectories
+    // Write step grader rubrics
     const stepGraders = resolved.type === 'conversation' ? resolved.conversation.step_graders : undefined;
     if (stepGraders) {
-        await fs.ensureDir(path.join(tmpDir, STEP_TESTS_DIR));
         await fs.ensureDir(path.join(tmpDir, STEP_PROMPTS_DIR));
         for (const sg of stepGraders) {
             for (let gIdx = 0; gIdx < sg.graders.length; gIdx++) {
                 const g = sg.graders[gIdx];
-                if (g.type === 'deterministic' && g.run) {
-                    const script = `#!/bin/bash\n${g.run.trim()}\n`;
-                    await fs.writeFile(
-                        path.join(tmpDir, STEP_TESTS_DIR, `turn_${sg.after_turn}_${gIdx}.sh`),
-                        script
-                    );
-                }
                 if (g.type === 'llm_rubric' && g.rubric) {
                     await fs.writeFile(
                         path.join(tmpDir, STEP_PROMPTS_DIR, `turn_${sg.after_turn}_${gIdx}.md`),
