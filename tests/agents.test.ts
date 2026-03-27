@@ -184,6 +184,65 @@ describe('ClaudeAgent', () => {
     expect(capturedCmd).toContain(expectedB64);
   });
 
+  it('reconstructs text from denied AskUserQuestion when result is empty', async () => {
+    const agent = new ClaudeAgent();
+    const envelope = JSON.stringify({
+      result: '',
+      session_id: 'sess-123',
+      permission_denials: [{
+        tool_name: 'AskUserQuestion',
+        tool_use_id: 'toolu_abc',
+        tool_input: {
+          questions: [{
+            question: 'Who is the target group?',
+            header: 'Target',
+            options: [
+              { label: 'Self-Creator', description: 'Manages their own site' },
+              { label: 'Partner', description: 'Builds for clients' },
+            ],
+          }],
+        },
+      }],
+    });
+
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: envelope, stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test', '/workspace', mockRunCommand);
+    expect(result).toContain('Target');
+    expect(result).toContain('Who is the target group?');
+    expect(result).toContain('Self-Creator');
+    expect(result).toContain('Partner');
+    // Must NOT contain raw JSON
+    expect(result).not.toContain('"type":"result"');
+    expect(result).not.toContain('permission_denials');
+  });
+
+  it('returns empty string when result is empty and no AskUserQuestion denial', async () => {
+    const agent = new ClaudeAgent();
+    const envelope = JSON.stringify({
+      result: '',
+      session_id: 'sess-123',
+      permission_denials: [],
+    });
+
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: envelope, stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test', '/workspace', mockRunCommand);
+    // Should NOT leak raw JSON — envelope was found but had no useful text
+    expect(result).not.toContain('permission_denials');
+    expect(result).toBe('');
+  });
+
   it('captures session_id from first turn and uses --resume for continuation', async () => {
     const agent = new ClaudeAgent();
     const commands: string[] = [];
