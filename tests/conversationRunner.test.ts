@@ -642,4 +642,65 @@ describe('runConversationTrial', () => {
       expect(turn.assistant_message).toBe('polished summary');
     });
   });
+
+  describe('tool event extraction', () => {
+    it('attaches per-turn tool events in conversation runs', async () => {
+      const responses = [{
+        rawOutput: 'tool: edit_file {"path":"src/app.ts"}',
+        assistantMessage: 'edited file',
+        exitCode: 0,
+        traceOutput: 'tool: edit_file {"path":"src/app.ts"}',
+      }];
+      const { agent } = makeSessionAgent(responses);
+      const provider = makeProvider();
+      const conversation = makeConversation({
+        completion: { max_turns: 1 },
+      });
+
+      const result = await runConversationTrial({
+        agent,
+        conversation,
+        provider,
+        runtime: mockRuntime,
+        taskPath: '/task',
+        timeoutSec: 30,
+        timestamp,
+        agentName: 'codex',
+      });
+
+      expect(result.conversation.turns[0].tool_events).toEqual([
+        expect.objectContaining({ action: 'edit_file' }),
+      ]);
+    });
+
+    it('adds tool_event entries to session log', async () => {
+      const responses = [{
+        rawOutput: 'tool: exec_command {"cmd":"npm test"}',
+        assistantMessage: 'tests passed',
+        exitCode: 0,
+        traceOutput: 'tool: exec_command {"cmd":"npm test"}',
+      }];
+      const { agent } = makeSessionAgent(responses);
+      const provider = makeProvider();
+      const conversation = makeConversation({
+        completion: { max_turns: 1 },
+      });
+
+      const result = await runConversationTrial({
+        agent,
+        conversation,
+        provider,
+        runtime: mockRuntime,
+        taskPath: '/task',
+        timeoutSec: 30,
+        timestamp,
+        agentName: 'codex',
+      });
+
+      const toolEntries = result.sessionLog.filter(e => e.type === 'tool_event');
+      expect(toolEntries).toHaveLength(1);
+      expect(toolEntries[0].tool_event?.action).toBe('run_shell');
+      expect(toolEntries[0].turn_number).toBe(1);
+    });
+  });
 });

@@ -169,4 +169,27 @@ describe('defineEval', () => {
     expect(task.conversation.persona?.description).toBe('You are a product manager.');
     expect(task.conversation.persona?.facts).toHaveLength(1);
   });
+
+  it('supports tool_usage graders with expectations', () => {
+    const config = defineEval({
+      tasks: [
+        {
+          name: 'tool-task',
+          type: 'instruction',
+          instruction: 'fix it',
+          graders: [{
+            type: 'tool_usage',
+            weight: 0.5,
+            expectations: [
+              { action: 'run_shell', min: 1 },
+              { action: 'read_file', min: 1, max: 3 },
+            ],
+          }],
+        },
+      ],
+    });
+
+    expect(config.tasks[0].graders[0].type).toBe('tool_usage');
+    expect(config.tasks[0].graders[0].expectations).toHaveLength(2);
+  });
 });

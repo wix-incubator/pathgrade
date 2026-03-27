@@ -750,4 +750,29 @@ describe('EvalRunner', () => {
     expect(report.trials[0].grader_results[0].weight).toBe(0.7);
     expect(report.trials[0].grader_results[1].weight).toBe(0.3);
   });
+
+  it('records normalized tool_event entries for instruction trials', async () => {
+    const provider = makeMockProvider();
+    const start = vi.fn().mockResolvedValue({
+      rawOutput: 'tool: exec_command {"cmd":"npm test"}',
+      assistantMessage: 'ran tests',
+      exitCode: 0,
+      traceOutput: 'tool: exec_command {"cmd":"npm test"}',
+    });
+    const createSession = vi.fn().mockResolvedValue({ start, reply: vi.fn() });
+    const agent = { createSession } as unknown as BaseAgent;
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
+      }),
+    });
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({ agentName: 'codex' }), 1);
+    const toolEntries = report.trials[0].session_log.filter(entry => entry.type === 'tool_event');
+    expect(toolEntries).toHaveLength(1);
+    expect(toolEntries[0].tool_event?.action).toBe('run_shell');
+  });
 });

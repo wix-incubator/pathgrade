@@ -26,6 +26,7 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
                     rubric: g.rubric,
                     model: g.model,
                     weight: g.weight,
+                    expectations: g.expectations,
                 })),
                 solution: t.solution,
                 agent: t.agent,

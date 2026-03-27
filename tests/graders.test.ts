@@ -327,6 +327,76 @@ describe('LLMGrader', () => {
     });
   });
 
+  it('includes normalized tool events in llm_rubric transcript when include_tool_events is set', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('rubric' as any);
+
+    let capturedBody: any;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+      capturedBody = JSON.parse(opts.body as string);
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+        }),
+        text: () => Promise.resolve(''),
+      };
+    }));
+
+    const provider = makeProvider('');
+    const sessionLog: import('../src/types').LogEntry[] = [
+      { type: 'agent_start', instruction: 'Fix bug', timestamp: '' },
+      { type: 'agent_result', output: 'Done!', timestamp: '' },
+      { type: 'tool_event', timestamp: '', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+      { type: 'tool_event', timestamp: '', tool_event: { action: 'read_file', provider: 'codex', providerToolName: 'localGetFileContent', summary: 'read src/app.ts', confidence: 'high', rawSnippet: '...' } },
+    ];
+
+    const config: import('../src/types').GraderConfig = {
+      type: 'llm_rubric',
+      rubric: 'rubric.md',
+      weight: 1.0,
+      include_tool_events: true,
+    } as any;
+
+    const env = { GEMINI_API_KEY: 'test-key' };
+    await grader.grade('/workspace', provider, config, '/task', sessionLog, env);
+
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).toContain('Tool Events');
+    expect(prompt).toContain('run_shell via exec_command');
+    expect(prompt).toContain('read_file via localGetFileContent');
+  });
+
+  it('omits tool events from llm_rubric transcript when include_tool_events is not set', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('rubric' as any);
+
+    let capturedBody: any;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+      capturedBody = JSON.parse(opts.body as string);
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+        }),
+        text: () => Promise.resolve(''),
+      };
+    }));
+
+    const provider = makeProvider('');
+    const sessionLog: import('../src/types').LogEntry[] = [
+      { type: 'agent_start', instruction: 'Fix bug', timestamp: '' },
+      { type: 'agent_result', output: 'Done!', timestamp: '' },
+      { type: 'tool_event', timestamp: '', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+    ];
+
+    const env = { GEMINI_API_KEY: 'test-key' };
+    await grader.grade('/workspace', provider, baseConfig, '/task', sessionLog, env);
+
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).not.toContain('Tool Events');
+  });
+
   it('builds transcript with instruction, commands, agent output, and prior graders', async () => {
     mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('rubric' as any);
@@ -411,7 +481,106 @@ describe('getGrader', () => {
     expect(grader).toBeInstanceOf(LLMGrader);
   });
 
+  it('returns ToolUsageGrader for "tool_usage"', () => {
+    const grader = getGrader('tool_usage');
+    expect(grader).toBeDefined();
+  });
+
   it('throws for unknown grader type', () => {
     expect(() => getGrader('unknown')).toThrow('Unknown grader type');
+  });
+});
+
+describe('ToolUsageGrader', () => {
+  it('scores tool_usage expectations against normalized tool events', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'search_code', min: 1, weight: 0.4 },
+        { action: 'read_file', min: 1, weight: 0.6 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'search_code', provider: 'codex', providerToolName: 'localSearchCode', summary: 'search', confidence: 'high', rawSnippet: '...' } },
+      { type: 'tool_event', timestamp: 't2', tool_event: { action: 'read_file', provider: 'codex', providerToolName: 'localGetFileContent', summary: 'read', confidence: 'high', rawSnippet: '...' } },
+    ]);
+
+    expect(result.score).toBe(1);
+    expect(result.grader_type).toBe('tool_usage');
+  });
+
+  it('returns score 0 when no tool events captured', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [{ action: 'run_shell', min: 1 }],
+    }, '/task', []);
+
+    expect(result.score).toBe(0);
+    expect(result.details).toContain('No tool events captured');
+  });
+
+  it('returns partial score when some expectations fail', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'run_shell', min: 1, weight: 0.5 },
+        { action: 'read_file', min: 1, weight: 0.5 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+    ]);
+
+    expect(result.score).toBe(0.5);
+  });
+
+  it('matches argument_pattern regex against tool arguments', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'run_shell', argument_pattern: 'npm\\s+test', min: 1, weight: 1 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...', arguments: { cmd: 'npm test' } } },
+      { type: 'tool_event', timestamp: 't2', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'ls', confidence: 'high', rawSnippet: '...', arguments: { cmd: 'ls -la' } } },
+    ]);
+
+    expect(result.score).toBe(1);
+  });
+
+  it('fails argument_pattern when no argument values match the regex', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'run_shell', argument_pattern: 'pytest', min: 1, weight: 1 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...', arguments: { cmd: 'npm test' } } },
+    ]);
+
+    expect(result.score).toBe(0);
+  });
+
+  it('checks max constraint on expectations', async () => {
+    const grader = getGrader('tool_usage');
+    const result = await grader.grade('/workspace', makeProvider(''), {
+      type: 'tool_usage',
+      weight: 1,
+      expectations: [
+        { action: 'ask_user', max: 0, weight: 1 },
+      ],
+    }, '/task', [
+      { type: 'tool_event', timestamp: 't1', tool_event: { action: 'ask_user', provider: 'codex', providerToolName: 'ask_user', summary: 'asked', confidence: 'high', rawSnippet: '...' } },
+    ]);
+
+    expect(result.score).toBe(0);
   });
 });

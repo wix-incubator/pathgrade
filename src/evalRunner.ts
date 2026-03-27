@@ -19,6 +19,7 @@ import { getGrader } from './graders';
 import { deterministicCommand, llmRubricPath } from './graders/paths';
 import { fmt, Spinner } from './utils/cli';
 import { withAbortTimeout } from './utils/timeout';
+import { extractToolEvents } from './tool-event-extractors';
 
 
 function calculatePassAtK(n: number, c: number, k: number): number {
@@ -52,6 +53,7 @@ export interface EvalRunOptions {
     };
     /** Set by the CLI entry point based on agent type + CLI availability. */
     authMode?: 'host' | 'isolated';
+    agentName?: import('./core/config.types').AgentName;
 }
 
 export class EvalRunner {
@@ -195,6 +197,7 @@ export class EvalRunner {
                     taskPath,
                     timeoutSec: opts.timeoutSec,
                     timestamp: () => this.timestamp(),
+                    agentName: opts.agentName,
                 });
                 sessionLog.push(...conversationResult.sessionLog);
                 commandCount = conversationResult.commandCount;
@@ -249,6 +252,19 @@ export class EvalRunner {
                     output: turnResult.rawOutput,
                     assistant_message: turnResult.assistantMessage,
                 });
+
+                // Extract normalized tool events from trace output
+                if (opts.agentName) {
+                    const traceOutput = turnResult.traceOutput || turnResult.rawOutput;
+                    const toolEvents = extractToolEvents(opts.agentName, traceOutput, 1);
+                    for (const toolEvent of toolEvents) {
+                        sessionLog.push({
+                            type: 'tool_event',
+                            timestamp: this.timestamp(),
+                            tool_event: toolEvent,
+                        });
+                    }
+                }
             }
 
             const { graderResults, reward } = await this.runGraders(runtime, taskPath, opts, sessionLog, spinner, env);
@@ -345,6 +361,7 @@ export class EvalRunner {
                 type: graderDef.type,
                 command: graderDef.type === 'deterministic' ? deterministicCommand(detIndex) : undefined,
                 rubric: graderDef.type === 'llm_rubric' ? llmRubricPath(llmIndex) : undefined,
+                expectations: graderDef.type === 'tool_usage' ? graderDef.expectations : undefined,
                 model: graderDef.model || opts.graderModel,
                 weight: graderDef.weight,
             };
@@ -407,6 +424,17 @@ export class EvalRunner {
                 if (entry.output) entry.output = redact(entry.output);
                 if (entry.assistant_message) entry.assistant_message = redact(entry.assistant_message);
                 if (entry.grader_result?.details) entry.grader_result.details = redact(entry.grader_result.details);
+                if (entry.tool_event) {
+                    entry.tool_event.rawSnippet = redact(entry.tool_event.rawSnippet);
+                    entry.tool_event.summary = redact(entry.tool_event.summary);
+                    if (entry.tool_event.arguments) {
+                        for (const key of Object.keys(entry.tool_event.arguments)) {
+                            if (typeof entry.tool_event.arguments[key] === 'string') {
+                                entry.tool_event.arguments[key] = redact(entry.tool_event.arguments[key] as string);
+                            }
+                        }
+                    }
+                }
             }
             for (const graderResult of trial.grader_results) {
                 if (graderResult.details) graderResult.details = redact(graderResult.details);

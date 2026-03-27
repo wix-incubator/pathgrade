@@ -146,7 +146,7 @@ function printHelp() {
 
   Options:
     --eval=NAME[,NAME] Run specific evals by name (comma-separated)
-    --grader=TYPE      Run only graders of this type (deterministic|llm_rubric)
+    --grader=TYPE      Run only graders of this type (deterministic|llm_rubric|tool_usage)
     --trials=N         Override trial count (overrides preset)
     --parallel=N       Run trials concurrently
     --agent=NAME       Override agent: gemini|claude|codex (default: gemini)

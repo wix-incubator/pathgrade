@@ -11,6 +11,37 @@ export default defineEval({
   },
 
   tasks: [
+    // ── Tool-aware bug fix ──────────────────────────────────────
+    {
+      name: 'tool-aware-fix',
+      type: 'instruction',
+      instruction: 'Read app.js, find the bug in the add function, and fix it so add(2,3) returns 5.',
+      agent: 'claude',
+      workspace: [
+        { src: 'fixtures/buggy-app.js', dest: 'app.js' },
+        { src: 'fixtures/solve-fix.sh', dest: 'solve-fix.sh' },
+      ],
+      solution: 'solve-fix.sh',
+      trials: 1,
+      timeout: 120,
+      graders: [
+        {
+          type: 'deterministic',
+          run: 'node graders/check-fix.js',
+          weight: 0.6,
+        },
+        {
+          type: 'tool_usage',
+          weight: 0.4,
+          expectations: [
+            { action: 'read_file', argument_pattern: 'app\\.js', min: 1, weight: 0.5 },
+            { action: 'edit_file', min: 1, weight: 0.5 },
+          ],
+        },
+      ],
+    },
+
+
     // ── Scripted: all answers pre-defined ─────────────────────────
     {
       name: 'scripted-gift-card',

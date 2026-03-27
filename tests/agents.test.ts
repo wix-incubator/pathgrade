@@ -105,11 +105,22 @@ describe('GeminiAgent', () => {
 });
 
 describe('ClaudeAgent', () => {
-  function makeClaudeEnvelope(result: string, sessionId = 'sess-abc-123') {
-    return JSON.stringify({ result, session_id: sessionId });
+  /** Build NDJSON stream-json output with a result line */
+  function makeStreamJson(result: string, sessionId = 'sess-abc-123', toolUseLines: string[] = []) {
+    const lines = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: sessionId }),
+      ...toolUseLines,
+      JSON.stringify({ type: 'result', result, session_id: sessionId }),
+    ];
+    return lines.join('\n');
   }
 
-  it('writes instruction via base64 and runs claude CLI with JSON output', async () => {
+  /** Backwards-compat helper — same shape as old envelope */
+  function makeClaudeEnvelope(result: string, sessionId = 'sess-abc-123') {
+    return makeStreamJson(result, sessionId);
+  }
+
+  it('writes instruction via base64 and runs claude CLI with stream-json output', async () => {
     const agent = new ClaudeAgent();
     const commands: string[] = [];
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
@@ -126,13 +137,14 @@ describe('ClaudeAgent', () => {
     expect(commands[0]).toContain('base64');
     expect(commands[1]).toContain('claude');
     expect(commands[1]).toContain('-p');
-    expect(commands[1]).toContain('--output-format json');
+    expect(commands[1]).toContain('--output-format stream-json');
+    expect(commands[1]).toContain('--verbose');
     expect(commands[1]).toContain('--dangerously-skip-permissions');
     expect(commands[1]).toContain('< /dev/null');
     expect(result).toBe('Hello from Claude');
   });
 
-  it('parses JSON envelope and extracts result text', async () => {
+  it('parses stream-json NDJSON and extracts result text', async () => {
     const agent = new ClaudeAgent();
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
       if (cmd.includes('claude')) {
@@ -186,7 +198,8 @@ describe('ClaudeAgent', () => {
 
   it('reconstructs text from denied AskUserQuestion when result is empty', async () => {
     const agent = new ClaudeAgent();
-    const envelope = JSON.stringify({
+    const ndjson = JSON.stringify({
+      type: 'result',
       result: '',
       session_id: 'sess-123',
       permission_denials: [{
@@ -207,7 +220,7 @@ describe('ClaudeAgent', () => {
 
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
       if (cmd.includes('claude')) {
-        return { stdout: envelope, stderr: '', exitCode: 0 };
+        return { stdout: ndjson, stderr: '', exitCode: 0 };
       }
       return { stdout: '', stderr: '', exitCode: 0 };
     });
@@ -218,13 +231,13 @@ describe('ClaudeAgent', () => {
     expect(result).toContain('Self-Creator');
     expect(result).toContain('Partner');
     // Must NOT contain raw JSON
-    expect(result).not.toContain('"type":"result"');
     expect(result).not.toContain('permission_denials');
   });
 
   it('strips API errors from result to prevent conversation corruption', async () => {
     const agent = new ClaudeAgent();
     const envelope = JSON.stringify({
+      type: 'result',
       result: 'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"}}',
       session_id: 'sess-123',
       is_error: false,
@@ -245,6 +258,7 @@ describe('ClaudeAgent', () => {
   it('strips result when is_error is true', async () => {
     const agent = new ClaudeAgent();
     const envelope = JSON.stringify({
+      type: 'result',
       result: 'Something went wrong',
       session_id: 'sess-123',
       is_error: true,
@@ -264,6 +278,7 @@ describe('ClaudeAgent', () => {
   it('extracts text from generic denied tool with text-like fields', async () => {
     const agent = new ClaudeAgent();
     const envelope = JSON.stringify({
+      type: 'result',
       result: '',
       session_id: 'sess-123',
       permission_denials: [{
@@ -289,6 +304,7 @@ describe('ClaudeAgent', () => {
   it('returns empty string when result is empty and no AskUserQuestion denial', async () => {
     const agent = new ClaudeAgent();
     const envelope = JSON.stringify({
+      type: 'result',
       result: '',
       session_id: 'sess-123',
       permission_denials: [],
@@ -316,7 +332,7 @@ describe('ClaudeAgent', () => {
         if (commands.length === 1) {
             return { stdout: '', stderr: '', exitCode: 0 };
         }
-        // Return a JSON envelope with a malicious session_id
+        // Return stream-json with a malicious session_id
         return {
             stdout: JSON.stringify({
                 type: 'result',
@@ -376,7 +392,7 @@ describe('ClaudeAgent', () => {
       commands.push(cmd);
       if (cmd.includes('claude')) {
         return {
-          stdout: makeClaudeEnvelope('response text', 'test-session-123'),
+          stdout: makeStreamJson('response text', 'test-session-123'),
           stderr: '',
           exitCode: 0,
         };
@@ -388,18 +404,81 @@ describe('ClaudeAgent', () => {
     const turn1 = await session.start({ message: 'First turn' });
     const turn2 = await session.reply({ message: 'Second turn', continueSession: true });
 
-    // Both turns should parse the envelope
+    // Both turns should parse the stream-json result
     expect(turn1.assistantMessage).toBe('response text');
     expect(turn2.assistantMessage).toBe('response text');
 
     // First turn: no --resume
     expect(commands[1]).toContain('claude -p');
-    expect(commands[1]).toContain('--output-format json');
+    expect(commands[1]).toContain('--output-format stream-json');
     expect(commands[1]).not.toContain('--resume');
 
     // Second turn: uses --resume with session_id from first turn
     expect(commands[3]).toContain('--resume test-session-123');
     expect(commands[3]).toContain('--dangerously-skip-permissions');
+  });
+});
+
+describe('traceOutput', () => {
+  it('exposes traceOutput for Codex turns', async () => {
+    const agent = new CodexAgent();
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('codex exec')) {
+        return { stdout: 'tool: exec_command {"cmd":"npm test"}', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'run tests' });
+    expect(result.traceOutput).toBeDefined();
+    expect(result.traceOutput).toContain('tool');
+    expect(result.traceOutput).toBe(result.rawOutput);
+  });
+
+  it('exposes traceOutput for Gemini turns', async () => {
+    const agent = new GeminiAgent();
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('gemini')) {
+        return { stdout: 'tool: read_file {"path":"src/app.ts"}', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'read file' });
+    expect(result.traceOutput).toBeDefined();
+    expect(result.traceOutput).toContain('tool');
+    expect(result.traceOutput).toBe(result.rawOutput);
+  });
+
+  it('sets traceOutput to full NDJSON stream for Claude (contains tool_use blocks)', async () => {
+    const agent = new ClaudeAgent();
+    const toolUseLine = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'app.ts' } }] },
+    });
+    const ndjson = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-1' }),
+      toolUseLine,
+      JSON.stringify({ type: 'result', result: 'hello from claude', session_id: 'sess-1' }),
+    ].join('\n');
+
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: ndjson, stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'hello' });
+    expect(result.traceOutput).toBeDefined();
+    // traceOutput should contain full NDJSON stream (for tool extraction), not just result text
+    expect(result.traceOutput).toContain('tool_use');
+    expect(result.traceOutput).toContain('Read');
+    // rawOutput should be just the result text
+    expect(result.rawOutput).toBe('hello from claude');
   });
 });
 

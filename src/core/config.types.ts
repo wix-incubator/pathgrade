@@ -70,14 +70,32 @@ export interface ResolvedConversation {
     step_graders?: ResolvedStepGrader[];
 }
 
+/** Supported grader types — single source of truth */
+export const VALID_GRADER_TYPES = ['deterministic', 'llm_rubric', 'tool_usage'] as const;
+export type GraderType = typeof VALID_GRADER_TYPES[number];
+
+/** Tool-usage expectation for the tool_usage grader */
+export interface ToolUsageExpectation {
+    action: import('../tool-events').ToolAction;
+    min?: number;
+    max?: number;
+    provider?: AgentName;
+    path?: string;
+    command_contains?: string;
+    argument_pattern?: string;  // regex tested against all string values in arguments
+    tool_name?: string;
+    weight?: number;
+}
+
 /** Grader definition */
 export interface EvalGraderConfig {
-    type: 'deterministic' | 'llm_rubric';
+    type: GraderType;
     setup?: string;     // commands to install grader dependencies (runs during image build)
     run?: string;       // inline script or file path (deterministic)
     rubric?: string;    // inline rubric or file path (llm_rubric)
     model?: string;     // LLM model override (e.g. 'gemini-2.0-flash', 'claude-sonnet-4-20250514')
     weight: number;
+    expectations?: ToolUsageExpectation[];  // for tool_usage
 }
 
 /** Environment resource limits */
@@ -158,22 +176,24 @@ export interface ResolvedConversationTask extends ResolvedTaskBase {
 export type ResolvedTask = ResolvedInstructionTask | ResolvedConversationTask;
 
 export interface ResolvedGrader {
-    type: 'deterministic' | 'llm_rubric';
+    type: GraderType;
     setup?: string;     // resolved setup commands
     run?: string;       // resolved content for deterministic
     rubric?: string;    // resolved content for llm_rubric
     model?: string;     // LLM model override
     weight: number;
+    expectations?: ToolUsageExpectation[];  // for tool_usage
 }
 
 /** User-friendly input for defineEval() — all defaults are optional */
 export interface DefineEvalGraderInput {
-    type: 'deterministic' | 'llm_rubric';
+    type: GraderType;
     setup?: string;
     run?: string;
     rubric?: string;
     model?: string;
     weight?: number;    // defaults to 1.0
+    expectations?: ToolUsageExpectation[];  // for tool_usage
 }
 
 export interface DefineEvalConversationInput {

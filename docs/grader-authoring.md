@@ -129,6 +129,50 @@ console.log(JSON.stringify({
 }));
 ```
 
+## Tool Usage Graders
+
+`tool_usage` graders score normalized Pathgrade tool events rather than filesystem state.
+They are best when you care about workflow requirements such as:
+- search before editing
+- run tests before finishing
+- avoid asking the user unnecessarily
+
+```typescript
+{
+  type: 'tool_usage',
+  weight: 0.4,
+  expectations: [
+    { action: 'search_code', min: 1, weight: 0.2 },
+    { action: 'read_file', min: 1, weight: 0.3 },
+    { action: 'edit_file', min: 1, weight: 0.3 },
+    { action: 'run_shell', command_contains: 'test', min: 1, weight: 0.2 },
+  ],
+}
+```
+
+### Expectations
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | `ToolAction` | Normalized action: `run_shell`, `read_file`, `write_file`, `edit_file`, `search_code`, `list_files`, `ask_user`, `web_fetch` |
+| `min` | `number` | Minimum matching events (default: 1) |
+| `max` | `number` | Maximum matching events (optional) |
+| `weight` | `number` | Weight within the expectation set (default: 1) |
+| `command_contains` | `string` | For `run_shell`: substring match on the command |
+| `argument_pattern` | `string` | Regex tested against all string values in the tool's arguments |
+| `path` | `string` | Match on the file path argument |
+| `tool_name` | `string` | Match on the provider-specific tool name |
+
+### Provider Support
+
+| Agent | Support | Notes |
+|-------|---------|-------|
+| Codex | Best-effort | Extracts from CLI stdout trace |
+| Gemini | Best-effort | Extracts from CLI stdout trace |
+| Claude | Unsupported (MVP) | `--output-format json` does not expose tool traces |
+
+When no tool events are captured, the grader returns score 0 with an explicit message rather than silently passing.
+
 ### Python
 
 ```python

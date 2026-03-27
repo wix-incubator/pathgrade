@@ -2,6 +2,7 @@ import { GraderConfig, GraderResult, EnvironmentProvider, EnvironmentHandle, Log
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { callLLM } from '../utils/llm';
+import { ToolUsageGrader } from './tool-usage';
 
 export interface Grader {
     grade(
@@ -170,6 +171,21 @@ export class LLMGrader implements Grader {
             }
         }
 
+        // Include normalized tool events when opted in
+        if (config.include_tool_events) {
+            const toolEvents = sessionLog
+                .filter((entry) => entry.type === 'tool_event' && entry.tool_event)
+                .map((entry) => entry.tool_event!);
+
+            if (toolEvents.length > 0) {
+                const lines = toolEvents.map((event) => {
+                    const turn = event.turnNumber ? `turn ${event.turnNumber}` : 'instruction';
+                    return `- ${turn}: ${event.action} via ${event.providerToolName} (${event.provider})`;
+                });
+                sections.push(`## Tool Events\n${lines.join('\n')}`);
+            }
+        }
+
         // Include results from any prior graders (e.g., deterministic tests)
         const priorGraders = sessionLog
             .filter(e => e.type === 'grader' && e.grader_result)
@@ -260,6 +276,7 @@ export function getGrader(type: string): Grader {
     switch (type) {
         case 'deterministic': return new DeterministicGrader();
         case 'llm_rubric': return new LLMGrader();
+        case 'tool_usage': return new ToolUsageGrader();
         default: throw new Error(`Unknown grader type: ${type}`);
     }
 }

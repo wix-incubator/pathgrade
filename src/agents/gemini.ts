@@ -16,6 +16,7 @@ export class GeminiAgent extends TranscriptAgent {
             rawOutput,
             assistantMessage: rawOutput.trim(),
             exitCode: result.exitCode,
+            traceOutput: rawOutput,
         };
     }
 }

@@ -18,6 +18,7 @@ import {
     getWorkspacePath,
 } from './types';
 import { callLLM } from './utils/llm';
+import { extractToolEvents } from './tool-event-extractors';
 import { withAbortTimeout } from './utils/timeout';
 
 interface CompiledReply {
@@ -40,6 +41,7 @@ interface ConversationRunOptions {
     taskPath: string;
     timeoutSec: number;
     timestamp: () => string;
+    agentName?: import('./core/config.types').AgentName;
 }
 
 export interface ConversationRunResult {
@@ -352,7 +354,7 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
         });
 
         // Retry once on transient failures (empty response, API error, non-zero exit)
-        let turnResult: { rawOutput: string; assistantMessage: string; exitCode: number } | undefined;
+        let turnResult: { rawOutput: string; assistantMessage: string; exitCode: number; traceOutput?: string } | undefined;
         let assistantMessage = '';
         let turnCommands: TurnCommand[] = [];
         let durationMs = 0;
@@ -542,6 +544,23 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
             exitCode: turnResult.exitCode,
             turn_number: turnNumber,
         });
+
+        // Extract normalized tool events from trace output
+        if (opts.agentName) {
+            const traceOutput = turnResult.traceOutput || turnResult.rawOutput;
+            const toolEvents = extractToolEvents(opts.agentName, traceOutput, turnNumber);
+            if (toolEvents.length > 0) {
+                turns[turns.length - 1].tool_events = toolEvents;
+                for (const toolEvent of toolEvents) {
+                    sessionLog.push({
+                        type: 'tool_event',
+                        timestamp: opts.timestamp(),
+                        turn_number: turnNumber,
+                        tool_event: toolEvent,
+                    });
+                }
+            }
+        }
 
         const completion = await checkCompletion(
             assistantMessage,

@@ -20,6 +20,7 @@ export class CodexAgent extends TranscriptAgent {
             rawOutput,
             assistantMessage: rawOutput.trim(),
             exitCode: result.exitCode,
+            traceOutput: rawOutput,
         };
     }
 }

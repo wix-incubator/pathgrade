@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateConfig, resolveTask } from '../src/core/config';
-import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig, ResolvedInstructionTask, ResolvedConversationTask } from '../src/core/config.types';
+import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig, ResolvedInstructionTask, ResolvedConversationTask, InstructionTaskConfig } from '../src/core/config.types';
 
 // Mock fs-extra for resolveTask tests only (file reference resolution)
 vi.mock('fs-extra', () => ({
@@ -556,5 +556,55 @@ describe('resolveTask', () => {
     const resolved = await resolveTask(task, defaults, '/tmp/some-project');
     // Should return the literal string, not the file contents
     expect(resolved.type === 'instruction' && resolved.instruction).toBe('../../etc/hostname');
+  });
+});
+
+describe('tool_usage grader config', () => {
+  it('accepts tool_usage graders with expectations', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'tool-task',
+        type: 'instruction',
+        instruction: 'fix the bug',
+        graders: [{
+          type: 'tool_usage',
+          weight: 1,
+          expectations: [{ action: 'run_shell', min: 1 }],
+        }],
+      }],
+    });
+
+    expect(config.tasks[0].graders[0]).toEqual(
+      expect.objectContaining({ type: 'tool_usage' })
+    );
+    expect(config.tasks[0].graders[0].expectations).toHaveLength(1);
+    expect(config.tasks[0].graders[0].expectations![0].action).toBe('run_shell');
+  });
+
+  it('resolves tool_usage grader with expectations', async () => {
+    const task: InstructionTaskConfig = {
+      name: 'tool-task',
+      type: 'instruction',
+      instruction: 'fix it',
+      graders: [{
+        type: 'tool_usage',
+        weight: 0.5,
+        expectations: [
+          { action: 'read_file', min: 1 },
+          { action: 'edit_file', min: 1 },
+        ],
+      }],
+    };
+    const defaults: EvalDefaults = {
+      agent: 'claude',
+      trials: 1,
+      timeout: 60,
+      threshold: 0.8,
+      environment: { cpus: 1, memory_mb: 512 },
+    };
+    const resolved = await resolveTask(task, defaults, '/tmp/test');
+    expect(resolved.graders[0].type).toBe('tool_usage');
+    expect(resolved.graders[0].expectations).toHaveLength(2);
   });
 });
