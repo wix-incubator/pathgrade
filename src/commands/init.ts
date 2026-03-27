@@ -180,6 +180,7 @@ export default defineEval({
   tasks: [
     {
       name: '<descriptive-task-name>',
+      type: 'instruction',
       instruction: \`<realistic user instruction>
 Save <expected output> as <exact-filename>.\`,
       workspace: [
@@ -313,6 +314,7 @@ export default defineEval({
   tasks: [
     {
       name: '{{TASK_NAME}}',
+      type: 'instruction',
       instruction: \`{{INSTRUCTION}}\`,
 
       // workspace: [
