@@ -1,4 +1,7 @@
 import { defineEval } from './src/core/define-eval';
+import { llmRubricGrader } from './src/core/grader-factories';
+import { checkEvalTs } from './graders/check-eval-ts';
+import { checkGraderAuthoring } from './graders/check-grader-authoring';
 
 export default defineEval({
   defaults: {
@@ -13,9 +16,6 @@ export default defineEval({
   },
 
   tasks: [
-    // ── Task 1: Create eval.ts from a SKILL.md ──────────────
-    // Tests whether the agent can follow the pathgrade-setup skill
-    // to produce a valid eval configuration.
     {
       name: 'create-eval-config',
       type: 'instruction',
@@ -26,22 +26,18 @@ Requirements:
 1. The eval.ts must import defineEval from '@wix/pathgrade'
 2. It must define at least one task under tasks
 3. Each task must have: name, instruction, workspace, and graders
-4. Include at least one deterministic grader and one llm_rubric grader
-5. The instruction for each task should be specific and actionable
-6. Save the file as eval.ts in the current directory`,
+4. Include at least one deterministicGrader() and one llmRubricGrader()
+5. The deterministicGrader must have an execute function that returns { score, details }
+6. The instruction for each task should be specific and actionable
+7. Save the file as eval.ts in the current directory`,
 
       workspace: [
         { src: 'fixtures/code-formatter-skill.md', dest: 'SKILL.md' },
       ],
 
       graders: [
-        {
-          type: 'deterministic',
-          run: 'node graders/check-eval-ts.js',
-          weight: 0.7,
-        },
-        {
-          type: 'llm_rubric',
+        checkEvalTs,
+        llmRubricGrader({
           rubric: `Evaluate the generated eval.ts quality:
 
 Structure (0-0.4):
@@ -55,86 +51,54 @@ Task Quality (0-0.3):
 - Are grader weights reasonable?
 
 Grader Design (0-0.3):
-- Does it include both deterministic and llm_rubric graders?
-- Is the deterministic grader checking concrete outcomes?
+- Does it include both deterministicGrader() and llmRubricGrader()?
+- Is the deterministic grader checking concrete outcomes via execute()?
 - Is the LLM rubric focused on qualitative assessment?`,
           weight: 0.3,
-        },
+        }),
       ],
     },
 
-    // ── Task 2: Write a deterministic grader ───────────────────
-    // Tests whether the agent can follow the pathgrade-graders skill
-    // to produce a working deterministic grader script.
     {
       name: 'write-deterministic-grader',
       type: 'instruction',
-      instruction: `Write a deterministic grader script for a pathgrade evaluation.
+      instruction: `Write a deterministic grader for a pathgrade evaluation.
 
 The grader should verify that a file called output.txt was created
 and contains the text "Hello, World!".
 
 Requirements:
-1. Write a bash script at graders/check-output.sh
-2. The script must output valid JSON to stdout
-3. The JSON must have "score" (0.0-1.0) and "details" fields
-4. Include a "checks" array with individual check results
+1. Create a TypeScript file at graders/check-output.ts
+2. Import deterministicGrader from '@wix/pathgrade'
+3. Export a grader using deterministicGrader({ execute: ... })
+4. The execute function should return { score, details, checks }
 5. Check 1: verify output.txt exists
 6. Check 2: verify output.txt contains "Hello, World!"
-7. Score should be the proportion of checks that passed
-
-To test your grader, create a sample output.txt with "Hello, World!"
-and run bash graders/check-output.sh to verify it produces valid JSON.`,
+7. Score should be the proportion of checks that passed`,
 
       workspace: [
         { src: 'fixtures/sample-output.txt', dest: 'expected-output.txt' },
       ],
 
       graders: [
-        {
-          type: 'deterministic',
-          run: `# Create the expected file so the agent's grader should score 1.0
-echo "Hello, World!" > output.txt
-mkdir -p graders
-# Run the agent's grader and validate its output
-if [ ! -f graders/check-output.sh ]; then
-  echo '{"score":0,"details":"graders/check-output.sh not found"}'
-  exit 0
-fi
-output=$(bash graders/check-output.sh 2>/dev/null)
-if ! echo "$output" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); if(typeof d.score!=='number'||!d.details)process.exit(1)" 2>/dev/null; then
-  echo '{"score":0,"details":"Grader output is not valid JSON with score and details"}'
-  exit 0
-fi
-# Check the grader scores correctly
-score=$(echo "$output" | node -e "console.log(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).score)")
-if [ "$score" = "1" ] || [ "$score" = "1.00" ]; then
-  echo '{"score":1,"details":"Grader produced valid JSON and correct score"}'
-else
-  echo "{\"score\":0.5,\"details\":\"Grader produced valid JSON but score was $score instead of 1.0\"}"
-fi`,
-          weight: 0.7,
-        },
-        {
-          type: 'llm_rubric',
-          rubric: `Evaluate the grader script quality:
+        checkGraderAuthoring,
+        llmRubricGrader({
+          rubric: `Evaluate the grader file quality:
 
 Correctness (0-0.4):
-- Does the script output valid JSON with "score" and "details"?
-- Does it include a "checks" array?
-- Does it correctly test for file existence and content?
+- Does the file use deterministicGrader() factory?
+- Does it export the grader?
+- Does execute() return { score, details, checks }?
 
 Robustness (0-0.3):
 - Does it handle the case where output.txt doesn't exist?
-- Does it use proper bash patterns (no bc, uses awk)?
-- Does it redirect debug output to stderr?
+- Does it use proper async/await patterns?
 
 Code Quality (0-0.3):
-- Is the script well-structured and readable?
-- Are variable names descriptive?
-- Is the JSON output properly escaped?`,
+- Is the code well-structured and readable?
+- Are check results descriptive?`,
           weight: 0.3,
-        },
+        }),
       ],
     },
   ],
