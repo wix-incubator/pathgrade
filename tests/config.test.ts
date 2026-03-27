@@ -539,4 +539,22 @@ describe('resolveTask', () => {
     expect(resolved.type === 'conversation' && resolved.conversation.completion.done_when)
       .toBe('Agent delivered the brief');
   });
+
+  it('resolveFileOrInline does not read files outside baseDir', async () => {
+    // We test indirectly via resolveTask: an instruction like "../../etc/hostname"
+    // should be treated as inline text, not resolved to a file.
+    // Simulate the traversal target existing so the old code would read it.
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('actual-hostname-contents' as any);
+
+    const task = {
+      name: 'test',
+      type: 'instruction' as const,
+      instruction: '../../etc/hostname',
+      graders: [{ type: 'deterministic' as const, run: 'echo ok', weight: 1.0 }],
+    };
+    const resolved = await resolveTask(task, defaults, '/tmp/some-project');
+    // Should return the literal string, not the file contents
+    expect(resolved.type === 'instruction' && resolved.instruction).toBe('../../etc/hostname');
+  });
 });

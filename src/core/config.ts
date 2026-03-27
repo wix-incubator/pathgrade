@@ -429,8 +429,15 @@ async function resolveFileOrInline(value: string, baseDir: string): Promise<stri
     // Multi-line strings are always inline content
     if (trimmed.includes('\n')) return trimmed;
 
-    // Check if it could be a file path (no spaces except in path, has extension)
+    // Check if it could be a file path
     const candidate = path.resolve(baseDir, trimmed);
+
+    // Reject paths that escape the base directory
+    const resolvedBase = path.resolve(baseDir);
+    if (!candidate.startsWith(resolvedBase + path.sep) && candidate !== resolvedBase) {
+        return trimmed;
+    }
+
     if (await fs.pathExists(candidate)) {
         return (await fs.readFile(candidate, 'utf-8')).trim();
     }
