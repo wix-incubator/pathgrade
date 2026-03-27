@@ -1,14 +1,13 @@
 type CleanupFn = () => Promise<void>;
 
-let nextId = 0;
-
 export class ShutdownManager {
+    private nextId = 0;
     private cleanups = new Map<number, CleanupFn>();
     private shuttingDown = false;
     private signalHandler: (() => void) | undefined;
 
     register(cleanup: CleanupFn): number {
-        const id = nextId++;
+        const id = this.nextId++;
         this.cleanups.set(id, cleanup);
         return id;
     }
@@ -28,6 +27,7 @@ export class ShutdownManager {
     }
 
     install(): void {
+        if (this.signalHandler) return;
         this.signalHandler = () => {
             this.shutdownAll().finally(() => process.exit(130));
         };

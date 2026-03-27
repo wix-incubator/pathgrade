@@ -16,8 +16,8 @@ describe('ShutdownManager', () => {
         const cleanup1 = vi.fn().mockResolvedValue(undefined);
         const cleanup2 = vi.fn().mockResolvedValue(undefined);
 
-        const id1 = manager.register(cleanup1);
-        const id2 = manager.register(cleanup2);
+        manager.register(cleanup1);
+        manager.register(cleanup2);
 
         await manager.shutdownAll();
 
