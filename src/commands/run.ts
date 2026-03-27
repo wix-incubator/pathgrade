@@ -14,6 +14,14 @@ import { createAgent } from '../agents/registry';
 import { AgentCommandRunner, BaseAgent, EvalReport } from '../types';
 import { ResolvedTask, AgentName } from '../core/config.types';
 import { parseEnvFile } from '../utils/env';
+import {
+    TESTS_DIR,
+    PROMPTS_DIR,
+    STEP_TESTS_DIR,
+    STEP_PROMPTS_DIR,
+    deterministicScriptName,
+    llmRubricName,
+} from '../graders/paths';
 import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
 import { isClaudeCliAvailable } from '../utils/cli-llm';
 
@@ -247,16 +255,14 @@ export async function prepareTempTaskDir(
 
     // Stage grader assets in a hidden .pathgrade directory so the agent
     // doesn't see them when exploring the workspace during conversation evals.
-    const graderRoot = path.join(tmpDir, '.pathgrade');
 
     // Write each deterministic grader script
-    await fs.ensureDir(path.join(graderRoot, 'tests'));
+    await fs.ensureDir(path.join(tmpDir, TESTS_DIR));
     const detGraders = resolved.graders.filter(g => g.type === 'deterministic');
     for (let i = 0; i < detGraders.length; i++) {
         if (detGraders[i].run) {
             const script = `#!/bin/bash\n${detGraders[i].run!.trim()}\n`;
-            const filename = i === 0 ? 'test.sh' : `test_${i}.sh`;
-            await fs.writeFile(path.join(graderRoot, 'tests', filename), script);
+            await fs.writeFile(path.join(tmpDir, TESTS_DIR, deterministicScriptName(i)), script);
         }
     }
 
@@ -278,33 +284,32 @@ export async function prepareTempTaskDir(
     }
 
     // Write each LLM rubric
-    await fs.ensureDir(path.join(graderRoot, 'prompts'));
+    await fs.ensureDir(path.join(tmpDir, PROMPTS_DIR));
     const llmGraders = resolved.graders.filter(g => g.type === 'llm_rubric');
     for (let i = 0; i < llmGraders.length; i++) {
         if (llmGraders[i].rubric) {
-            const filename = i === 0 ? 'quality.md' : `quality_${i}.md`;
-            await fs.writeFile(path.join(graderRoot, 'prompts', filename), llmGraders[i].rubric!);
+            await fs.writeFile(path.join(tmpDir, PROMPTS_DIR, llmRubricName(i)), llmGraders[i].rubric!);
         }
     }
 
     // Write step grader assets into namespaced subdirectories
     const stepGraders = resolved.type === 'conversation' ? resolved.conversation.step_graders : undefined;
     if (stepGraders) {
-        await fs.ensureDir(path.join(graderRoot, 'tests', 'steps'));
-        await fs.ensureDir(path.join(graderRoot, 'prompts', 'steps'));
+        await fs.ensureDir(path.join(tmpDir, STEP_TESTS_DIR));
+        await fs.ensureDir(path.join(tmpDir, STEP_PROMPTS_DIR));
         for (const sg of stepGraders) {
             for (let gIdx = 0; gIdx < sg.graders.length; gIdx++) {
                 const g = sg.graders[gIdx];
                 if (g.type === 'deterministic' && g.run) {
                     const script = `#!/bin/bash\n${g.run.trim()}\n`;
                     await fs.writeFile(
-                        path.join(graderRoot, 'tests', 'steps', `turn_${sg.after_turn}_${gIdx}.sh`),
+                        path.join(tmpDir, STEP_TESTS_DIR, `turn_${sg.after_turn}_${gIdx}.sh`),
                         script
                     );
                 }
                 if (g.type === 'llm_rubric' && g.rubric) {
                     await fs.writeFile(
-                        path.join(graderRoot, 'prompts', 'steps', `turn_${sg.after_turn}_${gIdx}.md`),
+                        path.join(tmpDir, STEP_PROMPTS_DIR, `turn_${sg.after_turn}_${gIdx}.md`),
                         g.rubric
                     );
                 }

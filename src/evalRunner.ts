@@ -16,6 +16,7 @@ import {
 import { ResolvedConversation, ResolvedGrader } from './core/config.types';
 import { runConversationTrial } from './conversationRunner';
 import { getGrader } from './graders';
+import { deterministicCommand, llmRubricPath } from './graders/paths';
 import { fmt, Spinner } from './utils/cli';
 import { withAbortTimeout } from './utils/timeout';
 
@@ -342,12 +343,8 @@ export class EvalRunner {
 
             const graderConfig = {
                 type: graderDef.type,
-                command: graderDef.type === 'deterministic'
-                    ? `bash .pathgrade/tests/${detIndex === 0 ? 'test.sh' : `test_${detIndex}.sh`}`
-                    : undefined,
-                rubric: graderDef.type === 'llm_rubric'
-                    ? `.pathgrade/prompts/${llmIndex === 0 ? 'quality.md' : `quality_${llmIndex}.md`}`
-                    : undefined,
+                command: graderDef.type === 'deterministic' ? deterministicCommand(detIndex) : undefined,
+                rubric: graderDef.type === 'llm_rubric' ? llmRubricPath(llmIndex) : undefined,
                 model: graderDef.model || opts.graderModel,
                 weight: graderDef.weight,
             };
