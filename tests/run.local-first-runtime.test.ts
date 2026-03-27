@@ -14,6 +14,8 @@ const {
   createAgentMock,
   localProviderCtor,
   runEvalMock,
+  isClaudeCliAvailableMock,
+  isCodexCliAvailableMock,
 } = vi.hoisted(() => ({
   mockEnsureDir: vi.fn(),
   mockWriteFile: vi.fn(),
@@ -28,6 +30,8 @@ const {
   createAgentMock: vi.fn(),
   localProviderCtor: vi.fn(),
   runEvalMock: vi.fn(),
+  isClaudeCliAvailableMock: vi.fn(),
+  isCodexCliAvailableMock: vi.fn(),
 }));
 
 vi.mock('fs-extra', () => ({
@@ -68,6 +72,11 @@ vi.mock('../src/evalRunner', () => ({
   },
 }));
 
+vi.mock('../src/utils/cli-llm', () => ({
+  isClaudeCliAvailable: isClaudeCliAvailableMock,
+  isCodexCliAvailable: isCodexCliAvailableMock,
+}));
+
 import { runEvals } from '../src/commands/run';
 
 describe('runEvals local-first runtime path', () => {
@@ -84,6 +93,8 @@ describe('runEvals local-first runtime path', () => {
     mockReadFile.mockResolvedValue('');
     mockStat.mockResolvedValue(null);
     detectSkillsMock.mockResolvedValue([]);
+    isClaudeCliAvailableMock.mockResolvedValue(false);
+    isCodexCliAvailableMock.mockResolvedValue(false);
 
     createAgentMock.mockReturnValue({ run: vi.fn().mockResolvedValue('done') });
     runEvalMock.mockResolvedValue({
@@ -257,5 +268,58 @@ describe('runEvals local-first runtime path', () => {
         process.env.OPENAI_API_KEY = originalApiKey;
       }
     }
+  });
+
+  it('uses host auth for Codex when Codex CLI login is available', async () => {
+    resolveTaskMock.mockResolvedValueOnce({
+      type: 'instruction' as const,
+      name: 'codex-task',
+      instruction: 'do it',
+      workspace: [],
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
+      agent: 'codex',
+      trials: 1,
+      timeout: 300,
+      environment: { cpus: 2, memory_mb: 2048 },
+    });
+    isCodexCliAvailableMock.mockResolvedValueOnce(true);
+
+    await runEvals('/repo', { agent: 'codex' });
+
+    expect(runEvalMock).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({
+        agentName: 'codex',
+        authMode: 'host',
+      }),
+      1,
+      expect.objectContaining({
+        PATHGRADE_CODEX_USE_HOST_AUTH: '1',
+      }),
+      1,
+    );
+  });
+
+  it('does not use Claude availability to decide Codex host auth', async () => {
+    resolveTaskMock.mockResolvedValueOnce({
+      type: 'instruction' as const,
+      name: 'codex-task',
+      instruction: 'do it',
+      workspace: [],
+      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
+      agent: 'codex',
+      trials: 1,
+      timeout: 300,
+      environment: { cpus: 2, memory_mb: 2048 },
+    });
+    isClaudeCliAvailableMock.mockResolvedValueOnce(false);
+    isCodexCliAvailableMock.mockResolvedValueOnce(true);
+
+    await runEvals('/repo', { agent: 'codex' });
+
+    expect(isClaudeCliAvailableMock).not.toHaveBeenCalled();
+    expect(isCodexCliAvailableMock).toHaveBeenCalledTimes(1);
   });
 });

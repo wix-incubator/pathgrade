@@ -32,6 +32,54 @@ describe('extractToolEvents', () => {
     expect(extractToolEvents('codex', 'plain assistant text')).toEqual([]);
   });
 
+  it('extracts tool events from current Codex exec and file update traces', () => {
+    const trace = [
+      'OpenAI Codex v0.117.0-alpha.10 (research preview)',
+      'exec',
+      '/bin/zsh -lc "sed -n \'1,200p\' app.js" in /tmp/workspace succeeded in 0ms:',
+      '// A simple calculator module',
+      'file update',
+      'M /tmp/workspace/app.js',
+      '@@ -2,3 +2,3 @@',
+      'apply_patch(auto_approved=true) exited 0 in 44ms:',
+      'Success. Updated the following files:',
+      'M /tmp/workspace/app.js',
+      'exec',
+      '/bin/zsh -lc "node -e \\"const { add } = require(\'./app\'); console.log(add(2,3))\\"" in /tmp/workspace succeeded in 0ms:',
+      '5',
+    ].join('\n');
+
+    const events = extractToolEvents('codex', trace, 1);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'read_file',
+          provider: 'codex',
+          providerToolName: 'exec',
+          turnNumber: 1,
+        }),
+        expect.objectContaining({
+          action: 'edit_file',
+          provider: 'codex',
+          providerToolName: 'file update',
+          turnNumber: 1,
+        }),
+        expect.objectContaining({
+          action: 'run_shell',
+          provider: 'codex',
+          providerToolName: 'exec',
+          turnNumber: 1,
+        }),
+      ]),
+    );
+
+    expect(events.find((event) => event.action === 'read_file')?.summary).toContain("sed -n '1,200p' app.js");
+    expect(events.find((event) => event.providerToolName === 'file update')?.arguments).toEqual({
+      path: '/tmp/workspace/app.js',
+    });
+  });
+
   it('extracts tool events from Claude stream-json NDJSON output', () => {
     const trace = [
       '{"type":"system","subtype":"init","session_id":"sess-123"}',

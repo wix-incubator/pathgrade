@@ -111,6 +111,31 @@ describe('EvalRunner', () => {
     expect(provider.teardown).toHaveBeenCalled();
   });
 
+  it('does not fail the eval when provider cleanup throws after a completed trial', async () => {
+    const provider = makeMockProvider();
+    provider.cleanup = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error('directory not empty'), { code: 'ENOTEMPTY' }));
+    const agent = makeMockAgent();
+    const opts = makeEvalOpts();
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic',
+        score: 1.0,
+        weight: 1.0,
+        details: 'All passed',
+      } as GraderResult),
+    });
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], opts, 1);
+
+    expect(report.pass_rate).toBe(1);
+    expect(provider.cleanup).toHaveBeenCalledTimes(1);
+  });
+
   it('uses a session-capable agent when available', async () => {
     const provider = makeMockProvider();
     const start = vi.fn().mockResolvedValue({

@@ -9,7 +9,7 @@ export interface CliLLMResult {
 
 // --- Availability check with promise-based dedup ---
 
-let availabilityPromise: Promise<boolean> | null = null;
+const availabilityPromises = new Map<string, Promise<boolean>>();
 
 /**
  * Check if claude CLI is installed and authenticated.
@@ -17,14 +17,26 @@ let availabilityPromise: Promise<boolean> | null = null;
  * Uses a promise-based lock so concurrent callers share one check.
  */
 export async function isClaudeCliAvailable(): Promise<boolean> {
-    if (availabilityPromise !== null) return availabilityPromise;
-    availabilityPromise = checkCliAvailability();
-    return availabilityPromise;
+    return getCliAvailability('claude', ['auth', 'status'], 5);
 }
 
-async function checkCliAvailability(): Promise<boolean> {
+export async function isCodexCliAvailable(): Promise<boolean> {
+    return getCliAvailability('codex', ['login', 'status'], 5);
+}
+
+function getCliAvailability(command: string, args: string[], timeoutSec: number): Promise<boolean> {
+    const cacheKey = `${command} ${args.join(' ')}`;
+    const existing = availabilityPromises.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = checkCliAvailability(command, args, timeoutSec);
+    availabilityPromises.set(cacheKey, promise);
+    return promise;
+}
+
+async function checkCliAvailability(command: string, args: string[], timeoutSec: number): Promise<boolean> {
     try {
-        const result = await runCli('claude', ['auth', 'status'], {}, 5);
+        const result = await runCli(command, args, {}, timeoutSec);
         return result.exitCode === 0;
     } catch {
         return false;
@@ -33,7 +45,7 @@ async function checkCliAvailability(): Promise<boolean> {
 
 /** Reset the availability cache (for testing). */
 export function resetCliCache(): void {
-    availabilityPromise = null;
+    availabilityPromises.clear();
 }
 
 // --- CLI invocation ---

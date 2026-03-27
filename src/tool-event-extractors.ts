@@ -11,7 +11,7 @@ import { ToolAction, ToolEvent } from './tool-events';
 export function extractToolEvents(agentName: AgentName, traceOutput: string, turnNumber?: number): ToolEvent[] {
   switch (agentName) {
     case 'codex':
-      return extractGenericToolLines(traceOutput, 'codex', turnNumber);
+      return extractCodexToolEvents(traceOutput, turnNumber);
     case 'gemini':
       return extractGenericToolLines(traceOutput, 'gemini', turnNumber);
     case 'claude':
@@ -81,6 +81,8 @@ const TOOL_NAME_MAP: Record<string, ToolAction> = {
  * Both Codex and Gemini use this format.
  */
 const TOOL_LINE_REGEX = /^tool:\s+(\S+)\s+(\{.*\})\s*$/;
+const CODEX_EXEC_LINE_REGEX = /^(?<command>.+?) in .+? (?:succeeded|failed|exited)\b.*$/;
+const CODEX_FILE_PATH_REGEX = /^[A-Z?]+\s+(?<path>\/.+)$/;
 
 function extractGenericToolLines(
   traceOutput: string,
@@ -118,6 +120,69 @@ function extractGenericToolLines(
       confidence: 'high',
       rawSnippet,
     });
+  }
+
+  return events;
+}
+
+function extractCodexToolEvents(traceOutput: string, turnNumber?: number): ToolEvent[] {
+  const events = extractGenericToolLines(traceOutput, 'codex', turnNumber);
+  const seen = new Set(events.map((event) => `${event.providerToolName}:${event.action}:${event.summary}`));
+  const lines = traceOutput.split('\n');
+
+  const pushEvent = (
+    action: ToolAction,
+    providerToolName: string,
+    summary: string,
+    args?: Record<string, unknown>,
+    rawSnippet?: string,
+  ) => {
+    const key = `${providerToolName}:${action}:${summary}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    events.push({
+      action,
+      provider: 'codex',
+      providerToolName,
+      turnNumber,
+      arguments: args,
+      summary,
+      confidence: action === 'unknown' ? 'low' : 'medium',
+      rawSnippet: (rawSnippet || summary).slice(0, 200),
+    });
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    if (line === 'exec') {
+      const commandLine = lines[i + 1]?.trim();
+      if (!commandLine) continue;
+      const match = commandLine.match(CODEX_EXEC_LINE_REGEX);
+      if (!match?.groups?.command) continue;
+      const command = match.groups.command;
+      pushEvent(inferCodexExecAction(command), 'exec', command, { command }, `${line}\n${commandLine}`);
+      i += 1;
+      continue;
+    }
+
+    if (line === 'file update') {
+      const pathLine = lines[i + 1]?.trim();
+      const filePath = pathLine?.match(CODEX_FILE_PATH_REGEX)?.groups?.path;
+      pushEvent(
+        'edit_file',
+        'file update',
+        filePath ? `edit_file ${filePath}` : 'edit_file via file update',
+        filePath ? { path: filePath } : undefined,
+        `${line}\n${pathLine || ''}`,
+      );
+      continue;
+    }
+
+    if (line.startsWith('apply_patch(')) {
+      pushEvent('edit_file', 'apply_patch', 'edit_file via apply_patch', undefined, line);
+    }
   }
 
   return events;
@@ -188,4 +253,20 @@ function buildSummary(action: ToolAction, toolName: string, args?: Record<string
   if (pattern && typeof pattern === 'string') return `${action} "${pattern}"`;
 
   return `${action} via ${toolName}`;
+}
+
+function inferCodexExecAction(command: string): ToolAction {
+  const normalized = command.trim();
+  if (
+    /\b(cat|sed|head|tail|less|more)\b/.test(normalized)
+  ) {
+    return 'read_file';
+  }
+  if (/\b(rg|grep)\b/.test(normalized)) {
+    return 'search_code';
+  }
+  if (/\b(ls|find)\b/.test(normalized)) {
+    return 'list_files';
+  }
+  return 'run_shell';
 }
