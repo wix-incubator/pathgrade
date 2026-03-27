@@ -1,4 +1,4 @@
-# Multi-Turn Conversation Support for Skillgrade
+# Multi-Turn Conversation Support for Pathgrade
 
 **Date:** 2026-03-20
 **Status:** Draft
@@ -33,7 +33,7 @@
 
 ### Current State
 
-Skillgrade evaluates whether AI agents correctly discover and use Agent Skills. The current model is **single-turn**: one instruction is sent to the agent, the agent runs autonomously, then grading happens.
+Pathgrade evaluates whether AI agents correctly discover and use Agent Skills. The current model is **single-turn**: one instruction is sent to the agent, the agent runs autonomously, then grading happens.
 
 ```
 Current flow:
@@ -75,7 +75,7 @@ Without multi-turn support, an entire class of skills is untestable:
 
 ### Goals
 
-1. **Support multi-turn conversations** in skillgrade evaluations with pre-defined or LLM-simulated user replies
+1. **Support multi-turn conversations** in pathgrade evaluations with pre-defined or LLM-simulated user replies
 2. **Support scripted replies** for deterministic, repeatable testing
 3. **Support LLM-simulated users** for realistic end-to-end evaluation
 4. **Support per-step grading** to verify the agent follows the skill's prescribed workflow at each stage
@@ -89,7 +89,7 @@ Without multi-turn support, an entire class of skills is untestable:
 2. **Branching conversation trees** — we don't model if/else conversation paths. The dispatch system handles ordering flexibility, but there's no explicit state machine
 3. **Agent-to-agent conversations** — only agent ↔ simulated-user, not agent ↔ agent
 4. **Streaming support** — turn boundaries are clean request/response pairs, not streamed tokens
-5. **Full upstream compatibility at the codebase level** — this design is intended for a new repository derived from skillgrade, not for a low-risk in-place patch to the existing upstream project
+5. **Full upstream compatibility at the codebase level** — this design is intended for a new repository derived from pathgrade, not for a low-risk in-place patch to the existing upstream project
 
 ---
 
@@ -201,15 +201,15 @@ This preserves session files across turns while preventing cross-trial contamina
 
 ### Implementation Vehicle: Hard Fork / New Repository
 
-This design should be implemented in a **new repository derived from skillgrade**, not as a direct in-place evolution of the current upstream project.
+This design should be implemented in a **new repository derived from pathgrade**, not as a direct in-place evolution of the current upstream project.
 
 Rationale:
-- The current skillgrade runtime is strongly shaped around **single-turn execution** and **Docker-based isolation**
+- The current pathgrade runtime is strongly shaped around **single-turn execution** and **Docker-based isolation**
 - This design changes the product boundary to **local-only execution**, **session-aware multi-turn orchestration**, and **conversation-native grading**
 - Preserving the current upstream surface while making these changes would add compatibility work without improving the core multi-turn architecture
 
 Implementation guidance:
-- Start from a hard fork or repository copy of skillgrade
+- Start from a hard fork or repository copy of pathgrade
 - Reuse the existing config loader, grader infrastructure, agent registry, and reporting code where practical
 - Remove Docker/provider complexity early and simplify the runtime around a local-only conversation runner
 
@@ -940,7 +940,7 @@ Agent CLIs are designed for single-shot execution. Multi-turn requires maintaini
 
 ### Local Provider Requirement: Trial Persistence + Session Isolation
 
-Skillgrade runs **locally only**. Multi-turn conversations issue multiple `runCommand()` calls within a single trial, so the local provider must satisfy two constraints:
+Pathgrade runs **locally only**. Multi-turn conversations issue multiple `runCommand()` calls within a single trial, so the local provider must satisfy two constraints:
 
 1. **Persistence within a trial:** the workspace and agent session files must survive across turns.
 2. **Isolation across trials:** one trial's `~/.claude`, `~/.config`, temp files, and resume state must not be visible to another trial.
@@ -984,9 +984,9 @@ export class ClaudeAgent extends BaseAgent {
     async run(instruction: string, workspace: string,
               runCommand: AbortableRunCommand): Promise<AgentTurnResult> {
         const b64 = Buffer.from(instruction).toString('base64');
-        await runCommand(`mkdir -p .skillgrade && echo '${b64}' | base64 -d > .skillgrade/prompt.md`);
+        await runCommand(`mkdir -p .pathgrade && echo '${b64}' | base64 -d > .pathgrade/prompt.md`);
 
-        const command = `claude -p --dangerously-skip-permissions "$(cat .skillgrade/prompt.md)"`;
+        const command = `claude -p --dangerously-skip-permissions "$(cat .pathgrade/prompt.md)"`;
         const result = await runCommand(command);
         const raw = result.stdout + '\n' + result.stderr;
         return {
@@ -998,10 +998,10 @@ export class ClaudeAgent extends BaseAgent {
     async continueSession(message: string, workspace: string,
                            runCommand: AbortableRunCommand): Promise<AgentTurnResult> {
         const b64 = Buffer.from(message).toString('base64');
-        await runCommand(`mkdir -p .skillgrade && echo '${b64}' | base64 -d > .skillgrade/prompt.md`);
+        await runCommand(`mkdir -p .pathgrade && echo '${b64}' | base64 -d > .pathgrade/prompt.md`);
 
         // -c continues the most recent session in the isolated HOME
-        const command = `claude -p -c --dangerously-skip-permissions "$(cat .skillgrade/prompt.md)"`;
+        const command = `claude -p -c --dangerously-skip-permissions "$(cat .pathgrade/prompt.md)"`;
         const result = await runCommand(command);
         const raw = result.stdout + '\n' + result.stderr;
         return {
@@ -1031,7 +1031,7 @@ gemini -y --sandbox=none -p "reply" --resume-last
 **Note:** Gemini CLI's session continuation mechanism needs to be verified. If it doesn't support native continuation, the fallback is to pass the full conversation transcript in each invocation:
 
 ```bash
-gemini -y --sandbox=none -p "$(cat .skillgrade/full-transcript.md)"
+gemini -y --sandbox=none -p "$(cat .pathgrade/full-transcript.md)"
 ```
 
 Where the transcript accumulates all previous turns.
@@ -1340,7 +1340,7 @@ Use a two-lane CI strategy:
 
 ### Scope
 
-This project is a new repository derived from skillgrade, so the main compatibility target is **existing eval authoring concepts and existing eval.yaml content where reasonable**, not source-level compatibility with the upstream codebase.
+This project is a new repository derived from pathgrade, so the main compatibility target is **existing eval authoring concepts and existing eval.yaml content where reasonable**, not source-level compatibility with the upstream codebase.
 
 ### Migration Goals
 
@@ -1559,7 +1559,7 @@ tasks:
 - `README.md` — describe the new project as local-only and conversation-first
 - `ARCHITECTURE.md` — replace Docker-centric architecture with local isolated trial roots
 - `.github/workflows/*.yml` — add GitHub Actions for build/test and eval CI
-- `src/skillgrade.ts` — preserve `--ci` / `--threshold` contract while removing provider-related flags over time
+- `src/pathgrade.ts` — preserve `--ci` / `--threshold` contract while removing provider-related flags over time
 
 **Goals:**
 - create the new repository baseline
@@ -1576,7 +1576,7 @@ tasks:
 - `src/types.ts` — add AgentTurnResult, ConversationTurn, extend LogEntry, extend TrialResult, extend BaseAgent with `continueSession()`, `resetSession()`, and abortable command execution
 - `src/evalRunner.ts` — make `EvalRunOptions.instruction` optional and adapt single-turn execution/logging to `AgentTurnResult`
 - `src/commands/init.ts` — remove Docker-related scaffolding from generated evals
-- `src/skillgrade.ts` — remove Docker/provider CLI surface area
+- `src/pathgrade.ts` — remove Docker/provider CLI surface area
 
 **Deviations from design:**
 - Type naming uses `Config` suffix: `ConversationReplyConfig`, `ConversationPersonaConfig`, `ConversationCompletionConfig` (design said `ConversationReply`, `ConversationPersona`, `ConversationCompletion`)
@@ -1754,7 +1754,7 @@ Phases 1-6 are complete. Phases 7-8 remain.
 | No hard CPU/memory isolation in local mode | Without Docker, resource isolation is weaker. | Run evals on trusted machines and keep tasks bounded by timeout. |
 | No reply `delay_ms` | Real users don't respond instantly, but adding delays increases trial time without clear testing value. | Agent behavior shouldn't depend on reply timing. If it does, that's a bug in the agent. |
 | Persona transcript not truncated | For long conversations (10-15 turns), the full transcript sent to the persona LLM can get large. | Keep `max_turns` reasonable (≤15). Typical conversations are 5-10 turns. Future enhancement: summarize early turns if transcript exceeds a token threshold. |
-| `skillgrade init` doesn't detect conversational skills | The init command generates eval.yaml automatically, but won't produce `conversation:` blocks. | Author multi-turn configs manually. Future enhancement: detect `disable-model-invocation: true` in SKILL.md metadata as a signal. |
+| `pathgrade init` doesn't detect conversational skills | The init command generates eval.yaml automatically, but won't produce `conversation:` blocks. | Author multi-turn configs manually. Future enhancement: detect `disable-model-invocation: true` in SKILL.md metadata as a signal. |
 | No agent-initiated conversation end | The agent can't explicitly say "conversation over." Completion is detected externally via file signals, phrase matching, or turn limits. | Use `done_phrase` with a regex that matches the agent's natural closing (e.g., `"brief.*saved\|anything else"`) |
 | Gemini/Codex session continuation unverified | These CLIs may not support native session continuation. | Transcript accumulation fallback works for all agents. Native continuation is an optimization, not a requirement. |
 | Transcript accumulation changes agent behavior | Re-sending the full conversation each turn causes the agent to see all prior messages as a single prompt rather than a true multi-turn session. This may cause some agents to re-execute earlier commands. | Use native continuation where available (Claude's `-c`). For other agents, include an instruction prefix in the transcript: "Continue the conversation. Do not re-execute previous commands." |
@@ -1764,7 +1764,7 @@ Phases 1-6 are complete. Phases 7-8 remain.
 
 1. **`after_turn: "last"`** — run step graders on the final turn before end-of-conversation graders
 2. **Persona transcript summarization** — summarize turns beyond a token threshold
-3. **`skillgrade init` for conversational skills** — detect multi-turn skills and generate conversation-based configs
+3. **`pathgrade init` for conversational skills** — detect multi-turn skills and generate conversation-based configs
 4. **Branching conversation trees** — explicit if/else paths based on agent responses
 5. **Step graders contributing to reward** — optional flag to include step grader scores in the weighted reward calculation
 6. **Reply `delay_ms`** — configurable delay before sending scripted replies
