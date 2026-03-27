@@ -5,6 +5,45 @@ import * as fsExtra from 'fs-extra';
 import { prepareTempTaskDir } from '../src/commands/run';
 import { ResolvedTask } from '../src/core/config.types';
 
+describe('prepareTempTaskDir path traversal', () => {
+  it('rejects workspace src that escapes project directory', async () => {
+    // Use a deep nested baseDir so ../.. actually resolves to a real location
+    const parentDir = path.join(os.tmpdir(), `pathgrade-traversal-${Date.now()}`);
+    const baseDir = path.join(parentDir, 'project', 'subdir');
+    const tmpDir = path.join(parentDir, 'output');
+    await fsExtra.ensureDir(baseDir);
+    await fsExtra.ensureDir(tmpDir);
+
+    // Create a "sensitive" file in the parent directory (outside baseDir)
+    const sensitiveFile = path.join(parentDir, 'sensitive.txt');
+    await fsExtra.writeFile(sensitiveFile, 'sensitive data');
+
+    const resolved: ResolvedTask = {
+      type: 'instruction' as const,
+      name: 'test-task',
+      instruction: 'test',
+      // ../../sensitive.txt from baseDir resolves to parentDir/sensitive.txt (outside baseDir)
+      workspace: [{ src: '../../sensitive.txt', dest: 'passwd' }],
+      graders: [],
+      agent: 'gemini' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 1, memory_mb: 512 },
+    };
+
+    // Should not copy files from outside baseDir
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+    const files = await fsExtra.readdir(tmpDir);
+    // With path traversal, the file could land as 'passwd' (via dest) or 'sensitive.txt' (via basename)
+    // Neither should be present
+    const nonHidden = files.filter(f => f !== '.pathgrade');
+    expect(nonHidden).not.toContain('passwd');
+    expect(nonHidden).not.toContain('sensitive.txt');
+
+    await fsExtra.remove(parentDir);
+  });
+});
+
 describe('prepareTempTaskDir', () => {
   const tempDirs: string[] = [];
 

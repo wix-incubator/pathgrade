@@ -224,6 +224,15 @@ export async function runEvals(dir: string, opts: RunOptions) {
 }
 
 /**
+ * Returns true if childPath is contained within parentPath (i.e. does not escape it).
+ */
+function isContainedIn(childPath: string, parentPath: string): boolean {
+    const resolved = path.resolve(childPath);
+    const parent = path.resolve(parentPath) + path.sep;
+    return resolved.startsWith(parent) || resolved === path.resolve(parentPath);
+}
+
+/**
  * Create a temp task directory for runtime execution.
  * Contains shared workspace files and grader scripts for the local runtime.
  * No longer writes task.toml or instruction.md — those are passed directly.
@@ -259,6 +268,7 @@ export async function prepareTempTaskDir(
                 const refDir = ref.split('/')[0];
                 const srcDir = path.resolve(baseDir, refDir);
                 const destDir = path.join(tmpDir, refDir);
+                if (!isContainedIn(srcDir, baseDir)) continue;
                 if (refDir !== ref && await fs.pathExists(srcDir) && !await fs.pathExists(destDir)) {
                     await fs.copy(srcDir, destDir);
                 }
@@ -304,9 +314,17 @@ export async function prepareTempTaskDir(
     // Copy workspace files into the local task bundle.
     for (const w of resolved.workspace) {
         const srcPath = path.resolve(baseDir, w.src);
-        const destInTmp = path.join(tmpDir, path.basename(w.src));
+        if (!isContainedIn(srcPath, baseDir)) {
+            console.warn(`  ${fmt.dim('warning')}  workspace src "${w.src}" escapes project directory, skipping`);
+            continue;
+        }
+        const destName = w.dest || path.basename(w.src);
+        const destInTmp = path.join(tmpDir, destName);
         if (await fs.pathExists(srcPath)) {
             await fs.copy(srcPath, destInTmp);
+            if (w.chmod) {
+                await fs.chmod(destInTmp, w.chmod);
+            }
         }
     }
 }
