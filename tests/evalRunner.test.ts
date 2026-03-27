@@ -352,6 +352,60 @@ describe('EvalRunner', () => {
     }
   });
 
+  it('retries conversation turn once on transient empty response with non-zero exit', async () => {
+    const provider = makeMockProvider();
+    const start = vi.fn().mockResolvedValue({
+      // First attempt: transient failure (empty response + non-zero exit)
+      rawOutput: '', assistantMessage: '', exitCode: 1,
+    });
+    let replyCallCount = 0;
+    const reply = vi.fn().mockImplementation(async () => {
+      replyCallCount++;
+      if (replyCallCount === 1) {
+        // Retry of turn 1 succeeds (uses reply since session was already started)
+        return { rawOutput: 'Hello!', assistantMessage: 'Hello!', exitCode: 0 };
+      }
+      // Turn 2
+      return { rawOutput: 'Done.', assistantMessage: 'Project brief created.', exitCode: 0 };
+    });
+    const createSession = vi.fn().mockResolvedValue({ start, reply });
+    const agent = { createSession } as unknown as BaseAgent;
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
+      }),
+    });
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
+      instruction: undefined,
+      conversation: {
+        opener: 'Start project.',
+        completion: {
+          max_turns: 4,
+          done_phrase: 'brief created',
+        },
+        replies: [
+          { content: 'Sure.' },
+        ],
+      },
+    }), 1);
+
+    // start called once (failed), then reply called for retry + turn 2
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(reply).toHaveBeenCalledTimes(2);
+    // Should still complete successfully
+    expect(report.trials[0].conversation?.completion_reason).toBe('done_phrase');
+    expect(report.trials[0].conversation?.total_turns).toBe(2);
+    // The retry log entry should be present
+    const retryLog = report.trials[0].session_log.find(
+      entry => entry.type === 'agent_result' && entry.output?.includes('retry:')
+    );
+    expect(retryLog).toBeDefined();
+  });
+
   it('handles agent errors gracefully', async () => {
     const provider = makeMockProvider();
     const agent = {

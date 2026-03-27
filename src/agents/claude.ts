@@ -17,8 +17,11 @@ interface AskUserQuestionInput {
 interface ClaudeEnvelope {
     result?: string;
     session_id?: string;
+    is_error?: boolean;
     permission_denials?: PermissionDenial[];
 }
+
+const API_ERROR_PATTERN = /^API Error:\s*\d{3}\b/;
 
 export class ClaudeAgent extends BaseAgent {
     async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
@@ -90,6 +93,12 @@ export class ClaudeAgent extends BaseAgent {
             const envelope: ClaudeEnvelope = JSON.parse(jsonMatch[0]);
             const extractedSessionId = envelope.session_id;
 
+            // Detect API errors — these should not become assistant messages.
+            // Return empty text so the conversation runner can retry the turn.
+            if (envelope.is_error || (envelope.result && API_ERROR_PATTERN.test(envelope.result))) {
+                return { text: '', extractedSessionId, envelopeFound: true };
+            }
+
             // Use the result text if available
             if (envelope.result) {
                 return { text: envelope.result, extractedSessionId, envelopeFound: true };
@@ -102,6 +111,12 @@ export class ClaudeAgent extends BaseAgent {
             const askDenial = denials.find(d => d.tool_name === 'AskUserQuestion');
             if (askDenial?.tool_input) {
                 const text = this.reconstructFromAskUserQuestion(askDenial.tool_input as AskUserQuestionInput);
+                if (text) return { text, extractedSessionId, envelopeFound: true };
+            }
+
+            // Generic fallback: extract any text-like field from denied tool inputs
+            if (denials.length > 0) {
+                const text = this.reconstructFromGenericDenial(denials);
                 if (text) return { text, extractedSessionId, envelopeFound: true };
             }
 
@@ -118,6 +133,23 @@ export class ClaudeAgent extends BaseAgent {
      * This happens when Claude tries to use the interactive AskUserQuestion
      * tool in --print mode and it gets denied, leaving result empty.
      */
+    /**
+     * Extract text from any denied tool by looking for common text-like fields.
+     */
+    private reconstructFromGenericDenial(denials: PermissionDenial[]): string {
+        const textFields = ['question', 'message', 'prompt', 'text', 'content', 'description'];
+        for (const denial of denials) {
+            if (!denial.tool_input) continue;
+            for (const field of textFields) {
+                const value = denial.tool_input[field];
+                if (typeof value === 'string' && value.trim()) {
+                    return value.trim();
+                }
+            }
+        }
+        return '';
+    }
+
     private reconstructFromAskUserQuestion(input: AskUserQuestionInput): string {
         const questions = input.questions;
         if (!questions?.length) return '';

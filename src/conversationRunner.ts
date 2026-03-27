@@ -344,9 +344,6 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
             };
         }
 
-        const turnCommands: TurnCommand[] = [];
-        currentTurnNumber = turnNumber;
-        currentTurnCommands = turnCommands;
         const userMessage = nextReply.content;
         inputMessages.push(userMessage);
         sessionLog.push({
@@ -357,68 +354,134 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
             reply_source: nextReply.source,
         });
 
-        const turnStart = Date.now();
+        // Retry once on transient failures (empty response, API error, non-zero exit)
+        let turnResult: { rawOutput: string; assistantMessage: string; exitCode: number } | undefined;
+        let assistantMessage = '';
+        let turnCommands: TurnCommand[] = [];
+        let durationMs = 0;
+        let lastError: string | undefined;
 
-        try {
-            const turnResult = await withAbortTimeout(
-                async (signal) => {
-                    currentSignal = signal;
-                    if (turnNumber === 1) {
-                        return await session.start({ message: userMessage });
-                    }
-                    return await session.reply({ message: userMessage, continueSession: true });
-                },
-                remainingMs,
-                `Conversation turn ${turnNumber}`
-            );
+        for (let attempt = 0; attempt < 2; attempt++) {
+            turnCommands = [];
+            currentTurnNumber = turnNumber;
+            currentTurnCommands = turnCommands;
+            const turnStart = Date.now();
+            const attemptRemainingMs = deadlineMs - Date.now();
+            if (attemptRemainingMs <= 0) break;
 
-            const assistantMessage = normalizeAssistantMessage(turnResult.rawOutput, turnResult.assistantMessage);
-            const durationMs = Date.now() - turnStart;
+            try {
+                const result = await withAbortTimeout(
+                    async (signal) => {
+                        currentSignal = signal;
+                        if (turnNumber === 1 && attempt === 0) {
+                            return await session.start({ message: userMessage });
+                        }
+                        return await session.reply({ message: userMessage, continueSession: true });
+                    },
+                    attemptRemainingMs,
+                    `Conversation turn ${turnNumber}`
+                );
 
+                durationMs = Date.now() - turnStart;
+                const msg = normalizeAssistantMessage(result.rawOutput, result.assistantMessage);
 
-            turns.push({
-                turn_number: turnNumber,
-                user_message: userMessage,
-                user_message_source: nextReply.source,
-                raw_agent_output: turnResult.rawOutput,
-                assistant_message: assistantMessage,
-                duration_ms: durationMs,
-                commands: turnCommands,
-                turn_status: 'completed',
-            });
+                // Transient failure: empty response or non-zero exit — retry once
+                if (attempt === 0 && (!msg && result.exitCode !== 0)) {
+                    lastError = `empty response with exit code ${result.exitCode}`;
+                    sessionLog.push({
+                        type: 'agent_result',
+                        timestamp: opts.timestamp(),
+                        output: `(retry: ${lastError})`,
+                        assistant_message: '',
+                        exitCode: result.exitCode,
+                        turn_number: turnNumber,
+                    });
+                    continue;
+                }
 
-            sessionLog.push({
-                type: 'agent_result',
-                timestamp: opts.timestamp(),
-                output: turnResult.rawOutput,
-                assistant_message: assistantMessage,
-                exitCode: turnResult.exitCode,
-                turn_number: turnNumber,
-            });
+                turnResult = result;
+                assistantMessage = msg;
+                break;
+            } catch (err: unknown) {
+                durationMs = Date.now() - turnStart;
+                const errorMessage = (err as Error)?.message || String(err);
+                const timedOut = errorMessage.includes('timed out after');
 
-            const completion = await checkCompletion(
-                assistantMessage,
-                opts.conversation,
-                opts.runtime,
-                turnNumber,
-                turns,
-                opts.env,
-                opts.graderModel
-            );
+                // Timeouts are not retryable — they consume the remaining budget
+                if (timedOut) {
+                    turns.push({
+                        turn_number: turnNumber,
+                        user_message: userMessage,
+                        user_message_source: nextReply.source,
+                        raw_agent_output: '',
+                        assistant_message: '',
+                        duration_ms: durationMs,
+                        commands: turnCommands,
+                        turn_status: 'timeout',
+                    });
 
-            // Run step graders after checkCompletion, before pickReply
-            const stepResults = await runStepGraders(turnNumber, opts, sessionLog);
-            if (stepResults.length > 0) {
-                turns[turns.length - 1].step_grader_results = stepResults;
-            }
+                    sessionLog.push({
+                        type: 'agent_result',
+                        timestamp: opts.timestamp(),
+                        output: errorMessage,
+                        assistant_message: '',
+                        turn_number: turnNumber,
+                    });
 
-            if (completion.done) {
+                    return {
+                        commandCount,
+                        conversation: {
+                            turns,
+                            total_turns: turns.length,
+                            completion_reason: 'timeout',
+                            timeout_triggered_at_turn: turnNumber,
+                        },
+                        inputText: inputMessages.join('\n\n'),
+                        personaInputTokens,
+                        personaOutputTokens,
+                        sessionLog,
+                    };
+                }
+
+                // Non-timeout error: retry once
+                if (attempt === 0) {
+                    lastError = errorMessage;
+                    sessionLog.push({
+                        type: 'agent_result',
+                        timestamp: opts.timestamp(),
+                        output: `(retry: ${errorMessage})`,
+                        assistant_message: '',
+                        turn_number: turnNumber,
+                    });
+                    continue;
+                }
+
+                // Second attempt also failed — record error and end
+                turns.push({
+                    turn_number: turnNumber,
+                    user_message: userMessage,
+                    user_message_source: nextReply.source,
+                    raw_agent_output: '',
+                    assistant_message: '',
+                    duration_ms: durationMs,
+                    commands: turnCommands,
+                    turn_status: 'error',
+                });
+
+                sessionLog.push({
+                    type: 'agent_result',
+                    timestamp: opts.timestamp(),
+                    output: errorMessage,
+                    assistant_message: '',
+                    turn_number: turnNumber,
+                });
+
                 return {
                     commandCount,
                     conversation: {
                         turns,
                         total_turns: turns.length,
-                        completion_reason: completion.reason,
+                        completion_reason: 'error',
                     },
                     inputText: inputMessages.join('\n\n'),
                     personaInputTokens,
@@ -426,38 +489,10 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                     sessionLog,
                 };
             }
+        }
 
-            const reply = await pickReply(
-                assistantMessage,
-                replyPool,
-                opts.conversation,
-                turns,
-                opts.env,
-                opts.graderModel
-            );
-            if (!reply) {
-                return {
-                    commandCount,
-                    conversation: {
-                        turns,
-                        total_turns: turns.length,
-                        completion_reason: 'no_replies',
-                    },
-                    inputText: inputMessages.join('\n\n'),
-                    personaInputTokens,
-                    personaOutputTokens,
-                    sessionLog,
-                };
-            }
-
-            personaInputTokens += reply.personaInputTokens ?? 0;
-            personaOutputTokens += reply.personaOutputTokens ?? 0;
-            nextReply = reply;
-        } catch (err: unknown) {
-            const durationMs = Date.now() - turnStart;
-            const errorMessage = (err as Error)?.message || String(err);
-            const timedOut = errorMessage.includes('timed out after');
-
+        // Both attempts exhausted without a usable result
+        if (!turnResult) {
             turns.push({
                 turn_number: turnNumber,
                 user_message: userMessage,
@@ -466,13 +501,13 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                 assistant_message: '',
                 duration_ms: durationMs,
                 commands: turnCommands,
-                turn_status: timedOut ? 'timeout' : 'error',
+                turn_status: 'error',
             });
 
             sessionLog.push({
                 type: 'agent_result',
                 timestamp: opts.timestamp(),
-                output: errorMessage,
+                output: lastError || 'no response after retry',
                 assistant_message: '',
                 turn_number: turnNumber,
             });
@@ -482,8 +517,7 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                 conversation: {
                     turns,
                     total_turns: turns.length,
-                    completion_reason: timedOut ? 'timeout' : 'error',
-                    timeout_triggered_at_turn: timedOut ? turnNumber : undefined,
+                    completion_reason: 'error',
                 },
                 inputText: inputMessages.join('\n\n'),
                 personaInputTokens,
@@ -491,5 +525,83 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                 sessionLog,
             };
         }
+
+        turns.push({
+            turn_number: turnNumber,
+            user_message: userMessage,
+            user_message_source: nextReply.source,
+            raw_agent_output: turnResult.rawOutput,
+            assistant_message: assistantMessage,
+            duration_ms: durationMs,
+            commands: turnCommands,
+            turn_status: 'completed',
+        });
+
+        sessionLog.push({
+            type: 'agent_result',
+            timestamp: opts.timestamp(),
+            output: turnResult.rawOutput,
+            assistant_message: assistantMessage,
+            exitCode: turnResult.exitCode,
+            turn_number: turnNumber,
+        });
+
+        const completion = await checkCompletion(
+            assistantMessage,
+            opts.conversation,
+            opts.runtime,
+            turnNumber,
+            turns,
+            opts.env,
+            opts.graderModel
+        );
+
+        // Run step graders after checkCompletion, before pickReply
+        const stepResults = await runStepGraders(turnNumber, opts, sessionLog);
+        if (stepResults.length > 0) {
+            turns[turns.length - 1].step_grader_results = stepResults;
+        }
+
+        if (completion.done) {
+            return {
+                commandCount,
+                conversation: {
+                    turns,
+                    total_turns: turns.length,
+                    completion_reason: completion.reason,
+                },
+                inputText: inputMessages.join('\n\n'),
+                personaInputTokens,
+                personaOutputTokens,
+                sessionLog,
+            };
+        }
+
+        const reply = await pickReply(
+            assistantMessage,
+            replyPool,
+            opts.conversation,
+            turns,
+            opts.env,
+            opts.graderModel
+        );
+        if (!reply) {
+            return {
+                commandCount,
+                conversation: {
+                    turns,
+                    total_turns: turns.length,
+                    completion_reason: 'no_replies',
+                },
+                inputText: inputMessages.join('\n\n'),
+                personaInputTokens,
+                personaOutputTokens,
+                sessionLog,
+            };
+        }
+
+        personaInputTokens += reply.personaInputTokens ?? 0;
+        personaOutputTokens += reply.personaOutputTokens ?? 0;
+        nextReply = reply;
     }
 }

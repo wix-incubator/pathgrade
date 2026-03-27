@@ -222,6 +222,70 @@ describe('ClaudeAgent', () => {
     expect(result).not.toContain('permission_denials');
   });
 
+  it('strips API errors from result to prevent conversation corruption', async () => {
+    const agent = new ClaudeAgent();
+    const envelope = JSON.stringify({
+      result: 'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"}}',
+      session_id: 'sess-123',
+      is_error: false,
+    });
+
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: envelope, stderr: '', exitCode: 1 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test', '/workspace', mockRunCommand);
+    expect(result).toBe('');
+    expect(result).not.toContain('API Error');
+  });
+
+  it('strips result when is_error is true', async () => {
+    const agent = new ClaudeAgent();
+    const envelope = JSON.stringify({
+      result: 'Something went wrong',
+      session_id: 'sess-123',
+      is_error: true,
+    });
+
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: envelope, stderr: '', exitCode: 1 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test', '/workspace', mockRunCommand);
+    expect(result).toBe('');
+  });
+
+  it('extracts text from generic denied tool with text-like fields', async () => {
+    const agent = new ClaudeAgent();
+    const envelope = JSON.stringify({
+      result: '',
+      session_id: 'sess-123',
+      permission_denials: [{
+        tool_name: 'SomeCustomTool',
+        tool_input: {
+          message: 'Please confirm the action',
+          data: { nested: true },
+        },
+      }],
+    });
+
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return { stdout: envelope, stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const result = await agent.run('Test', '/workspace', mockRunCommand);
+    expect(result).toBe('Please confirm the action');
+  });
+
   it('returns empty string when result is empty and no AskUserQuestion denial', async () => {
     const agent = new ClaudeAgent();
     const envelope = JSON.stringify({
