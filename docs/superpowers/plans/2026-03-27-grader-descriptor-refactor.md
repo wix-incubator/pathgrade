@@ -1,6 +1,6 @@
 # Grader Descriptor Refactor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace raw grader config objects with first-class GraderDescriptor objects created by factory functions, so eval files use `deterministicGrader({ execute })` instead of `{ type: 'deterministic', run: 'node ...' }`.
 
@@ -57,7 +57,7 @@
 - Create: `src/core/grader-factories.ts`
 - Test: `tests/graders.test.ts` (add factory tests at top)
 
-- [ ] **Step 1: Write factory tests**
+- [x] **Step 1: Write factory tests**
 
 Add to the top of `tests/graders.test.ts`:
 
@@ -111,12 +111,12 @@ describe('grader factories', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run tests/graders.test.ts`
 Expected: FAIL — `grader-factories` module not found
 
-- [ ] **Step 3: Create grader-factories.ts**
+- [x] **Step 3: Create grader-factories.ts**
 
 Create `src/core/grader-factories.ts`:
 
@@ -190,12 +190,12 @@ export function toolUsageGrader(opts: {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/graders.test.ts`
 Expected: All factory tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/grader-factories.ts tests/graders.test.ts
@@ -210,7 +210,7 @@ git commit -m "feat: add GraderDescriptor types and factory functions"
 - Modify: `src/core/config.types.ts`
 - Modify: `src/core/index.ts`
 
-- [ ] **Step 1: Replace grader types in config.types.ts**
+- [x] **Step 1: Replace grader types in config.types.ts**
 
 In `src/core/config.types.ts`, remove these interfaces:
 - `EvalGraderConfig` (lines 91-99)
@@ -269,7 +269,7 @@ graders: GraderDescriptor[];
 
 Keep `VALID_GRADER_TYPES` and `GraderType` in `config.types.ts` — `grader-factories.ts` imports from it. Just remove the old interfaces (`EvalGraderConfig`, `DefineEvalGraderInput`, `ResolvedGrader`).
 
-- [ ] **Step 2: Update public exports in core/index.ts**
+- [x] **Step 2: Update public exports in core/index.ts**
 
 In `src/core/index.ts`, replace:
 
@@ -301,12 +301,12 @@ export type { GraderOutput, GraderCheck } from '../types';
 Removed: `DefineEvalGraderInput`, `EvalGraderConfig`, `ResolvedGrader`.
 Added: `deterministicGrader`, `llmRubricGrader`, `toolUsageGrader`, `GraderDescriptor`, `GraderContext`.
 
-- [ ] **Step 3: Verify compilation**
+- [x] **Step 3: Verify compilation**
 
 Run: `npx tsc --noEmit`
 Expected: Type errors in config.ts, define-eval.ts, evalRunner.ts, conversationRunner.ts, commands/run.ts (these files still reference old types — expected, will fix in subsequent tasks)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/config.types.ts src/core/index.ts
@@ -321,7 +321,7 @@ git commit -m "refactor: replace EvalGraderConfig/ResolvedGrader with GraderDesc
 - Modify: `src/core/config.ts`
 - Modify: `src/core/define-eval.ts`
 
-- [ ] **Step 1: Update validateConfig grader handling in config.ts**
+- [x] **Step 1: Update validateConfig grader handling in config.ts**
 
 In `src/core/config.ts`, update the imports at the top:
 
@@ -412,7 +412,7 @@ import type { GraderDescriptor } from './grader-factories';
 
 (This import was already added in Step 1 for validateConfig — just verify it's there.)
 
-- [ ] **Step 2: Simplify resolveGrader in config.ts**
+- [x] **Step 2: Simplify resolveGrader in config.ts**
 
 Replace the `resolveGrader` function (around lines 320-337):
 
@@ -426,7 +426,7 @@ async function resolveGrader(g: GraderDescriptor, baseDir: string): Promise<Grad
 }
 ```
 
-- [ ] **Step 3: Update define-eval.ts to pass graders through**
+- [x] **Step 3: Update define-eval.ts to pass graders through**
 
 Replace `src/core/define-eval.ts`:
 
@@ -472,12 +472,12 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
 }
 ```
 
-- [ ] **Step 4: Verify compilation**
+- [x] **Step 4: Verify compilation**
 
 Run: `npx tsc --noEmit`
 Expected: Errors in evalRunner.ts, conversationRunner.ts, commands/run.ts (will fix next)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/config.ts src/core/define-eval.ts
@@ -493,7 +493,7 @@ git commit -m "refactor: pass GraderDescriptor through config validation untouch
 - Modify: `src/graders/index.ts`
 - Modify: `src/graders/paths.ts`
 
-- [ ] **Step 1: Remove `command` from GraderConfig in types.ts**
+- [x] **Step 1: Remove `command` from GraderConfig in types.ts**
 
 In `src/types.ts`, change the `GraderConfig` interface:
 
@@ -510,7 +510,7 @@ export interface GraderConfig {
 
 (Removed `command?: string`)
 
-- [ ] **Step 2: Remove DeterministicGrader and getGrader from graders/index.ts**
+- [x] **Step 2: Remove DeterministicGrader and getGrader from graders/index.ts**
 
 Replace `src/graders/index.ts`:
 
@@ -550,7 +550,7 @@ Keep:
 - `Grader` interface
 - `LLMGrader` class (unchanged)
 
-- [ ] **Step 3: Remove deterministic path helpers from graders/paths.ts**
+- [x] **Step 3: Remove deterministic path helpers from graders/paths.ts**
 
 Replace `src/graders/paths.ts`:
 
@@ -580,12 +580,12 @@ export function stepLlmRubricPath(turnNumber: number, graderIndex: number): stri
 
 Removed: `TESTS_DIR`, `STEP_TESTS_DIR`, `deterministicScriptName`, `deterministicCommand`, `stepDeterministicCommand`.
 
-- [ ] **Step 4: Verify compilation**
+- [x] **Step 4: Verify compilation**
 
 Run: `npx tsc --noEmit`
 Expected: Errors in evalRunner.ts, conversationRunner.ts, commands/run.ts (import references to removed items)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/types.ts src/graders/index.ts src/graders/paths.ts
@@ -600,7 +600,7 @@ git commit -m "refactor: remove DeterministicGrader, getGrader, deterministic pa
 - Modify: `src/evalRunner.ts`
 - Test: `tests/graders.test.ts` (add execute dispatch tests)
 
-- [ ] **Step 1: Write execute dispatch tests**
+- [x] **Step 1: Write execute dispatch tests**
 
 Add to `tests/graders.test.ts`:
 
@@ -667,12 +667,12 @@ describe('deterministic grader execute dispatch', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they pass**
+- [x] **Step 2: Run tests to verify they pass**
 
 Run: `npx vitest run tests/graders.test.ts`
 Expected: New tests PASS (they test descriptor behavior, not evalRunner internals)
 
-- [ ] **Step 3: Update evalRunner.ts imports and runGraders**
+- [x] **Step 3: Update evalRunner.ts imports and runGraders**
 
 In `src/evalRunner.ts`, update imports:
 
@@ -843,12 +843,12 @@ Replace the entire `runGraders` method:
     }
 ```
 
-- [ ] **Step 4: Verify compilation**
+- [x] **Step 4: Verify compilation**
 
 Run: `npx tsc --noEmit`
 Expected: Errors in conversationRunner.ts and commands/run.ts only
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/evalRunner.ts tests/graders.test.ts
@@ -862,7 +862,7 @@ git commit -m "refactor: evalRunner dispatches on GraderDescriptor with GraderCo
 **Files:**
 - Modify: `src/conversationRunner.ts`
 
-- [ ] **Step 1: Update imports**
+- [x] **Step 1: Update imports**
 
 In `src/conversationRunner.ts`, update imports:
 
@@ -876,7 +876,7 @@ import { stepLlmRubricPath } from './graders/paths';
 
 Remove: `getGrader`, `stepDeterministicCommand`.
 
-- [ ] **Step 2: Replace runStepGraders function**
+- [x] **Step 2: Replace runStepGraders function**
 
 Replace the `runStepGraders` function (lines 172-210):
 
@@ -963,12 +963,12 @@ async function runStepGraders(
 }
 ```
 
-- [ ] **Step 3: Verify compilation**
+- [x] **Step 3: Verify compilation**
 
 Run: `npx tsc --noEmit`
 Expected: Errors in commands/run.ts only
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/conversationRunner.ts
@@ -982,7 +982,7 @@ git commit -m "refactor: conversationRunner dispatches on GraderDescriptor"
 **Files:**
 - Modify: `src/commands/run.ts`
 
-- [ ] **Step 1: Update imports in run.ts**
+- [x] **Step 1: Update imports in run.ts**
 
 Update the imports from `graders/paths`:
 
@@ -996,7 +996,7 @@ import {
 
 Remove: `TESTS_DIR`, `STEP_TESTS_DIR`, `deterministicScriptName`.
 
-- [ ] **Step 2: Simplify prepareTempTaskDir**
+- [x] **Step 2: Simplify prepareTempTaskDir**
 
 Replace the `prepareTempTaskDir` function:
 
@@ -1053,17 +1053,17 @@ export async function prepareTempTaskDir(
 }
 ```
 
-- [ ] **Step 3: Verify full compilation**
+- [x] **Step 3: Verify full compilation**
 
 Run: `npx tsc --noEmit`
 Expected: PASS — all type errors resolved
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 Run: `npx vitest run`
 Expected: Some existing tests may fail due to old API usage — we'll fix those in the next task
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/commands/run.ts
@@ -1077,7 +1077,7 @@ git commit -m "refactor: simplify prepareTempTaskDir — remove deterministic sc
 **Files:**
 - Modify: `tests/graders.test.ts`
 
-- [ ] **Step 1: Remove DeterministicGrader tests**
+- [x] **Step 1: Remove DeterministicGrader tests**
 
 Remove the entire `describe('DeterministicGrader', ...)` block (lines 40-143).
 
@@ -1093,7 +1093,7 @@ import { GraderConfig, EnvironmentProvider } from '../src/types';
 
 Remove: `DeterministicGrader`, `getGrader` from the import.
 
-- [ ] **Step 2: Add config validation tests**
+- [x] **Step 2: Add config validation tests**
 
 Add a new describe block:
 
@@ -1146,12 +1146,12 @@ describe('config validation for grader descriptors', () => {
 });
 ```
 
-- [ ] **Step 3: Run all tests**
+- [x] **Step 3: Run all tests**
 
 Run: `npx vitest run tests/graders.test.ts`
 Expected: All tests PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/graders.test.ts
@@ -1167,7 +1167,7 @@ git commit -m "test: replace DeterministicGrader tests with factory/descriptor t
 - Delete: `graders/check-eval-ts.js`
 - Modify: `pathgrade.eval.ts`
 
-- [ ] **Step 1: Create graders/check-eval-ts.ts**
+- [x] **Step 1: Create graders/check-eval-ts.ts**
 
 ```ts
 import { deterministicGrader } from '../src/core/grader-factories';
@@ -1213,7 +1213,7 @@ export const checkEvalTs = deterministicGrader({
 });
 ```
 
-- [ ] **Step 2: Create graders/check-grader-authoring.ts for task 2**
+- [x] **Step 2: Create graders/check-grader-authoring.ts for task 2**
 
 ```ts
 import { deterministicGrader } from '../src/core/grader-factories';
@@ -1275,13 +1275,13 @@ export const checkGraderAuthoring = deterministicGrader({
 });
 ```
 
-- [ ] **Step 3: Update pathgrade.eval.ts**
+- [x] **Step 3: Update pathgrade.eval.ts**
 
 Replace `pathgrade.eval.ts`:
 
 ```ts
 import { defineEval } from './src/core/define-eval';
-import { llmRubricGrader } from '../src/core/grader-factories';
+import { llmRubricGrader } from './src/core/grader-factories';
 import { checkEvalTs } from './graders/check-eval-ts';
 import { checkGraderAuthoring } from './graders/check-grader-authoring';
 
@@ -1387,18 +1387,18 @@ Code Quality (0-0.3):
 });
 ```
 
-- [ ] **Step 4: Delete the old JS grader**
+- [x] **Step 4: Delete the old JS grader**
 
 ```bash
 rm graders/check-eval-ts.js
 ```
 
-- [ ] **Step 5: Run compilation**
+- [x] **Step 5: Run compilation**
 
 Run: `npx tsc --noEmit`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add graders/check-eval-ts.ts graders/check-grader-authoring.ts pathgrade.eval.ts
@@ -1417,7 +1417,7 @@ git commit -m "refactor: migrate pathgrade.eval.ts to grader descriptors"
 - Delete: `examples/ck-new/graders/check-brief.js`
 - Modify: `examples/ck-new/ck-new.eval.ts`
 
-- [ ] **Step 1: Create graders/check-fix.ts**
+- [x] **Step 1: Create graders/check-fix.ts**
 
 ```ts
 import { deterministicGrader } from '../../../src/core/grader-factories';
@@ -1467,7 +1467,7 @@ export const checkFix = deterministicGrader({
 });
 ```
 
-- [ ] **Step 2: Create graders/check-brief.ts**
+- [x] **Step 2: Create graders/check-brief.ts**
 
 ```ts
 import { deterministicGrader } from '../../../src/core/grader-factories';
@@ -1520,7 +1520,7 @@ export const checkBrief = deterministicGrader({
 });
 ```
 
-- [ ] **Step 3: Update ck-new.eval.ts**
+- [x] **Step 3: Update ck-new.eval.ts**
 
 Replace `examples/ck-new/ck-new.eval.ts`:
 
@@ -1650,13 +1650,13 @@ Brief Quality (0-0.4):
 });
 ```
 
-- [ ] **Step 4: Delete old JS graders**
+- [x] **Step 4: Delete old JS graders**
 
 ```bash
 rm examples/ck-new/graders/check-fix.js examples/ck-new/graders/check-brief.js
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add examples/ck-new/graders/check-fix.ts examples/ck-new/graders/check-brief.ts examples/ck-new/ck-new.eval.ts
@@ -1693,7 +1693,7 @@ The conversion pattern is identical across all files:
 
 Due to the mechanical nature and volume of these migrations, the implementer should:
 
-- [ ] **Step 1: Create all 5 grader .ts files**
+- [x] **Step 1: Create all 5 grader .ts files**
 
 Create each file following the pattern shown in Task 10. The logic is ported directly from the existing `.js` files or inline bash scripts. Key changes per file:
 
@@ -1765,7 +1765,7 @@ export const checkOutput = deterministicGrader({
 });
 ```
 
-- [ ] **Step 2: Update all 5 eval files to use imports and factories**
+- [x] **Step 2: Update all 5 eval files to use imports and factories**
 
 Replace `{ type: 'deterministic', run: '...', weight: N }` with imported descriptor.
 Replace `{ type: 'llm_rubric', rubric: '...', weight: N }` with `llmRubricGrader({ ... })`.
@@ -1773,24 +1773,24 @@ Replace `{ type: 'tool_usage', expectations: [...], weight: N }` with `toolUsage
 
 **Important:** `tool-usage.eval.ts` and `ck-product-strategy.eval.ts` currently import from `'@wix/pathgrade'` (package name). Switch these to relative imports like the other examples — e.g., `import { defineEval } from '../../src/core/define-eval'` and `import { llmRubricGrader } from '../../src/core/grader-factories'`. This avoids requiring a package build during development.
 
-- [ ] **Step 3: Delete old .js grader files**
+- [x] **Step 3: Delete old .js grader files**
 
 ```bash
 rm examples/angular-modern/graders/check-modern-apis.js
 rm examples/ck-product-strategy/graders/check-strategy.js
 ```
 
-- [ ] **Step 4: Verify full compilation**
+- [x] **Step 4: Verify full compilation**
 
 Run: `npx tsc --noEmit`
 Expected: PASS
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 Run: `npx vitest run`
 Expected: All tests PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add examples/*/graders/*.ts examples/*/*.eval.ts
@@ -1805,7 +1805,7 @@ git commit -m "refactor: migrate all remaining example evals to grader descripto
 **Files:**
 - Modify: `src/commands/init.ts`
 
-- [ ] **Step 1: Update buildInitPrompt template**
+- [x] **Step 1: Update buildInitPrompt template**
 
 In `src/commands/init.ts`, update `buildInitPrompt()` (around line 153). Replace the grader format instructions and example template to use factory functions:
 
@@ -1858,11 +1858,11 @@ Save <expected output> as <exact-filename>.\`,
 });
 ```
 
-- [ ] **Step 2: Update getInlineTemplate**
+- [x] **Step 2: Update getInlineTemplate**
 
 Replace the `getInlineTemplate()` function (around line 234) with the same new format — `deterministicGrader({ execute })` and `llmRubricGrader({ rubric })` instead of `{ type: 'deterministic', run: '...' }`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/commands/init.ts
@@ -1873,17 +1873,17 @@ git commit -m "refactor: update init.ts templates to use grader factory function
 
 ### Task 13: Final verification
 
-- [ ] **Step 1: Full compilation check**
+- [x] **Step 1: Full compilation check**
 
 Run: `npx tsc --noEmit`
 Expected: PASS with zero errors
 
-- [ ] **Step 2: Full test suite**
+- [x] **Step 2: Full test suite**
 
 Run: `npx vitest run`
 Expected: All tests PASS
 
-- [ ] **Step 3: Verify no old API references remain**
+- [x] **Step 3: Verify no old API references remain**
 
 Run: `grep -r "getGrader\|DeterministicGrader\|EvalGraderConfig\|DefineEvalGraderInput\|deterministicCommand\|deterministicScriptName\|TESTS_DIR\|STEP_TESTS_DIR" src/ tests/ --include='*.ts' -l`
 Expected: No matches (or only in `.d.ts` build artifacts)
@@ -1891,12 +1891,12 @@ Expected: No matches (or only in `.d.ts` build artifacts)
 Run: `grep -r "run: '" examples/ pathgrade.eval.ts --include='*.ts' -l`
 Expected: No matches — all `run:` fields are gone
 
-- [ ] **Step 4: Verify no stale .js grader files remain**
+- [x] **Step 4: Verify no stale .js grader files remain**
 
 Run: `find . -path ./node_modules -prune -o -path ./.worktrees -prune -o -path ./dist -prune -o -name '*.js' -path '*/graders/*' -print`
 Expected: No matches
 
-- [ ] **Step 5: Commit (if any fixups needed)**
+- [x] **Step 5: Commit (if any fixups needed)**
 
 ```bash
 git add -A
