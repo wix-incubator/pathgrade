@@ -1,4 +1,7 @@
 import { defineEval } from '../../src/core/define-eval';
+import { llmRubricGrader, toolUsageGrader } from '../../src/core/grader-factories';
+import { checkFix } from './graders/check-fix';
+import { checkBrief } from './graders/check-brief';
 
 export default defineEval({
   skillPath: 'skill',
@@ -11,7 +14,6 @@ export default defineEval({
   },
 
   tasks: [
-    // ── Tool-aware bug fix ──────────────────────────────────────
     {
       name: 'tool-aware-fix',
       type: 'instruction',
@@ -25,83 +27,37 @@ export default defineEval({
       trials: 1,
       timeout: 120,
       graders: [
-        {
-          type: 'deterministic',
-          run: 'node graders/check-fix.js',
-          weight: 0.6,
-        },
-        {
-          type: 'tool_usage',
+        checkFix,
+        toolUsageGrader({
           weight: 0.4,
           expectations: [
             { action: 'read_file', argument_pattern: 'app\\.js', min: 1, weight: 0.5 },
             { action: 'edit_file', min: 1, weight: 0.5 },
           ],
-        },
+        }),
       ],
     },
 
-
-    // ── Scripted: all answers pre-defined ─────────────────────────
     {
       name: 'scripted-gift-card',
       type: 'conversation',
       conversation: {
         opener: `I want to start a new project. I have an idea for a gift card feature.\n`,
-
-        completion: {
-          max_turns: 12,
-          signal: 'artifacts/project-brief-*.md',
-          timeout: 300,
-        },
-
+        completion: { max_turns: 12, signal: 'artifacts/project-brief-*.md', timeout: 300 },
         replies: [
-          {
-            content: `It's for the Wix Stores platform. Online store owners have been
-requesting the ability to sell digital gift cards that customers
-can purchase and redeem at checkout.\n`,
-          },
-          {
-            content: "Yes, that's right",
-            when: "right\\?|correct\\?|confirm|sound right",
-          },
-          {
-            content: 'Solve user pain point',
-            when: 'goal|trying to achieve|what are you trying',
-          },
-          {
-            content: 'Self-Creator',
-            when: 'target|audience|who|Self-Creator|adjust if needed',
-          },
-          // KB enrichment fails in eval (no MCP) — agent asks to paste doc or skip.
-          // Must come BEFORE the gameplan pattern since KB message also contains "gameplan".
-          {
-            content: 'Skip',
-            when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip',
-          },
-          {
-            content: 'Skip for now',
-            when: 'gameplan|strategy doc',
-          },
-          {
-            content: 'Looks good, no changes',
-            when: "look right|approve|feedback|changes|edit|you'd change|anything.*change|move on|before moving",
-          },
-          {
-            content: 'No, skip repos for now',
-            when: 'github|repo|reference',
-          },
+          { content: `It's for the Wix Stores platform. Online store owners have been\nrequesting the ability to sell digital gift cards that customers\ncan purchase and redeem at checkout.\n` },
+          { content: "Yes, that's right", when: "right\\?|correct\\?|confirm|sound right" },
+          { content: 'Solve user pain point', when: 'goal|trying to achieve|what are you trying' },
+          { content: 'Self-Creator', when: 'target|audience|who|Self-Creator|adjust if needed' },
+          { content: 'Skip', when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip' },
+          { content: 'Skip for now', when: 'gameplan|strategy doc' },
+          { content: 'Looks good, no changes', when: "look right|approve|feedback|changes|edit|you'd change|anything.*change|move on|before moving" },
+          { content: 'No, skip repos for now', when: 'github|repo|reference' },
         ],
       },
-
       graders: [
-        {
-          type: 'deterministic',
-          run: 'node graders/check-brief.js',
-          weight: 0.5,
-        },
-        {
-          type: 'llm_rubric',
+        checkBrief,
+        llmRubricGrader({
           rubric: `Evaluate the multi-turn conversation for ck-new skill compliance.
 
 Workflow (0-0.4):
@@ -118,30 +74,18 @@ Conversation Quality (0-0.2):
 - Was the conversation efficient (no unnecessary back-and-forth)?
 - Did the agent react naturally to user responses?`,
           weight: 0.5,
-        },
+        }),
       ],
     },
 
-    // ── Persona: LLM-simulated PM ────────────────────────────────
     {
       name: 'persona-gift-card',
       type: 'conversation',
       conversation: {
-        opener: `I want to start a new project. I have an idea for a feature
-related to gift cards for online stores.\n`,
-
-        completion: {
-          max_turns: 15,
-          signal: 'artifacts/project-brief-*.md',
-          timeout: 300,
-        },
-
+        opener: `I want to start a new project. I have an idea for a feature\nrelated to gift cards for online stores.\n`,
+        completion: { max_turns: 15, signal: 'artifacts/project-brief-*.md', timeout: 300 },
         persona: {
-          description: `You are a product manager at Wix who has worked on the Stores
-platform for 2 years. You communicate directly and concisely.
-When asked a multiple-choice question, pick the most appropriate
-option. When asked for confirmation, confirm if correct. You're
-collaborative but don't volunteer extra information unless asked.\n`,
+          description: `You are a product manager at Wix who has worked on the Stores\nplatform for 2 years. You communicate directly and concisely.\nWhen asked a multiple-choice question, pick the most appropriate\noption. When asked for confirmation, confirm if correct. You're\ncollaborative but don't volunteer extra information unless asked.\n`,
           facts: [
             'The feature is for the Wix Stores platform',
             'Target users are Self-Creators (store owners managing their own shops)',
@@ -153,17 +97,10 @@ collaborative but don't volunteer extra information unless asked.\n`,
             'The project name should be \'gift-card\' or similar',
           ],
         },
-
       },
-
       graders: [
-        {
-          type: 'deterministic',
-          run: 'node graders/check-brief.js',
-          weight: 0.5,
-        },
-        {
-          type: 'llm_rubric',
+        checkBrief,
+        llmRubricGrader({
           rubric: `Evaluate the full persona-driven conversation.
 
 Skill Discovery (0-0.2):
@@ -179,7 +116,7 @@ Brief Quality (0-0.4):
 - Content matches the facts the persona provided?
 - Project name reasonable?`,
           weight: 0.5,
-        },
+        }),
       ],
     },
   ],
