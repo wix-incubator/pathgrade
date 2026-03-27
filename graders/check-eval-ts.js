@@ -1,25 +1,34 @@
 /**
  * Deterministic grader for the create-eval-config task.
- * Validates that the agent produced a valid eval.ts.
+ * Validates that the agent produced a valid *.eval.ts (or legacy eval.ts).
  */
 const fs = require('fs');
+
+function findEvalFile() {
+    const files = fs.readdirSync('.');
+    const evalFile = files.find(f => f.endsWith('.eval.ts'));
+    if (evalFile) return evalFile;
+    if (fs.existsSync('eval.ts')) return 'eval.ts';
+    return null;
+}
 
 function run() {
     const checks = [];
     let passed = 0;
     const total = 5;
 
-    // Check 1: eval.ts exists
-    const exists = fs.existsSync('eval.ts');
+    // Check 1: *.eval.ts exists
+    const evalFile = findEvalFile();
+    const exists = evalFile !== null;
     if (exists) passed++;
-    checks.push({ name: 'file-exists', passed: exists, message: exists ? 'eval.ts exists' : 'eval.ts not found' });
+    checks.push({ name: 'file-exists', passed: exists, message: exists ? `${evalFile} exists` : 'No *.eval.ts found' });
 
     if (!exists) {
-        console.log(JSON.stringify({ score: 0, details: '0/5 checks passed — eval.ts not found', checks }));
+        console.log(JSON.stringify({ score: 0, details: '0/5 checks passed — no *.eval.ts found', checks }));
         return;
     }
 
-    const content = fs.readFileSync('eval.ts', 'utf8');
+    const content = fs.readFileSync(evalFile, 'utf8');
 
     // Check 2: imports defineEval
     const hasDefineEval = /defineEval/.test(content);

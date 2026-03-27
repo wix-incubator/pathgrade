@@ -1,7 +1,7 @@
 /**
  * `pathgrade` (run) command.
  *
- * Reads eval.ts, resolves tasks, and executes evals.
+ * Reads *.eval.ts, resolves tasks, and executes evals.
  */
 import * as fs from 'fs-extra';
 import * as path from 'path';

@@ -18,6 +18,7 @@ export default defineEval({
     // to produce a valid eval configuration.
     {
       name: 'create-eval-config',
+      type: 'instruction',
       instruction: `A skill called "code-formatter" is defined in SKILL.md.
 Create a valid eval.ts that evaluates this skill using defineEval().
 
@@ -67,6 +68,7 @@ Grader Design (0-0.3):
     // to produce a working deterministic grader script.
     {
       name: 'write-deterministic-grader',
+      type: 'instruction',
       instruction: `Write a deterministic grader script for a pathgrade evaluation.
 
 The grader should verify that a file called output.txt was created

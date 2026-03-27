@@ -1,7 +1,7 @@
 /**
  * `pathgrade init` command.
  *
- * Detects skills in the current directory and generates an eval.ts config.
+ * Detects skills in the current directory and generates a *.eval.ts config.
  * With an API key, uses an LLM to generate intelligent eval tasks.
  * Without an API key, generates a well-commented template.
  */
@@ -12,15 +12,26 @@ import { parseEnvFile } from '../utils/env';
 import { isClaudeCliAvailable } from '../utils/cli-llm';
 import { callLLM } from '../utils/llm';
 
-export async function runInit(dir: string, opts: { force?: boolean } = {}) {
-  const evalPath = path.join(dir, 'eval.ts');
+/** Find any existing eval config file in a directory. */
+async function findExistingEvalFile(dir: string): Promise<string | null> {
+  const files = await fs.readdir(dir);
+  const evalFile = files.find(f => f.endsWith('.eval.ts'));
+  if (evalFile) return path.join(dir, evalFile);
+  const legacy = path.join(dir, 'eval.ts');
+  if (await fs.pathExists(legacy)) return legacy;
+  return null;
+}
 
-  if (await fs.pathExists(evalPath)) {
+export async function runInit(dir: string, opts: { force?: boolean } = {}) {
+  const existing = await findExistingEvalFile(dir);
+
+  if (existing) {
     if (opts.force) {
-      await fs.remove(evalPath);
+      await fs.remove(existing);
     } else {
-      console.error('  eval.ts already exists. Use --force to overwrite.');
-      throw new Error('eval.ts already exists');
+      const name = path.basename(existing);
+      console.error(`  ${name} already exists. Use --force to overwrite.`);
+      throw new Error(`${name} already exists`);
     }
   }
 
@@ -29,9 +40,13 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
   // Detect skills
   const skills = await detectSkills(dir);
 
+  // Derive eval filename: <skill-name>.eval.ts or <dirname>.eval.ts
+  const dirName = path.basename(dir);
+
   if (skills.length === 0) {
     console.log('  No SKILL.md found. Creating a generic template.');
     console.log('     Place a SKILL.md in this directory for better scaffolding.\n');
+    const evalPath = path.join(dir, `${dirName}.eval.ts`);
     await writeTemplate(evalPath, 'my-skill', 'Describe what the agent should do with this skill.');
     return;
   }
@@ -56,6 +71,9 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
   const hasApiKey = !!(geminiKey || anthropicKey || openaiKey);
   const cliAvailable = await isClaudeCliAvailable();
 
+  const evalName = skills.length === 1 ? skills[0].name : dirName;
+  const evalPath = path.join(dir, `${evalName}.eval.ts`);
+
   if (hasApiKey || cliAvailable) {
     const { Spinner, fmt } = await import('../utils/cli');
     const label = 'generating eval with available LLM backend';
@@ -63,7 +81,7 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
     try {
       const config = await generateWithLLM(skills);
       await fs.writeFile(evalPath, config, 'utf-8');
-      spinner.stop(fmt.green('created eval.ts'));
+      spinner.stop(fmt.green(`created ${path.basename(evalPath)}`));
       console.log(`     Review and edit the file, then run: pathgrade\n`);
       return;
     } catch (err: unknown) {
@@ -97,7 +115,7 @@ async function writeTemplate(evalPath: string, taskName: string, instruction: st
     .replace(/\{\{INSTRUCTION\}\}/g, instruction);
 
   await fs.writeFile(evalPath, result, 'utf-8');
-  console.log(`  Created eval.ts.`);
+  console.log(`  Created ${path.basename(evalPath)}.`);
   console.log(`     Edit the file to define your eval tasks, then run: pathgrade\n`);
 }
 

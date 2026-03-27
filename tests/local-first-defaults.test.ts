@@ -6,9 +6,9 @@ const repoRoot = path.resolve(__dirname, '..');
 const filesThatShouldBeLocalOnly = [
   'src/commands/init.ts',
   'templates/eval.ts.template',
-  'eval.ts',
-  'examples/angular-modern/eval.ts',
-  'examples/superlint/eval.ts',
+  'pathgrade.eval.ts',
+  'examples/angular-modern/angular-modern.eval.ts',
+  'examples/superlint/superlint.eval.ts',
 ];
 
 describe('local-first defaults', () => {

@@ -1,5 +1,5 @@
 /**
- * Tests for eval.ts loading via jiti.
+ * Tests for *.eval.ts loading via jiti.
  * Separate file to avoid module-level fs-extra mock from config.test.ts.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -16,16 +16,16 @@ function cleanTmpDir(dir: string) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-describe('loadEvalConfig with eval.ts', () => {
+describe('loadEvalConfig with *.eval.ts', () => {
   let tmpDir: string;
 
   afterEach(() => {
     if (tmpDir) cleanTmpDir(tmpDir);
   });
 
-  it('loads eval.ts when it exists', async () => {
+  it('loads *.eval.ts when it exists', async () => {
     tmpDir = makeTmpDir();
-    fs.writeFileSync(path.join(tmpDir, 'eval.ts'), `
+    fs.writeFileSync(path.join(tmpDir, 'my-skill.eval.ts'), `
       export default {
         version: '1',
         tasks: [{
@@ -44,9 +44,64 @@ describe('loadEvalConfig with eval.ts', () => {
     expect(config.defaults.trials).toBe(5);
   });
 
-  it('loads eval.ts regardless of other files present', async () => {
+  it('falls back to legacy eval.ts', async () => {
     tmpDir = makeTmpDir();
     fs.writeFileSync(path.join(tmpDir, 'eval.ts'), `
+      export default {
+        version: '1',
+        tasks: [{
+          name: 'legacy-task',
+          type: 'instruction',
+          instruction: 'from legacy',
+          graders: [{ type: 'deterministic', run: 'echo ok' }],
+        }],
+      };
+    `);
+
+    const config = await loadEvalConfig(tmpDir);
+    expect(config.tasks[0].name).toBe('legacy-task');
+  });
+
+  it('prefers *.eval.ts over legacy eval.ts', async () => {
+    tmpDir = makeTmpDir();
+    fs.writeFileSync(path.join(tmpDir, 'my-skill.eval.ts'), `
+      export default {
+        version: '1',
+        tasks: [{
+          name: 'new-pattern',
+          type: 'instruction',
+          instruction: 'new wins',
+          graders: [{ type: 'deterministic', run: 'echo ok' }],
+        }],
+      };
+    `);
+    fs.writeFileSync(path.join(tmpDir, 'eval.ts'), `
+      export default {
+        version: '1',
+        tasks: [{
+          name: 'legacy',
+          type: 'instruction',
+          instruction: 'should not load',
+          graders: [{ type: 'deterministic', run: 'echo ok' }],
+        }],
+      };
+    `);
+
+    const config = await loadEvalConfig(tmpDir);
+    expect(config.tasks[0].name).toBe('new-pattern');
+  });
+
+  it('throws when multiple *.eval.ts files exist', async () => {
+    tmpDir = makeTmpDir();
+    fs.writeFileSync(path.join(tmpDir, 'a.eval.ts'), `export default { tasks: [] };`);
+    fs.writeFileSync(path.join(tmpDir, 'b.eval.ts'), `export default { tasks: [] };`);
+
+    await expect(loadEvalConfig(tmpDir)).rejects.toThrow('Multiple *.eval.ts files found');
+  });
+
+  it('loads *.eval.ts regardless of other files present', async () => {
+    tmpDir = makeTmpDir();
+    fs.writeFileSync(path.join(tmpDir, 'my-skill.eval.ts'), `
       export default {
         version: '1',
         tasks: [{
@@ -63,8 +118,8 @@ describe('loadEvalConfig with eval.ts', () => {
     expect(config.tasks[0].name).toBe('from-ts');
   });
 
-  it('throws when eval.ts does not exist (no yaml fallback)', async () => {
+  it('throws when no eval config found', async () => {
     tmpDir = makeTmpDir();
-    await expect(loadEvalConfig(tmpDir)).rejects.toThrow('No eval.ts found');
+    await expect(loadEvalConfig(tmpDir)).rejects.toThrow('No *.eval.ts found');
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Parser and validator for eval config files (eval.ts).
+ * Parser and validator for eval config files (*.eval.ts).
  */
 import * as fs from 'fs-extra';
 import * as path from 'path';
@@ -90,14 +90,27 @@ interface RawGrader {
 
 /**
  * Load eval config from a directory.
- * Loads eval.ts via jiti.
+ * Discovers *.eval.ts files, falling back to eval.ts for backward compat.
  */
 export async function loadEvalConfig(dir: string): Promise<EvalConfig> {
-    const tsPath = path.join(dir, 'eval.ts');
-    if (!await fs.pathExists(tsPath)) {
-        throw new Error(`No eval.ts found in ${dir}`);
+    const files = await fs.readdir(dir);
+    const evalFiles = files.filter(f => f.endsWith('.eval.ts'));
+
+    if (evalFiles.length > 1) {
+        throw new Error(`Multiple *.eval.ts files found in ${dir}: ${evalFiles.join(', ')}. Only one is allowed.`);
     }
-    return loadEvalConfigFromTs(tsPath);
+
+    if (evalFiles.length === 1) {
+        return loadEvalConfigFromTs(path.join(dir, evalFiles[0]));
+    }
+
+    // Backward compat: fall back to eval.ts
+    const legacyPath = path.join(dir, 'eval.ts');
+    if (await fs.pathExists(legacyPath)) {
+        return loadEvalConfigFromTs(legacyPath);
+    }
+
+    throw new Error(`No *.eval.ts found in ${dir}`);
 }
 
 /**
@@ -110,13 +123,13 @@ async function loadEvalConfigFromTs(filePath: string): Promise<EvalConfig> {
         const jiti = createJiti(__filename);
         mod = await jiti.import(path.resolve(filePath));
     } catch (e: unknown) {
-        throw new Error(`Failed to load eval.ts: ${(e as Error).message}. Ensure jiti is installed: npm install jiti`);
+        throw new Error(`Failed to load eval config: ${(e as Error).message}. Ensure jiti is installed: npm install jiti`);
     }
 
     const config = mod.default || mod;
 
     if (!config || typeof config !== 'object') {
-        throw new Error('eval.ts must export an EvalConfig (default export or module.exports)');
+        throw new Error('Eval config must export an EvalConfig (default export or module.exports)');
     }
 
     return validateConfig(config);

@@ -219,6 +219,10 @@ describe('runInit LLM selection', () => {
 
     expect(mockCallLLM).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(await fs.readFile(path.join(tmpDir, 'eval.ts'), 'utf-8')).toContain('defineEval');
+    // Init generates <skill-name>.eval.ts
+    const files = await fs.readdir(tmpDir);
+    const evalFile = files.find((f: string) => f.endsWith('.eval.ts'));
+    expect(evalFile).toBeDefined();
+    expect(await fs.readFile(path.join(tmpDir, evalFile!), 'utf-8')).toContain('defineEval');
   });
 });

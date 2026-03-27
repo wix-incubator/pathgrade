@@ -2,7 +2,7 @@ import { defineEval } from '../../src/core/define-eval';
 
 export default defineEval({
   defaults: {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
