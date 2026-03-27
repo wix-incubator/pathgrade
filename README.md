@@ -91,6 +91,7 @@ export default defineEval({
   tasks: [
     {
       name: 'fix-linting-errors',
+      type: 'instruction',
       instruction: `Use the provided tool to fix coding-standard violations in app.js.`,
       workspace: [
         { src: 'fixtures/broken-app.js', dest: 'app.js' },

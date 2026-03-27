@@ -27,6 +27,24 @@ import { shutdown } from './utils/shutdown';
 import * as os from 'os';
 import * as path from 'path';
 
+function parseIntFlag(name: string, value: string): number {
+    const n = parseInt(value, 10);
+    if (isNaN(n) || n < 1) {
+        console.error(`error: --${name} must be a positive integer, got "${value}"`);
+        process.exit(1);
+    }
+    return n;
+}
+
+function parseFloatFlag(name: string, value: string): number {
+    const n = parseFloat(value);
+    if (isNaN(n) || n < 0 || n > 1) {
+        console.error(`error: --${name} must be a number between 0 and 1, got "${value}"`);
+        process.exit(1);
+    }
+    return n;
+}
+
 async function main() {
     shutdown.install();
     const args = process.argv.slice(2);
@@ -78,7 +96,7 @@ async function main() {
         presetTrials = 30;
     }
 
-    const explicitTrials = getFlag('trials') ? parseInt(getFlag('trials')!) : undefined;
+    const explicitTrials = getFlag('trials') ? parseIntFlag('trials', getFlag('trials')!) : undefined;
 
     // Resolve eval filter: --eval flag, deprecated --task flag, or positional arg
     let evalFilter: string | undefined;
@@ -96,10 +114,10 @@ async function main() {
     await runEvals(cwd, {
         eval: evalFilter,
         trials: explicitTrials ?? presetTrials,
-        parallel: getFlag('parallel') ? parseInt(getFlag('parallel')!) : undefined,
+        parallel: getFlag('parallel') ? parseIntFlag('parallel', getFlag('parallel')!) : undefined,
         validate: hasFlag('validate'),
         ci: hasFlag('ci'),
-        threshold: getFlag('threshold') ? parseFloat(getFlag('threshold')!) : undefined,
+        threshold: getFlag('threshold') ? parseFloatFlag('threshold', getFlag('threshold')!) : undefined,
         preset,
         agent: getFlag('agent') as AgentName | undefined,
         grader: getFlag('grader'),
@@ -131,7 +149,7 @@ function printHelp() {
     --grader=TYPE      Run only graders of this type (deterministic|llm_rubric)
     --trials=N         Override trial count (overrides preset)
     --parallel=N       Run trials concurrently
-    --agent=claude                Override agent (default: claude)
+    --agent=NAME       Override agent: gemini|claude|codex (default: gemini)
     --output=DIR       Output directory for reports and temp files
                        Default: $TMPDIR/pathgrade
     --validate         Verify graders using reference solutions

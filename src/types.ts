@@ -165,47 +165,34 @@ export function getRuntimeEnv(handle: EnvironmentHandle): Record<string, string>
     return typeof handle === 'string' ? {} : handle.env;
 }
 
-export async function createAgentSession(
-    agent: BaseAgent,
-    runtime: EnvironmentHandle,
-    runCommand: AgentCommandRunner
-): Promise<AgentSession> {
-    if (
-        typeof (agent as any).createSession === 'function' &&
-        (agent as any).createSession !== BaseAgent.prototype.createSession
-    ) {
-        return await (agent as any).createSession(runtime, runCommand);
-    }
-
-    if (typeof (agent as any).run === 'function') {
+export abstract class BaseAgent {
+    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+        // Default: wrap run() into a session for simple agents
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
-            const rawOutput = await (agent as any).run(message, getWorkspacePath(runtime), runCommand);
-            return {
-                rawOutput,
-                assistantMessage: rawOutput,
-                exitCode: 0,
-            };
+            const rawOutput = await this.run(message, getWorkspacePath(runtime), runCommand);
+            return { rawOutput, assistantMessage: rawOutput, exitCode: 0 };
         };
-
         return {
             start: async ({ message }) => runTurn(message),
             reply: async ({ message }) => runTurn(message),
         };
     }
 
-    throw new Error('Agent must implement createSession() or run()');
+    run(
+        _instruction: string,
+        _workspacePath: string,
+        _runCommand: AgentCommandRunner
+    ): Promise<string> {
+        throw new Error('Agent must implement createSession() or run()');
+    }
 }
 
-export abstract class BaseAgent {
-    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
-        return createAgentSession(this, runtime, runCommand);
-    }
-
-    abstract run(
-        instruction: string,
-        workspacePath: string,
-        runCommand: AgentCommandRunner
-    ): Promise<string>;
+export async function createAgentSession(
+    agent: BaseAgent,
+    runtime: EnvironmentHandle,
+    runCommand: AgentCommandRunner
+): Promise<AgentSession> {
+    return agent.createSession(runtime, runCommand);
 }
 
 /** Options passed to environment providers for setup */

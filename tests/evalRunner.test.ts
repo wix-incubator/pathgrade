@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'path';
 
 // Mock dependencies
@@ -6,6 +6,7 @@ vi.mock('fs-extra', () => ({
   readFile: vi.fn(),
   ensureDir: vi.fn(),
   writeJSON: vi.fn(),
+  move: vi.fn(),
 }));
 
 vi.mock('./graders', () => ({
@@ -20,7 +21,7 @@ vi.mock('../src/utils/cli-llm', () => ({
 
 import * as fs from 'fs-extra';
 import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
-import { BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
+import { AgentCommandRunner, BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
 
 const mockRuntime = {
   handle: '/trial',
@@ -54,6 +55,12 @@ beforeEach(() => {
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
 describe('EvalRunner', () => {
   function makeMockProvider(): EnvironmentProvider {
     return {
@@ -66,9 +73,11 @@ describe('EvalRunner', () => {
   }
 
   function makeMockAgent(output = 'Agent done'): BaseAgent {
-    return {
-      run: vi.fn().mockResolvedValue(output),
-    } as any;
+    return new class extends BaseAgent {
+      override run(_instruction: string, _workspacePath: string, _runCommand: AgentCommandRunner) {
+        return Promise.resolve(output);
+      }
+    }();
   }
 
   it('runs a single trial and returns report', async () => {
@@ -206,9 +215,8 @@ describe('EvalRunner', () => {
       }),
     });
 
-    const originalFetch = globalThis.fetch;
     let capturedBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, options: any) => {
       capturedBody = JSON.parse(options.body);
       return {
         ok: true,
@@ -222,63 +230,59 @@ describe('EvalRunner', () => {
         }),
         text: async () => '',
       } as any;
-    });
+    }));
 
-    try {
-      const runner = new EvalRunner(provider);
-      const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
-        instruction: undefined,
-        conversation: {
-          opener: 'Help me start a new project.',
-          completion: {
-            max_turns: 4,
-            done_phrase: 'brief created',
-          },
-          replies: [
-            { content: 'It is a gift card feature for Wix Stores.' },
-          ],
-          persona: {
-            description: 'You are a concise Wix product manager.',
-            facts: [
-              'The feature is for Wix Stores.',
-              'You do not know the technical implementation details.',
-            ],
-          },
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
+      instruction: undefined,
+      conversation: {
+        opener: 'Help me start a new project.',
+        completion: {
+          max_turns: 4,
+          done_phrase: 'brief created',
         },
-      }), 1, { GEMINI_API_KEY: 'test-key' });
+        replies: [
+          { content: 'It is a gift card feature for Wix Stores.' },
+        ],
+        persona: {
+          description: 'You are a concise Wix product manager.',
+          facts: [
+            'The feature is for Wix Stores.',
+            'You do not know the technical implementation details.',
+          ],
+        },
+      },
+    }), 1, { GEMINI_API_KEY: 'test-key' });
 
-      expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
-      expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        message: 'It is a gift card feature for Wix Stores.',
-        continueSession: true,
-      }));
-      expect(reply).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        message: 'No repo links yet, and I do not know the implementation details.',
-        continueSession: true,
-      }));
-      expect(report.trials[0].conversation).toEqual(expect.objectContaining({
-        total_turns: 3,
-        completion_reason: 'done_phrase',
-      }));
-      expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual([
-        'opener',
-        'scripted',
-        'persona_llm',
-      ]);
-      expect(report.trials[0].persona_input_tokens).toBe(111);
-      expect(report.trials[0].persona_output_tokens).toBe(22);
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      message: 'It is a gift card feature for Wix Stores.',
+      continueSession: true,
+    }));
+    expect(reply).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      message: 'No repo links yet, and I do not know the implementation details.',
+      continueSession: true,
+    }));
+    expect(report.trials[0].conversation).toEqual(expect.objectContaining({
+      total_turns: 3,
+      completion_reason: 'done_phrase',
+    }));
+    expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual([
+      'opener',
+      'scripted',
+      'persona_llm',
+    ]);
+    expect(report.trials[0].persona_input_tokens).toBe(111);
+    expect(report.trials[0].persona_output_tokens).toBe(22);
 
-      const prompt = capturedBody.contents[0].parts[0].text;
-      expect(prompt).toContain('## Who You Are');
-      expect(prompt).toContain('You are a concise Wix product manager.');
-      expect(prompt).toContain('The feature is for Wix Stores.');
-      expect(prompt).toContain('User: Help me start a new project.');
-      expect(prompt).toContain('Assistant: What are you building?');
-      expect(prompt).toContain("## Agent's Latest Message");
-      expect(prompt).toContain('Any technical constraints or repo links?');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).toContain('## Who You Are');
+    expect(prompt).toContain('You are a concise Wix product manager.');
+    expect(prompt).toContain('The feature is for Wix Stores.');
+    expect(prompt).toContain('User: Help me start a new project.');
+    expect(prompt).toContain('Assistant: What are you building?');
+    expect(prompt).toContain("## Agent's Latest Message");
+    expect(prompt).toContain('Any technical constraints or repo links?');
   });
 
   it('counts multi-turn agent tokens from user and assistant messages, not raw outputs', async () => {
@@ -309,8 +313,7 @@ describe('EvalRunner', () => {
       }),
     });
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         candidates: [{ content: { parts: [{ text: 'Repo' }] } }],
@@ -321,35 +324,31 @@ describe('EvalRunner', () => {
         },
       }),
       text: async () => '',
-    } as any);
+    } as any));
 
-    try {
-      const runner = new EvalRunner(provider);
-      const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
-        instruction: undefined,
-        conversation: {
-          opener: 'Idea',
-          completion: {
-            max_turns: 4,
-            done_phrase: 'Done',
-          },
-          replies: [
-            { content: 'Gift' },
-          ],
-          persona: {
-            description: 'Short persona',
-            facts: ['Fact'],
-          },
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
+      instruction: undefined,
+      conversation: {
+        opener: 'Idea',
+        completion: {
+          max_turns: 4,
+          done_phrase: 'Done',
         },
-      }), 1, { GEMINI_API_KEY: 'test-key' });
+        replies: [
+          { content: 'Gift' },
+        ],
+        persona: {
+          description: 'Short persona',
+          facts: ['Fact'],
+        },
+      },
+    }), 1, { GEMINI_API_KEY: 'test-key' });
 
-      expect(report.trials[0].input_tokens).toBe(3);
-      expect(report.trials[0].output_tokens).toBe(3);
-      expect(report.trials[0].persona_input_tokens).toBe(7);
-      expect(report.trials[0].persona_output_tokens).toBe(3);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    expect(report.trials[0].input_tokens).toBe(3);
+    expect(report.trials[0].output_tokens).toBe(3);
+    expect(report.trials[0].persona_input_tokens).toBe(7);
+    expect(report.trials[0].persona_output_tokens).toBe(3);
   });
 
   it('retries conversation turn once on transient empty response with non-zero exit', async () => {
@@ -408,9 +407,11 @@ describe('EvalRunner', () => {
 
   it('handles agent errors gracefully', async () => {
     const provider = makeMockProvider();
-    const agent = {
-      run: vi.fn().mockRejectedValue(new Error('Agent crashed')),
-    } as any as BaseAgent;
+    const agent = new class extends BaseAgent {
+      override run(_instruction: string, _workspace: string, _runCommand: AgentCommandRunner) {
+        return Promise.reject(new Error('Agent crashed'));
+      }
+    }();
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
@@ -436,12 +437,12 @@ describe('EvalRunner', () => {
         })
     );
 
-    const agent = {
-      run: vi.fn().mockImplementation(async (_instruction: string, _workspace: string, runCommand: any) => {
+    const agent = new class extends BaseAgent {
+      override async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
         const res = await runCommand('sleep forever');
         return `Result: ${res.stderr}`;
-      }),
-    } as any as BaseAgent;
+      }
+    }();
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({ timeoutSec: 0.01 }), 1);
@@ -480,12 +481,12 @@ describe('EvalRunner', () => {
       stderr: '',
       exitCode: 0,
     });
-    const agent = {
-      run: vi.fn().mockImplementation(async (instruction: string, workspace: string, runCommand: any) => {
+    const agent = new class extends BaseAgent {
+      override async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
         const res = await runCommand('echo test');
         return `Output: ${res.stdout}`;
-      }),
-    } as any as BaseAgent;
+      }
+    }();
 
     const gradersModule = await import('../src/graders/index');
     vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
@@ -567,9 +568,11 @@ describe('EvalRunner', () => {
     const provider = makeMockProvider();
     (provider as any).diagnose = vi.fn().mockResolvedValue('Diagnostics output');
 
-    const agent = {
-      run: vi.fn().mockRejectedValue(new Error('Failed')),
-    } as any as BaseAgent;
+    const agent = new class extends BaseAgent {
+      override run(_instruction: string, _workspacePath: string, _runCommand: AgentCommandRunner) {
+        return Promise.reject(new Error('Failed'));
+      }
+    }();
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
@@ -647,6 +650,44 @@ describe('EvalRunner', () => {
     expect(report.trials[0].reward).toBe(0);
   });
 
+  it('preserves passing grader results when a later grader fails', async () => {
+    const mockProvider = makeMockProvider();
+    const callCount = { n: 0 };
+
+    const gradersModule = await import('../src/graders/index');
+    vi.spyOn(gradersModule, 'getGrader').mockImplementation((type: string) => ({
+      grade: async () => {
+        callCount.n++;
+        if (callCount.n === 2) throw new Error('LLM API failed');
+        return { grader_type: type, score: 1.0, weight: 1.0, details: 'passed' };
+      },
+    }));
+
+    const runner = new EvalRunner(mockProvider);
+    const report = await runner.runEval(
+      () => makeMockAgent('output'),
+      '/tmp/task',
+      [],
+      {
+        instruction: 'test',
+        graders: [
+          { type: 'deterministic', run: 'test.sh', weight: 1.0 },
+          { type: 'llm_rubric', rubric: 'rubric.md', weight: 1.0 },
+        ],
+        timeoutSec: 60,
+        environment: { cpus: 1, memory_mb: 512 },
+      },
+      1,
+      {},
+    );
+
+    // First grader passed, second failed -- reward should be 0.5 not 0
+    expect(report.trials[0].grader_results).toHaveLength(2);
+    expect(report.trials[0].grader_results[0].score).toBe(1.0);
+    expect(report.trials[0].grader_results[1].score).toBe(0);
+    expect(report.trials[0].reward).toBe(0.5);
+  });
+
   it('handles multiple graders of each type', async () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();
@@ -670,5 +711,43 @@ describe('EvalRunner', () => {
     const report = await runner.runEval(() => agent, '/task', [], opts, 1);
 
     expect(report.trials[0].grader_results).toHaveLength(3);
+  });
+
+  it('calculates weighted reward from multiple graders', async () => {
+    const mockProvider = makeMockProvider();
+
+    const graderModule = await import('../src/graders');
+    vi.spyOn(graderModule, 'getGrader').mockImplementation((type: string) => ({
+      grade: async (_ws: any, _provider: any, config: any) => ({
+        grader_type: type,
+        score: type === 'deterministic' ? 1.0 : 0.0,
+        weight: config.weight, // use the actual config weight, not a hardcoded 1.0
+        details: 'test',
+      }),
+    }));
+
+    const runner = new EvalRunner(mockProvider);
+    const report = await runner.runEval(
+      () => makeMockAgent('output'),
+      '/tmp/task',
+      [],
+      {
+        instruction: 'test',
+        graders: [
+          { type: 'deterministic', run: 'test.sh', weight: 0.7 },
+          { type: 'llm_rubric', rubric: 'rubric.md', weight: 0.3 },
+        ],
+        timeoutSec: 60,
+        environment: { cpus: 1, memory_mb: 512 },
+      },
+      1,
+      {},
+    );
+
+    // deterministic scored 1.0 (weight 0.7), llm scored 0.0 (weight 0.3)
+    // weighted reward = (1.0 * 0.7 + 0.0 * 0.3) / (0.7 + 0.3) = 0.7
+    expect(report.trials[0].reward).toBeCloseTo(0.7);
+    expect(report.trials[0].grader_results[0].weight).toBe(0.7);
+    expect(report.trials[0].grader_results[1].weight).toBe(0.3);
   });
 });

@@ -11,6 +11,7 @@ export default defineEval({
   tasks: [
     {
       name: '{{TASK_NAME}}',
+      type: 'instruction',
       instruction: `{{INSTRUCTION}}`,
 
       // workspace: [

@@ -755,7 +755,7 @@ Addresses: Reliability #6 (major)
 **Files:**
 - Modify: `src/evalRunner.ts:427-436`
 
-- [ ] **Step 1: Update saveReport to use write-then-rename**
+- [x] **Step 1: Update saveReport to use write-then-rename**
 
 In `src/evalRunner.ts`, update `saveReport`:
 
@@ -774,12 +774,12 @@ private async saveReport(report: EvalReport): Promise<void> {
 }
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `npx vitest run tests/evalRunner.test.ts`
 Expected: All pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/evalRunner.ts
@@ -798,7 +798,7 @@ Addresses: Error Handling #3 (major)
 - Modify: `src/evalRunner.ts:328-379`
 - Test: `tests/evalRunner.test.ts`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 In `tests/evalRunner.test.ts`, add:
 
@@ -840,12 +840,12 @@ it('preserves passing grader results when a later grader fails', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/evalRunner.test.ts -t "preserves passing grader"`
 Expected: FAIL -- currently one failure discards all results
 
-- [ ] **Step 3: Add per-grader try/catch in runGraders**
+- [x] **Step 3: Add per-grader try/catch in runGraders**
 
 In `src/evalRunner.ts`, wrap the grader call in the `runGraders` loop:
 
@@ -883,17 +883,17 @@ for (let gIdx = 0; gIdx < opts.graders.length; gIdx++) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/evalRunner.test.ts -t "preserves passing grader"`
 Expected: PASS
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/evalRunner.ts tests/evalRunner.test.ts
@@ -929,7 +929,7 @@ try {
 }
 ```
 
-- [ ] **Step 2: Wrap saveReport in try/catch**
+- [x] **Step 2: Wrap saveReport in try/catch**
 
 In `src/evalRunner.ts`, update the saveReport call (around line 135):
 
@@ -944,12 +944,12 @@ if (this.logDir) {
 }
 ```
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/evalRunner.ts
@@ -965,7 +965,7 @@ Addresses: Error Handling #5 (major)
 **Files:**
 - Modify: `src/commands/run.ts:110-213`
 
-- [ ] **Step 1: Wrap each task iteration in try/finally for cleanup**
+- [x] **Step 1: Wrap each task iteration in try/finally for cleanup**
 
 In `src/commands/run.ts`, restructure the task loop to ensure cleanup runs regardless of `continue`:
 
@@ -1015,12 +1015,12 @@ for (const taskDef of tasksToRun) {
 
 Remove the old cleanup line at 212 (it's now in the finally block).
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `npx vitest run tests/commands.run.test.ts`
 Expected: All pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/commands/run.ts
@@ -1040,11 +1040,11 @@ Addresses: DevEx #1 (critical)
 - Modify: `templates/eval.ts.template`
 - Modify: `src/commands/init.ts:178-205, 302-344`
 
-- [ ] **Step 1: Read current template and init files**
+- [x] **Step 1: Read current template and init files**
 
 Read `templates/eval.ts.template` and `src/commands/init.ts` to locate exact positions.
 
-- [ ] **Step 2: Add `type: 'instruction'` to all templates**
+- [x] **Step 2: Add `type: 'instruction'` to all templates**
 
 In `templates/eval.ts.template`, add `type: 'instruction',` to the task definition.
 
@@ -1054,12 +1054,12 @@ In `src/commands/init.ts`, find the LLM generation prompt example and add `type:
 
 In `README.md`, add `type: 'instruction',` to the eval.ts Reference example (around line 91-117).
 
-- [ ] **Step 3: Run init test**
+- [x] **Step 3: Run init test**
 
 Run: `npx vitest run tests/commands.init.test.ts`
 Expected: All pass
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md templates/eval.ts.template src/commands/init.ts
@@ -1076,7 +1076,7 @@ Addresses: DevEx #2 (critical)
 - Modify: `src/commands/run.ts:304-311` (already partially done in Task 3)
 - Test: `tests/commands.run.test.ts`
 
-- [ ] **Step 1: Write failing test for dest mapping**
+- [x] **Step 1: Write failing test for dest mapping**
 
 In `tests/commands.run.test.ts`, add:
 
@@ -1109,7 +1109,7 @@ it('copies workspace files using dest path', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/commands.run.test.ts -t "copies workspace files using dest"`
 Expected: FAIL -- `dest` is currently ignored
@@ -1124,12 +1124,12 @@ const destInTmp = path.join(tmpDir, destName);
 
 Task 3 was already applied, so this code change is in place.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/commands.run.test.ts -t "copies workspace files using dest"`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/commands/run.ts tests/commands.run.test.ts
@@ -1146,7 +1146,7 @@ Addresses: DevEx #3 (major), DevEx #4 (major)
 - Modify: `package.json:5-6`
 - Modify: `src/pathgrade.ts:132`
 
-- [ ] **Step 1: Align package.json main/types with exports**
+- [x] **Step 1: Align package.json main/types with exports**
 
 In `package.json`:
 
@@ -1155,7 +1155,7 @@ In `package.json`:
 "types": "dist/core/index.d.ts",
 ```
 
-- [ ] **Step 2: Fix help text agent default**
+- [x] **Step 2: Fix help text agent default**
 
 In `src/pathgrade.ts:132`, change:
 
@@ -1169,12 +1169,12 @@ to:
 --agent=NAME       Override agent: gemini|claude|codex (default: gemini)
 ```
 
-- [ ] **Step 3: Run CLI surface test**
+- [x] **Step 3: Run CLI surface test**
 
 Run: `npx vitest run tests/cli-surface-local-first.test.ts`
 Expected: All pass (update test if it checks help text)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add package.json src/pathgrade.ts
@@ -1190,7 +1190,7 @@ Addresses: DevEx #5 (major)
 **Files:**
 - Modify: `src/core/config.ts`
 
-- [ ] **Step 1: Add a warning when setup is specified**
+- [x] **Step 1: Add a warning when setup is specified**
 
 In `src/core/config.ts`, inside the task grader validation loop (around line 232-239), add:
 
@@ -1207,12 +1207,12 @@ const graders = (t.graders || []).map((g: RawGrader) => {
 });
 ```
 
-- [ ] **Step 2: Run config tests**
+- [x] **Step 2: Run config tests**
 
 Run: `npx vitest run tests/config.test.ts`
 Expected: All pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/core/config.ts
@@ -1228,7 +1228,7 @@ Addresses: DevEx #8, Error Handling #15 (minor/major)
 **Files:**
 - Modify: `src/pathgrade.ts:79, 97, 100`
 
-- [ ] **Step 1: Add validation helper and use it**
+- [x] **Step 1: Add validation helper and use it**
 
 In `src/pathgrade.ts`, add a helper before `main()`:
 
@@ -1262,12 +1262,12 @@ parallel: getFlag('parallel') ? parseIntFlag('parallel', getFlag('parallel')!) :
 threshold: getFlag('threshold') ? parseFloatFlag('threshold', getFlag('threshold')!) : undefined,
 ```
 
-- [ ] **Step 2: Run CLI surface test**
+- [x] **Step 2: Run CLI surface test**
 
 Run: `npx vitest run tests/cli-surface-local-first.test.ts`
 Expected: All pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/pathgrade.ts
@@ -1288,7 +1288,7 @@ Addresses: Code Quality #3 (major)
 - Modify: `src/agents/codex.ts`
 - Test: `tests/agents.test.ts`
 
-- [ ] **Step 1: Create `TranscriptAgent` base class**
+- [x] **Step 1: Create `TranscriptAgent` base class**
 
 Create `src/agents/transcript-agent.ts`:
 
@@ -1345,7 +1345,7 @@ export abstract class TranscriptAgent extends BaseAgent {
 }
 ```
 
-- [ ] **Step 2: Simplify GeminiAgent**
+- [x] **Step 2: Simplify GeminiAgent**
 
 Rewrite `src/agents/gemini.ts`:
 
@@ -1373,7 +1373,7 @@ export class GeminiAgent extends TranscriptAgent {
 }
 ```
 
-- [ ] **Step 3: Simplify CodexAgent**
+- [x] **Step 3: Simplify CodexAgent**
 
 Rewrite `src/agents/codex.ts`:
 
@@ -1404,17 +1404,17 @@ export class CodexAgent extends TranscriptAgent {
 }
 ```
 
-- [ ] **Step 4: Run agent tests**
+- [x] **Step 4: Run agent tests**
 
 Run: `npx vitest run tests/agents.test.ts`
 Expected: All pass
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/agents/transcript-agent.ts src/agents/gemini.ts src/agents/codex.ts
@@ -1433,7 +1433,7 @@ Addresses: Architecture #2.2, Code Quality #12 (major)
 - Modify: `src/evalRunner.ts`
 - Modify: `src/conversationRunner.ts`
 
-- [ ] **Step 1: Create grader paths module**
+- [x] **Step 1: Create grader paths module**
 
 Create `src/graders/paths.ts`:
 
@@ -1475,7 +1475,7 @@ export function stepLlmRubricPath(turnNumber: number, graderIndex: number): stri
 }
 ```
 
-- [ ] **Step 2: Update consumers to use shared paths**
+- [x] **Step 2: Update consumers to use shared paths**
 
 In `src/commands/run.ts`, replace hardcoded path strings with imports from `../graders/paths`.
 
@@ -1509,12 +1509,12 @@ const graderConfig = {
 };
 ```
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/graders/paths.ts src/commands/run.ts src/evalRunner.ts src/conversationRunner.ts
@@ -1531,7 +1531,7 @@ Addresses: Architecture #3.1, Code Quality #1 (major)
 - Modify: `src/types.ts:168-208`
 - Test: `tests/agents.test.ts`
 
-- [ ] **Step 1: Simplify createAgentSession**
+- [x] **Step 1: Simplify createAgentSession**
 
 In `src/types.ts`, replace the entire `createAgentSession` function and update `BaseAgent`:
 
@@ -1621,12 +1621,12 @@ export async function createAgentSession(
 
 This eliminates all `as any` casts. Concrete agents override `createSession` (all three do). The validation solveAgent can just implement `run()` and the default `createSession` wraps it.
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/types.ts
@@ -1642,11 +1642,11 @@ Addresses: Architecture #1.1, Code Quality #4 (major)
 **Files:**
 - Modify: `src/commands/init.ts`
 
-- [ ] **Step 1: Read init.ts to locate the duplicate**
+- [x] **Step 1: Read init.ts to locate the duplicate**
 
 Read `src/commands/init.ts` to find `generateWithLLM`.
 
-- [ ] **Step 2: Replace `generateWithLLM` with `callLLM`**
+- [x] **Step 2: Replace `generateWithLLM` with `callLLM`**
 
 Replace the ~80-line `generateWithLLM` function with:
 
@@ -1659,17 +1659,17 @@ async function generateWithLLM(prompt: string, env: Record<string, string>): Pro
 }
 ```
 
-- [ ] **Step 3: Run init tests**
+- [x] **Step 3: Run init tests**
 
 Run: `npx vitest run tests/commands.init.test.ts`
 Expected: All pass
 
-- [ ] **Step 4: Run full test suite**
+- [x] **Step 4: Run full test suite**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/commands/init.ts
@@ -1685,7 +1685,7 @@ Addresses: Code Quality #5 (major)
 **Files:**
 - Modify: `src/core/config.ts:320-336, 399-414`
 
-- [ ] **Step 1: Extract shared resolveGrader function**
+- [x] **Step 1: Extract shared resolveGrader function**
 
 In `src/core/config.ts`, add before `resolveTask`:
 
@@ -1723,12 +1723,12 @@ graders: await Promise.all(
 ),
 ```
 
-- [ ] **Step 2: Run config tests**
+- [x] **Step 2: Run config tests**
 
 Run: `npx vitest run tests/config.test.ts`
 Expected: All pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/core/config.ts
@@ -1746,7 +1746,7 @@ Addresses: Testing #1.1 (critical)
 **Files:**
 - Create: `tests/conversationRunner.test.ts`
 
-- [ ] **Step 1: Create test file with core conversation scenarios**
+- [x] **Step 1: Create test file with core conversation scenarios**
 
 Create `tests/conversationRunner.test.ts`:
 
@@ -1877,12 +1877,12 @@ describe('runConversationTrial', () => {
 });
 ```
 
-- [ ] **Step 2: Run the new tests**
+- [x] **Step 2: Run the new tests**
 
 Run: `npx vitest run tests/conversationRunner.test.ts`
 Expected: All pass (these test the existing behavior)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/conversationRunner.test.ts
@@ -1898,7 +1898,7 @@ Addresses: Testing #4.1 (critical)
 **Files:**
 - Modify: `tests/evalRunner.test.ts`
 
-- [ ] **Step 1: Fix the weighted grader test**
+- [x] **Step 1: Fix the weighted grader test**
 
 Find the weighted grader test (around line 551-574) and fix the mock to return different weights:
 
@@ -1940,12 +1940,12 @@ it('calculates weighted reward from multiple graders', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 Run: `npx vitest run tests/evalRunner.test.ts -t "calculates weighted reward"`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/evalRunner.test.ts
@@ -1962,7 +1962,7 @@ Addresses: Testing #5.1, #5.2 (major)
 - Modify: `tests/graders.test.ts`
 - Modify: `tests/evalRunner.test.ts`
 
-- [ ] **Step 1: Replace manual `globalThis.fetch` mutation in graders.test.ts**
+- [x] **Step 1: Replace manual `globalThis.fetch` mutation in graders.test.ts**
 
 Find all places in `tests/graders.test.ts` that do `const origFetch = globalThis.fetch; ... globalThis.fetch = ... finally { globalThis.fetch = origFetch }` and replace with:
 
@@ -1989,21 +1989,21 @@ delete process.env.GEMINI_API_KEY;
 vi.stubEnv('GEMINI_API_KEY', undefined);
 ```
 
-- [ ] **Step 2: Apply same pattern in evalRunner.test.ts**
+- [x] **Step 2: Apply same pattern in evalRunner.test.ts**
 
 Replace manual `globalThis.fetch` save/restore with `vi.stubGlobal`.
 
-- [ ] **Step 3: Run both test files**
+- [x] **Step 3: Run both test files**
 
 Run: `npx vitest run tests/graders.test.ts tests/evalRunner.test.ts`
 Expected: All pass
 
-- [ ] **Step 4: Run full test suite to verify no cross-contamination**
+- [x] **Step 4: Run full test suite to verify no cross-contamination**
 
 Run: `npx vitest run`
 Expected: All pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/graders.test.ts tests/evalRunner.test.ts

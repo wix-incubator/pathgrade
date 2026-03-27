@@ -2,6 +2,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { ResolvedConversation } from './core/config.types';
 import { getGrader } from './graders';
+import { stepDeterministicCommand, stepLlmRubricPath } from './graders/paths';
 import { generatePersonaReply } from './persona';
 import {
     BaseAgent,
@@ -183,12 +184,8 @@ async function runStepGraders(
 
             const graderConfig = {
                 type: graderDef.type,
-                command: graderDef.type === 'deterministic'
-                    ? `bash .pathgrade/tests/steps/turn_${turnNumber}_${graderIdx}.sh`
-                    : undefined,
-                rubric: graderDef.type === 'llm_rubric'
-                    ? `.pathgrade/prompts/steps/turn_${turnNumber}_${graderIdx}.md`
-                    : undefined,
+                command: graderDef.type === 'deterministic' ? stepDeterministicCommand(turnNumber, graderIdx) : undefined,
+                rubric: graderDef.type === 'llm_rubric' ? stepLlmRubricPath(turnNumber, graderIdx) : undefined,
                 model: graderDef.model || opts.graderModel,
                 weight: graderDef.weight,
             };

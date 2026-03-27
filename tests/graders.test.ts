@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DeterministicGrader, LLMGrader, getGrader } from '../src/graders/index';
 import { GraderConfig, EnvironmentProvider } from '../src/types';
 
@@ -21,6 +21,12 @@ const mockReadFile = vi.mocked(fs.readFile);
 
 beforeEach(() => {
   vi.resetAllMocks();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 function makeProvider(stdout: string, stderr = '', exitCode = 0): EnvironmentProvider {
@@ -155,23 +161,14 @@ describe('LLMGrader', () => {
     mockReadFile.mockResolvedValue('Evaluate the code quality.' as any);
     const provider = makeProvider('');
 
-    // Remove env vars
-    const origGemini = process.env.GEMINI_API_KEY;
-    const origAnthropic = process.env.ANTHROPIC_API_KEY;
-    const origOpenAI = process.env.OPENAI_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
+    // Use vi.stubEnv to safely remove env vars
+    vi.stubEnv('GEMINI_API_KEY', '');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('OPENAI_API_KEY', '');
 
-    try {
-      const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
-      expect(result.score).toBe(0);
-      expect(result.details).toContain('No LLM backend available');
-    } finally {
-      if (origGemini) process.env.GEMINI_API_KEY = origGemini;
-      if (origAnthropic) process.env.ANTHROPIC_API_KEY = origAnthropic;
-      if (origOpenAI) process.env.OPENAI_API_KEY = origOpenAI;
-    }
+    const result = await grader.grade('/workspace', provider, baseConfig, '/task', []);
+    expect(result.score).toBe(0);
+    expect(result.details).toContain('No LLM backend available');
   });
 
   it('uses default rubric path when not specified', async () => {
@@ -191,8 +188,7 @@ describe('LLMGrader', () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{
@@ -202,7 +198,7 @@ describe('LLMGrader', () => {
           }],
         }),
         text: () => Promise.resolve(''),
-      } as any);
+      } as any));
 
       const provider = makeProvider('');
       const env = { GEMINI_API_KEY: 'test-key' };
@@ -210,16 +206,13 @@ describe('LLMGrader', () => {
 
       expect(result.score).toBe(0.9);
       expect(result.details).toBe('Great work');
-
-      globalThis.fetch = originalFetch;
     });
 
     it('handles markdown-wrapped JSON in LLM response', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{
@@ -229,29 +222,26 @@ describe('LLMGrader', () => {
           }],
         }),
         text: () => Promise.resolve(''),
-      } as any);
+      } as any));
 
       const provider = makeProvider('');
       const env = { GEMINI_API_KEY: 'test-key' };
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
       expect(result.score).toBe(0.7);
-
-      globalThis.fetch = originalFetch;
     });
 
     it('handles empty LLM response', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: '' }] } }],
         }),
         text: () => Promise.resolve(''),
-      } as any);
+      } as any));
 
       const provider = makeProvider('');
       const env = { GEMINI_API_KEY: 'test-key' };
@@ -259,16 +249,13 @@ describe('LLMGrader', () => {
 
       expect(result.score).toBe(0);
       expect(result.details).toContain('Failed to parse');
-
-      globalThis.fetch = originalFetch;
     });
 
     it('handles fetch error gracefully', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
 
       const provider = makeProvider('');
       const env = { GEMINI_API_KEY: 'test-key' };
@@ -276,92 +263,67 @@ describe('LLMGrader', () => {
 
       expect(result.score).toBe(0);
       expect(result.details).toContain('Gemini API error');
-
-      globalThis.fetch = originalFetch;
     });
 
     it('falls back to Anthropic when Gemini key missing', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      const origGemini = process.env.GEMINI_API_KEY;
-      delete process.env.GEMINI_API_KEY;
+      vi.stubEnv('GEMINI_API_KEY', '');
 
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           content: [{ text: '{"score": 0.85, "reasoning": "good"}' }],
         }),
         text: () => Promise.resolve(''),
-      } as any);
+      } as any));
 
-      try {
-        const provider = makeProvider('');
-        const env = { ANTHROPIC_API_KEY: 'test-key' };
-        const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
+      const provider = makeProvider('');
+      const env = { ANTHROPIC_API_KEY: 'test-key' };
+      const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
-        expect(result.score).toBe(0.85);
-      } finally {
-        globalThis.fetch = originalFetch;
-        if (origGemini) process.env.GEMINI_API_KEY = origGemini;
-      }
+      expect(result.score).toBe(0.85);
     });
 
     it('handles Anthropic fetch error', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      const origGemini = process.env.GEMINI_API_KEY;
-      delete process.env.GEMINI_API_KEY;
+      vi.stubEnv('GEMINI_API_KEY', '');
 
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Anthropic down'));
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Anthropic down')));
 
-      try {
-        const provider = makeProvider('');
-        const env = { ANTHROPIC_API_KEY: 'test-key' };
-        const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
+      const provider = makeProvider('');
+      const env = { ANTHROPIC_API_KEY: 'test-key' };
+      const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
-        expect(result.score).toBe(0);
-        expect(result.details).toContain('Anthropic API error');
-      } finally {
-        globalThis.fetch = originalFetch;
-        if (origGemini) process.env.GEMINI_API_KEY = origGemini;
-      }
+      expect(result.score).toBe(0);
+      expect(result.details).toContain('Anthropic API error');
     });
 
     it('falls back to OpenAI when Gemini and Anthropic keys are missing', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      const originalFetch = globalThis.fetch;
-      const origGemini = process.env.GEMINI_API_KEY;
-      const origAnthropic = process.env.ANTHROPIC_API_KEY;
-      delete process.env.GEMINI_API_KEY;
-      delete process.env.ANTHROPIC_API_KEY;
+      vi.stubEnv('GEMINI_API_KEY', '');
+      vi.stubEnv('ANTHROPIC_API_KEY', '');
 
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           choices: [{ message: { content: '{"score": 0.9, "reasoning": "openai ok"}' } }],
           usage: { prompt_tokens: 10, completion_tokens: 5 },
         }),
         text: () => Promise.resolve(''),
-      } as any);
+      } as any));
 
-      try {
-        const provider = makeProvider('');
-        const env = { OPENAI_API_KEY: 'test-key' };
-        const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
+      const provider = makeProvider('');
+      const env = { OPENAI_API_KEY: 'test-key' };
+      const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
-        expect(result.score).toBe(0.9);
-        expect(result.details).toBe('openai ok');
-      } finally {
-        globalThis.fetch = originalFetch;
-        if (origGemini) process.env.GEMINI_API_KEY = origGemini;
-        if (origAnthropic) process.env.ANTHROPIC_API_KEY = origAnthropic;
-      }
+      expect(result.score).toBe(0.9);
+      expect(result.details).toBe('openai ok');
     });
   });
 
@@ -369,9 +331,8 @@ describe('LLMGrader', () => {
     mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('rubric' as any);
 
-    const originalFetch = globalThis.fetch;
     let capturedBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
       capturedBody = JSON.parse(opts.body as string);
       return {
         ok: true,
@@ -380,7 +341,7 @@ describe('LLMGrader', () => {
         }),
         text: () => Promise.resolve(''),
       };
-    });
+    }));
 
     const provider = makeProvider('');
     const sessionLog: import('../src/types').LogEntry[] = [
@@ -398,17 +359,14 @@ describe('LLMGrader', () => {
     expect(prompt).toContain('$ ls');
     expect(prompt).toContain('Done!');
     expect(prompt).toContain('deterministic');
-
-    globalThis.fetch = originalFetch;
   });
 
   it('includes the full multi-turn transcript when conversation logs are present', async () => {
     mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('rubric' as any);
 
-    const originalFetch = globalThis.fetch;
     let capturedBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
       capturedBody = JSON.parse(opts.body as string);
       return {
         ok: true,
@@ -417,7 +375,7 @@ describe('LLMGrader', () => {
         }),
         text: () => Promise.resolve(''),
       };
-    });
+    }));
 
     const provider = makeProvider('');
     const sessionLog: import('../src/types').LogEntry[] = [
@@ -439,8 +397,6 @@ describe('LLMGrader', () => {
     expect(prompt).toContain('**Agent:** Project brief created.');
     expect(prompt).toContain('Turn 1');
     expect(prompt).toContain('Turn 2');
-
-    globalThis.fetch = originalFetch;
   });
 });
 

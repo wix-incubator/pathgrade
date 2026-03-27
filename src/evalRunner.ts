@@ -16,6 +16,7 @@ import {
 import { ResolvedConversation, ResolvedGrader } from './core/config.types';
 import { runConversationTrial } from './conversationRunner';
 import { getGrader } from './graders';
+import { deterministicCommand, llmRubricPath } from './graders/paths';
 import { fmt, Spinner } from './utils/cli';
 import { withAbortTimeout } from './utils/timeout';
 
@@ -122,8 +123,12 @@ export class EvalRunner {
         };
 
         if (this.logDir) {
-            const sanitized = this.sanitize(report, env);
-            await this.saveReport(sanitized);
+            try {
+                const sanitized = this.sanitize(report, env);
+                await this.saveReport(sanitized);
+            } catch (err) {
+                console.error(`Warning: failed to save report: ${(err as Error)?.message || err}`);
+            }
         }
 
         return report;
@@ -338,28 +343,34 @@ export class EvalRunner {
 
             const graderConfig = {
                 type: graderDef.type,
-                command: graderDef.type === 'deterministic'
-                    ? `bash .pathgrade/tests/${detIndex === 0 ? 'test.sh' : `test_${detIndex}.sh`}`
-                    : undefined,
-                rubric: graderDef.type === 'llm_rubric'
-                    ? `.pathgrade/prompts/${llmIndex === 0 ? 'quality.md' : `quality_${llmIndex}.md`}`
-                    : undefined,
+                command: graderDef.type === 'deterministic' ? deterministicCommand(detIndex) : undefined,
+                rubric: graderDef.type === 'llm_rubric' ? llmRubricPath(llmIndex) : undefined,
                 model: graderDef.model || opts.graderModel,
                 weight: graderDef.weight,
             };
 
-            const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
-            const result = await withAbortTimeout(
-                async (signal) => grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env, signal),
-                graderTimeoutMs,
-                `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
-            );
-            graderResults.push(result);
+            try {
+                const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
+                const result = await withAbortTimeout(
+                    async (signal) => grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env, signal),
+                    graderTimeoutMs,
+                    `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
+                );
+                graderResults.push(result);
+            } catch (err: unknown) {
+                const errorMsg = (err as Error)?.message || String(err);
+                graderResults.push({
+                    grader_type: graderDef.type,
+                    score: 0,
+                    weight: graderDef.weight,
+                    details: `[grader error] ${errorMsg}`,
+                });
+            }
 
             sessionLog.push({
                 type: 'grader',
                 timestamp: this.timestamp(),
-                grader_result: result,
+                grader_result: graderResults[graderResults.length - 1],
             });
         }
 
@@ -425,6 +436,9 @@ export class EvalRunner {
         const fileName = `${report.task}_${timestamp}.json`;
         const filePath = path.join(this.logDir, fileName);
 
-        await fs.writeJSON(filePath, report, { spaces: 2 });
+        const tmpPath = filePath + '.tmp';
+
+        await fs.writeJSON(tmpPath, report, { spaces: 2 });
+        await fs.move(tmpPath, filePath, { overwrite: true });
     }
 }
