@@ -122,8 +122,12 @@ export class EvalRunner {
         };
 
         if (this.logDir) {
-            const sanitized = this.sanitize(report, env);
-            await this.saveReport(sanitized);
+            try {
+                const sanitized = this.sanitize(report, env);
+                await this.saveReport(sanitized);
+            } catch (err) {
+                console.error(`Warning: failed to save report: ${(err as Error)?.message || err}`);
+            }
         }
 
         return report;
