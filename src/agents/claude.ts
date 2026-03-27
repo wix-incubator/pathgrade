@@ -60,17 +60,16 @@ export class ClaudeAgent extends BaseAgent {
         const b64 = Buffer.from(instruction).toString('base64');
         await runCommand(`mkdir -p "\${TMPDIR:-/tmp}" && echo '${b64}' | base64 -d > ${promptPath}`);
 
-        // Use --output-format json to capture session_id from the response envelope.
+        // Use --output-format stream-json --verbose to capture tool call traces.
         // For continuation, use --resume to target the exact session from turn 1.
         const sanitized = sessionId ? this.sanitizeSessionId(sessionId) : undefined;
         const sessionFlag = sanitized ? ` --resume ${sanitized}` : '';
-        const command = `claude -p${sessionFlag} --output-format json --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
+        const command = `claude -p${sessionFlag} --output-format stream-json --verbose --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
         const result = await runCommand(command);
 
-        // Parse the JSON envelope to extract the text response and session_id.
-        // Only fall back to raw stdout when there's no JSON envelope at all.
-        const parsed = this.parseJsonEnvelope(result.stdout);
-        const rawOutput = parsed.envelopeFound
+        // Parse the NDJSON stream to extract result text, session_id, and tool traces.
+        const parsed = this.parseStreamJson(result.stdout);
+        const rawOutput = parsed.resultFound
             ? parsed.text
             : (result.stdout + '\n' + result.stderr);
 
@@ -83,7 +82,8 @@ export class ClaudeAgent extends BaseAgent {
             assistantMessage: rawOutput.trim(),
             exitCode: result.exitCode,
             sessionId: parsed.extractedSessionId,
-            traceOutput: rawOutput,
+            // traceOutput contains the full NDJSON stream for tool event extraction
+            traceOutput: result.stdout,
         };
     }
 
@@ -96,47 +96,56 @@ export class ClaudeAgent extends BaseAgent {
         return sanitized;
     }
 
-    private parseJsonEnvelope(stdout: string): { text: string; extractedSessionId?: string; envelopeFound: boolean } {
-        try {
-            const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) return { text: '', envelopeFound: false };
+    /**
+     * Parse NDJSON from --output-format stream-json --verbose.
+     * Each line is a JSON object. The `result` line contains the final text and session_id.
+     */
+    private parseStreamJson(stdout: string): { text: string; extractedSessionId?: string; resultFound: boolean } {
+        let resultEnvelope: ClaudeEnvelope | undefined;
 
-            const envelope: ClaudeEnvelope = JSON.parse(jsonMatch[0]);
-            const extractedSessionId = envelope.session_id;
-
-            // Detect API errors — these should not become assistant messages.
-            // Return empty text so the conversation runner can retry the turn.
-            if (envelope.is_error || (envelope.result && API_ERROR_PATTERN.test(envelope.result))) {
-                return { text: '', extractedSessionId, envelopeFound: true };
+        for (const line of stdout.split('\n')) {
+            if (!line.trim()) continue;
+            try {
+                const parsed = JSON.parse(line);
+                if (parsed.type === 'result') {
+                    resultEnvelope = parsed;
+                    break;
+                }
+            } catch {
+                continue;
             }
-
-            // Use the result text if available
-            if (envelope.result) {
-                return { text: envelope.result, extractedSessionId, envelopeFound: true };
-            }
-
-            // When result is empty (e.g. AskUserQuestion denied in --print mode),
-            // reconstruct a text response from the denied tool's input rather than
-            // leaking the raw JSON envelope into the conversation.
-            const denials = envelope.permission_denials ?? [];
-            const askDenial = denials.find(d => d.tool_name === 'AskUserQuestion');
-            if (askDenial?.tool_input) {
-                const text = this.reconstructFromAskUserQuestion(askDenial.tool_input as AskUserQuestionInput);
-                if (text) return { text, extractedSessionId, envelopeFound: true };
-            }
-
-            // Generic fallback: extract any text-like field from denied tool inputs
-            if (denials.length > 0) {
-                const text = this.reconstructFromGenericDenial(denials);
-                if (text) return { text, extractedSessionId, envelopeFound: true };
-            }
-
-            // Valid envelope but no usable text — return empty rather than raw JSON
-            return { text: '', extractedSessionId, envelopeFound: true };
-        } catch {
-            // If JSON parsing fails, treat as no envelope found
-            return { text: '', envelopeFound: false };
         }
+
+        if (!resultEnvelope) return { text: '', resultFound: false };
+
+        const extractedSessionId = resultEnvelope.session_id;
+
+        // Detect API errors — these should not become assistant messages.
+        if (resultEnvelope.is_error || (resultEnvelope.result && API_ERROR_PATTERN.test(resultEnvelope.result))) {
+            return { text: '', extractedSessionId, resultFound: true };
+        }
+
+        // Use the result text if available
+        if (resultEnvelope.result) {
+            return { text: resultEnvelope.result, extractedSessionId, resultFound: true };
+        }
+
+        // When result is empty (e.g. AskUserQuestion denied in --print mode),
+        // reconstruct a text response from the denied tool's input.
+        const denials = resultEnvelope.permission_denials ?? [];
+        const askDenial = denials.find(d => d.tool_name === 'AskUserQuestion');
+        if (askDenial?.tool_input) {
+            const text = this.reconstructFromAskUserQuestion(askDenial.tool_input as AskUserQuestionInput);
+            if (text) return { text, extractedSessionId, resultFound: true };
+        }
+
+        // Generic fallback: extract any text-like field from denied tool inputs
+        if (denials.length > 0) {
+            const text = this.reconstructFromGenericDenial(denials);
+            if (text) return { text, extractedSessionId, resultFound: true };
+        }
+
+        return { text: '', extractedSessionId, resultFound: true };
     }
 
     /**

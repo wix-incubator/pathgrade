@@ -15,9 +15,7 @@ export function extractToolEvents(agentName: AgentName, traceOutput: string, tur
     case 'gemini':
       return extractGenericToolLines(traceOutput, 'gemini', turnNumber);
     case 'claude':
-      // Claude's --output-format json envelope does not contain tool traces.
-      // Unsupported in MVP. Return empty.
-      return [];
+      return extractClaudeStreamJsonEvents(traceOutput, turnNumber);
     default:
       return [];
   }
@@ -65,6 +63,17 @@ const TOOL_NAME_MAP: Record<string, ToolAction> = {
   // Web
   web_fetch: 'web_fetch',
   fetch: 'web_fetch',
+  WebFetch: 'web_fetch',
+
+  // Claude Code tool names (PascalCase)
+  Read: 'read_file',
+  Write: 'write_file',
+  Edit: 'edit_file',
+  Bash: 'run_shell',
+  Grep: 'search_code',
+  Glob: 'list_files',
+  Agent: 'unknown',
+  NotebookEdit: 'edit_file',
 };
 
 /**
@@ -114,13 +123,65 @@ function extractGenericToolLines(
   return events;
 }
 
+/**
+ * Parse Claude's --output-format stream-json --verbose NDJSON output.
+ * Each line is a JSON object. Tool calls appear in `assistant` messages
+ * as content blocks with `type: "tool_use"`.
+ */
+function extractClaudeStreamJsonEvents(
+  traceOutput: string,
+  turnNumber?: number,
+): ToolEvent[] {
+  const events: ToolEvent[] = [];
+
+  for (const line of traceOutput.split('\n')) {
+    if (!line.trim()) continue;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (parsed.type !== 'assistant') continue;
+
+    const message = parsed.message as { content?: Array<Record<string, unknown>> } | undefined;
+    const content = message?.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const block of content) {
+      if (block.type !== 'tool_use') continue;
+
+      const providerToolName = String(block.name || 'unknown');
+      const args = (block.input as Record<string, unknown>) || undefined;
+      const action = TOOL_NAME_MAP[providerToolName] ?? 'unknown';
+      const summary = buildSummary(action, providerToolName, args);
+      const rawSnippet = JSON.stringify(block).slice(0, 200);
+
+      events.push({
+        action,
+        provider: 'claude',
+        providerToolName,
+        turnNumber,
+        arguments: args,
+        summary,
+        confidence: 'high',
+        rawSnippet,
+      });
+    }
+  }
+
+  return events;
+}
+
 function buildSummary(action: ToolAction, toolName: string, args?: Record<string, unknown>): string {
   if (!args) return `${action} via ${toolName}`;
 
   const cmd = args.cmd ?? args.command;
   if (cmd && typeof cmd === 'string') return cmd.slice(0, 100);
 
-  const filePath = args.path ?? args.file;
+  const filePath = args.path ?? args.file ?? args.file_path;
   if (filePath && typeof filePath === 'string') return `${action} ${filePath}`;
 
   const pattern = args.pattern ?? args.query;

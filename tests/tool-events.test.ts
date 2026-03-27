@@ -32,8 +32,53 @@ describe('extractToolEvents', () => {
     expect(extractToolEvents('codex', 'plain assistant text')).toEqual([]);
   });
 
-  it('returns empty array for unsupported agent (claude MVP)', () => {
-    expect(extractToolEvents('claude', 'any trace text')).toEqual([]);
+  it('extracts tool events from Claude stream-json NDJSON output', () => {
+    const trace = [
+      '{"type":"system","subtype":"init","session_id":"sess-123"}',
+      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/app.ts"}}]}}',
+      '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"file contents"}]}}',
+      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/app.ts","old_string":"a","new_string":"b"}}]}}',
+      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}',
+      '{"type":"result","result":"Done fixing the bug.","session_id":"sess-123"}',
+    ].join('\n');
+    const events = extractToolEvents('claude', trace);
+    expect(events).toEqual([
+      expect.objectContaining({ action: 'read_file', providerToolName: 'Read', provider: 'claude' }),
+      expect.objectContaining({ action: 'edit_file', providerToolName: 'Edit', provider: 'claude' }),
+      expect.objectContaining({ action: 'run_shell', providerToolName: 'Bash', provider: 'claude' }),
+    ]);
+  });
+
+  it('extracts Claude tool arguments correctly', () => {
+    const trace = '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}';
+    const events = extractToolEvents('claude', trace);
+    expect(events[0].arguments).toEqual({ command: 'npm test' });
+    expect(events[0].summary).toBe('npm test');
+  });
+
+  it('returns empty array for Claude output with no tool_use blocks', () => {
+    const trace = [
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello!"}]}}',
+      '{"type":"result","result":"Hello!","session_id":"sess-123"}',
+    ].join('\n');
+    expect(extractToolEvents('claude', trace)).toEqual([]);
+  });
+
+  it('handles Claude stream-json with multiple tool_use blocks in one message', () => {
+    const trace = JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', name: 'Read', input: { file_path: 'a.ts' } },
+          { type: 'text', text: 'Reading files...' },
+          { type: 'tool_use', name: 'Read', input: { file_path: 'b.ts' } },
+        ],
+      },
+    });
+    const events = extractToolEvents('claude', trace);
+    expect(events).toHaveLength(2);
+    expect(events[0].arguments).toEqual({ file_path: 'a.ts' });
+    expect(events[1].arguments).toEqual({ file_path: 'b.ts' });
   });
 
   it('caps rawSnippet at 200 characters', () => {

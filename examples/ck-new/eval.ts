@@ -11,12 +11,12 @@ export default defineEval({
   },
 
   tasks: [
-    // ── Tool-aware bug fix (Codex) ────────────────────────────
+    // ── Tool-aware bug fix ──────────────────────────────────────
     {
       name: 'tool-aware-fix',
       type: 'instruction',
       instruction: 'Read app.js, find the bug in the add function, and fix it so add(2,3) returns 5.',
-      agent: 'codex',
+      agent: 'claude',
       workspace: [
         { src: 'fixtures/buggy-app.js', dest: 'app.js' },
         { src: 'fixtures/solve-fix.sh', dest: 'solve-fix.sh' },
