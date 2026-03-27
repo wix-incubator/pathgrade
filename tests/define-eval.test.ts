@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { defineEval } from '../src/core/define-eval';
+import { deterministicGrader } from '../src/core/grader-factories';
 
 describe('defineEval', () => {
   it('returns a valid EvalConfig with minimal input', () => {
@@ -9,7 +10,7 @@ describe('defineEval', () => {
           name: 'test-task',
           type: 'instruction',
           instruction: 'do something',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
         },
       ],
     });
@@ -43,7 +44,7 @@ describe('defineEval', () => {
           instruction: 'do everything',
           workspace: [{ src: 'fixtures/app.js', dest: 'app.js' }],
           graders: [
-            { type: 'deterministic', run: 'echo ok', weight: 0.7 },
+            deterministicGrader({ weight: 0.7, execute: async () => ({ score: 1 }) }),
             { type: 'llm_rubric', rubric: 'check quality', weight: 0.3 },
           ],
           solution: 'solutions/solve.sh',
@@ -72,7 +73,7 @@ describe('defineEval', () => {
   it('throws when task is missing name', () => {
     expect(() =>
       defineEval({
-        tasks: [{ name: '', type: 'instruction', instruction: 'x', graders: [{ type: 'deterministic', run: 'x' }] }],
+        tasks: [{ name: '', type: 'instruction', instruction: 'x', graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })] }],
       })
     ).toThrow('missing a "name"');
   });
@@ -80,7 +81,7 @@ describe('defineEval', () => {
   it('throws when task is missing type', () => {
     expect(() =>
       defineEval({
-        tasks: [{ name: 'x', graders: [{ type: 'deterministic', run: 'x' }] } as any],
+        tasks: [{ name: 'x', graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })] } as any],
       })
     ).toThrow('missing a "type"');
   });
@@ -98,7 +99,7 @@ describe('defineEval', () => {
           name: 'test',
           type: 'instruction',
           instruction: 'do it',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
         },
       ],
     });
@@ -114,7 +115,7 @@ describe('defineEval', () => {
           name: 'test',
           type: 'instruction',
           instruction: 'do it',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
         },
       ],
     });
@@ -134,7 +135,7 @@ describe('defineEval', () => {
             completion: { max_turns: 3 },
             replies: [{ content: 'thanks' }],
           },
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
         },
       ],
     });
@@ -160,7 +161,7 @@ describe('defineEval', () => {
               facts: ['The feature is for mobile'],
             },
           },
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
         },
       ],
     });

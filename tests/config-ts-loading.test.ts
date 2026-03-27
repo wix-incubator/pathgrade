@@ -32,7 +32,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
           name: 'ts-task',
           type: 'instruction',
           instruction: 'from typescript',
-          graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+          graders: [{ type: 'deterministic', execute: async () => ({ score: 1, checks: [] }), weight: 1.0 }],
         }],
       };
     `);
@@ -53,7 +53,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
           name: 'legacy-task',
           type: 'instruction',
           instruction: 'from legacy',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [{ type: 'deterministic', execute: async () => ({ score: 1, checks: [] }) }],
         }],
       };
     `);
@@ -71,7 +71,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
           name: 'new-pattern',
           type: 'instruction',
           instruction: 'new wins',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [{ type: 'deterministic', execute: async () => ({ score: 1, checks: [] }) }],
         }],
       };
     `);
@@ -82,7 +82,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
           name: 'legacy',
           type: 'instruction',
           instruction: 'should not load',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [{ type: 'deterministic', execute: async () => ({ score: 1, checks: [] }) }],
         }],
       };
     `);
@@ -108,7 +108,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
           name: 'from-ts',
           type: 'instruction',
           instruction: 'typescript wins',
-          graders: [{ type: 'deterministic', run: 'echo ok' }],
+          graders: [{ type: 'deterministic', execute: async () => ({ score: 1, checks: [] }) }],
         }],
       };
     `);

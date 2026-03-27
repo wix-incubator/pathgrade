@@ -9,8 +9,26 @@ vi.mock('fs-extra', () => ({
   move: vi.fn(),
 }));
 
-vi.mock('./graders', () => ({
-  getGrader: vi.fn(),
+vi.mock('../src/graders', () => ({
+  LLMGrader: vi.fn().mockImplementation(() => ({
+    grade: vi.fn().mockResolvedValue({
+      grader_type: 'llm_rubric',
+      score: 0.8,
+      weight: 1.0,
+      details: 'ok',
+    }),
+  })),
+}));
+
+vi.mock('../src/graders/tool-usage', () => ({
+  ToolUsageGrader: vi.fn().mockImplementation(() => ({
+    grade: vi.fn().mockResolvedValue({
+      grader_type: 'tool_usage',
+      score: 1.0,
+      weight: 1.0,
+      details: 'ok',
+    }),
+  })),
 }));
 
 // Force tests to use API-key path instead of Claude CLI
@@ -22,6 +40,9 @@ vi.mock('../src/utils/cli-llm', () => ({
 import * as fs from 'fs-extra';
 import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
 import { AgentCommandRunner, BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
+import { deterministicGrader, llmRubricGrader } from '../src/core/grader-factories';
+import { LLMGrader } from '../src/graders';
+import { ToolUsageGrader } from '../src/graders/tool-usage';
 
 const mockRuntime = {
   handle: '/trial',
@@ -41,7 +62,7 @@ const mockWriteJSON = vi.mocked(fs.writeJSON);
 function makeEvalOpts(overrides?: Partial<EvalRunOptions>): EvalRunOptions {
   return {
     instruction: 'Do something',
-    graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+    graders: [deterministicGrader({ weight: 1.0, execute: async () => ({ score: 1.0 }) })],
     timeoutSec: 300,
     environment: { cpus: 2, memory_mb: 2048 },
     ...overrides,
@@ -85,18 +106,6 @@ describe('EvalRunner', () => {
     const agent = makeMockAgent();
     const opts = makeEvalOpts();
 
-    const mockGrader = {
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic',
-        score: 1.0,
-        weight: 1.0,
-        details: 'All passed',
-      } as GraderResult),
-    };
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue(mockGrader);
-
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], opts, 1);
 
@@ -124,13 +133,6 @@ describe('EvalRunner', () => {
     });
     const agent = { createSession } as unknown as BaseAgent;
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
-
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
@@ -153,13 +155,6 @@ describe('EvalRunner', () => {
     });
     const createSession = vi.fn().mockResolvedValue({ start, reply });
     const agent = { createSession } as unknown as BaseAgent;
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
@@ -207,13 +202,6 @@ describe('EvalRunner', () => {
       });
     const createSession = vi.fn().mockResolvedValue({ start, reply });
     const agent = { createSession } as unknown as BaseAgent;
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
 
     let capturedBody: any;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, options: any) => {
@@ -306,13 +294,6 @@ describe('EvalRunner', () => {
     const createSession = vi.fn().mockResolvedValue({ start, reply });
     const agent = { createSession } as unknown as BaseAgent;
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
-
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -369,13 +350,6 @@ describe('EvalRunner', () => {
     });
     const createSession = vi.fn().mockResolvedValue({ start, reply });
     const agent = { createSession } as unknown as BaseAgent;
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
@@ -457,13 +431,6 @@ describe('EvalRunner', () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
-
     const runner = new EvalRunner(provider, '/logs');
     await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
@@ -488,13 +455,6 @@ describe('EvalRunner', () => {
       }
     }();
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
-
     const runner = new EvalRunner(provider, '/logs');
     await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1, { SECRET: 'MY_SECRET_VALUE_123' });
 
@@ -509,21 +469,16 @@ describe('EvalRunner', () => {
     const agent = makeMockAgent();
 
     let callCount = 0;
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockImplementation(async () => {
-        callCount++;
-        return {
-          grader_type: 'deterministic',
-          score: callCount % 2 === 0 ? 1.0 : 0.0,
-          weight: 1.0,
-          details: 'test',
-        };
-      }),
-    });
-
     const runner = new EvalRunner(provider);
-    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 2);
+    const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({
+      graders: [deterministicGrader({
+        weight: 1.0,
+        execute: async () => {
+          callCount++;
+          return { score: callCount % 2 === 0 ? 1.0 : 0.0, details: 'test' };
+        },
+      })],
+    }), 2);
 
     expect(report.trials).toHaveLength(2);
     // Trial 1 score=0, Trial 2 score=1.0
@@ -534,13 +489,6 @@ describe('EvalRunner', () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
-
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 3, undefined, 2);
 
@@ -550,13 +498,6 @@ describe('EvalRunner', () => {
   it('does not save report when logDir is not set', async () => {
     const provider = makeMockProvider();
     const agent = makeMockAgent();
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
 
     const runner = new EvalRunner(provider);
     await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
@@ -591,13 +532,6 @@ describe('EvalRunner', () => {
 
     const agent = makeMockAgent();
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
-
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
@@ -626,9 +560,6 @@ describe('EvalRunner', () => {
       }),
     };
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue(new gradersModule.DeterministicGrader());
-
     const runner = new EvalRunner(mockProvider as any);
     const report = await runner.runEval(
       () => makeMockAgent('output'),
@@ -636,7 +567,14 @@ describe('EvalRunner', () => {
       [],
       {
         instruction: 'test',
-        graders: [{ type: 'deterministic', run: 'sleep 999', weight: 1 }],
+        graders: [deterministicGrader({
+          weight: 1,
+          execute: async (ctx) => {
+            // Simulate a slow grader that uses runCommand (which will be aborted)
+            await ctx.runCommand('sleep 999');
+            return { score: 1 };
+          },
+        })],
         timeoutSec: 60,
         graderTimeoutSec: 0.1, // 100ms grader timeout
         environment: { cpus: 1, memory_mb: 512 },
@@ -652,16 +590,11 @@ describe('EvalRunner', () => {
 
   it('preserves passing grader results when a later grader fails', async () => {
     const mockProvider = makeMockProvider();
-    const callCount = { n: 0 };
 
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockImplementation((type: string) => ({
-      grade: async () => {
-        callCount.n++;
-        if (callCount.n === 2) throw new Error('LLM API failed');
-        return { grader_type: type, score: 1.0, weight: 1.0, details: 'passed' };
-      },
-    }));
+    // Make LLMGrader throw to simulate API failure
+    vi.mocked(LLMGrader).mockImplementation(() => ({
+      grade: vi.fn().mockRejectedValue(new Error('LLM API failed')),
+    }) as any);
 
     const runner = new EvalRunner(mockProvider);
     const report = await runner.runEval(
@@ -671,8 +604,8 @@ describe('EvalRunner', () => {
       {
         instruction: 'test',
         graders: [
-          { type: 'deterministic', run: 'test.sh', weight: 1.0 },
-          { type: 'llm_rubric', rubric: 'rubric.md', weight: 1.0 },
+          deterministicGrader({ weight: 1.0, execute: async () => ({ score: 1.0, details: 'passed' }) }),
+          llmRubricGrader({ rubric: 'rubric.md', weight: 1.0 }),
         ],
         timeoutSec: 60,
         environment: { cpus: 1, memory_mb: 512 },
@@ -694,17 +627,10 @@ describe('EvalRunner', () => {
 
     const opts = makeEvalOpts({
       graders: [
-        { type: 'deterministic', run: 'echo 1', weight: 0.5 },
-        { type: 'deterministic', run: 'echo 2', weight: 0.2 },
-        { type: 'llm_rubric', rubric: 'Evaluate quality', weight: 0.3 },
+        deterministicGrader({ weight: 0.5, execute: async () => ({ score: 1.0 }) }),
+        deterministicGrader({ weight: 0.2, execute: async () => ({ score: 1.0 }) }),
+        llmRubricGrader({ rubric: 'Evaluate quality', weight: 0.3 }),
       ],
-    });
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
     });
 
     const runner = new EvalRunner(provider);
@@ -716,15 +642,15 @@ describe('EvalRunner', () => {
   it('calculates weighted reward from multiple graders', async () => {
     const mockProvider = makeMockProvider();
 
-    const graderModule = await import('../src/graders');
-    vi.spyOn(graderModule, 'getGrader').mockImplementation((type: string) => ({
-      grade: async (_ws: any, _provider: any, config: any) => ({
-        grader_type: type,
-        score: type === 'deterministic' ? 1.0 : 0.0,
-        weight: config.weight, // use the actual config weight, not a hardcoded 1.0
+    // Make LLMGrader return score 0
+    vi.mocked(LLMGrader).mockImplementation(() => ({
+      grade: vi.fn().mockResolvedValue({
+        grader_type: 'llm_rubric',
+        score: 0.0,
+        weight: 0.3,
         details: 'test',
       }),
-    }));
+    }) as any);
 
     const runner = new EvalRunner(mockProvider);
     const report = await runner.runEval(
@@ -734,8 +660,8 @@ describe('EvalRunner', () => {
       {
         instruction: 'test',
         graders: [
-          { type: 'deterministic', run: 'test.sh', weight: 0.7 },
-          { type: 'llm_rubric', rubric: 'rubric.md', weight: 0.3 },
+          deterministicGrader({ weight: 0.7, execute: async () => ({ score: 1.0, details: 'test' }) }),
+          llmRubricGrader({ rubric: 'rubric.md', weight: 0.3 }),
         ],
         timeoutSec: 60,
         environment: { cpus: 1, memory_mb: 512 },
@@ -761,13 +687,6 @@ describe('EvalRunner', () => {
     });
     const createSession = vi.fn().mockResolvedValue({ start, reply: vi.fn() });
     const agent = { createSession } as unknown as BaseAgent;
-
-    const gradersModule = await import('../src/graders/index');
-    vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
-      grade: vi.fn().mockResolvedValue({
-        grader_type: 'deterministic', score: 1.0, weight: 1.0, details: 'ok',
-      }),
-    });
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({ agentName: 'codex' }), 1);

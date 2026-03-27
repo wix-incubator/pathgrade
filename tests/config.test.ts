@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateConfig, resolveTask } from '../src/core/config';
 import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig, ResolvedInstructionTask, ResolvedConversationTask, InstructionTaskConfig } from '../src/core/config.types';
+import { deterministicGrader } from '../src/core/grader-factories';
 
 // Mock fs-extra for resolveTask tests only (file reference resolution)
 vi.mock('fs-extra', () => ({
@@ -16,6 +17,9 @@ const mockReadFile = vi.mocked(fs.readFile);
 beforeEach(() => {
   vi.resetAllMocks();
 });
+
+const stubExecute = async () => ({ score: 1 });
+const stubGrader = deterministicGrader({ execute: stubExecute });
 
 describe('validateConfig', () => {
   it('throws when config is not an object', () => {
@@ -34,35 +38,35 @@ describe('validateConfig', () => {
   it('throws when task is missing name', () => {
     expect(() => validateConfig({
       version: '1',
-      tasks: [{ type: 'instruction', instruction: 'do something', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ type: 'instruction', instruction: 'do something', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('missing a "name"');
   });
 
   it('rejects task without type field', () => {
     expect(() => validateConfig({
       version: '1',
-      tasks: [{ name: 'test-task', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', instruction: 'do it', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('missing a "type"');
   });
 
   it('rejects instruction task without instruction field', () => {
     expect(() => validateConfig({
       version: '1',
-      tasks: [{ name: 'test-task', type: 'instruction', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', type: 'instruction', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('missing an "instruction"');
   });
 
   it('rejects conversation task without conversation block', () => {
     expect(() => validateConfig({
       version: '1',
-      tasks: [{ name: 'test-task', type: 'conversation', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', type: 'conversation', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('missing a "conversation"');
   });
 
   it('rejects invalid task type', () => {
     expect(() => validateConfig({
       version: '1',
-      tasks: [{ name: 'test-task', type: 'unknown', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', type: 'unknown', instruction: 'do it', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('missing a "type"');
   });
 
@@ -77,7 +81,7 @@ describe('validateConfig', () => {
           completion: { max_turns: 3 },
           replies: [{ content: 'First reply' }],
         },
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
     const task0 = config.tasks[0] as ConversationTaskConfig;
@@ -102,7 +106,7 @@ describe('validateConfig', () => {
             facts: ['The feature is for Wix Stores', 'You do not know the implementation details'],
           },
         },
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
     const task0 = config.tasks[0] as ConversationTaskConfig;
@@ -123,7 +127,7 @@ describe('validateConfig', () => {
         name: 'test-task',
         type: 'conversation',
         conversation: { opener: 'Start here', completion: { max_turns: 3 } },
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     })).toThrow('must include at least one of "replies" or "persona"');
   });
@@ -143,7 +147,7 @@ describe('validateConfig', () => {
         type: 'instruction',
         instruction: 'do something',
         workspace: [{ foo: 'bar' }],
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     })).toThrow('without src/dest');
   });
@@ -158,7 +162,7 @@ describe('validateConfig', () => {
         type: 'instruction',
         instruction: 'install the app',
         graders: [
-          { type: 'deterministic', run: 'echo ok', weight: 0.7 },
+          { type: 'deterministic', execute: async () => ({ score: 1 }), weight: 0.7 },
           { type: 'llm_rubric', rubric: 'check quality', weight: 0.3 },
         ],
       }],
@@ -179,7 +183,7 @@ describe('validateConfig', () => {
         name: 'test-task',
         type: 'instruction',
         instruction: 'do it',
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
     expect(config.defaults.agent).toBe('gemini');
@@ -193,7 +197,7 @@ describe('validateConfig', () => {
     expect(() => validateConfig({
       version: '1',
       defaults: { provider: 'local' },
-      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('defaults.provider');
   });
 
@@ -201,7 +205,7 @@ describe('validateConfig', () => {
     expect(() => validateConfig({
       version: '1',
       defaults: { docker: { base: 'node:20-slim' } },
-      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('defaults.docker');
   });
 
@@ -214,7 +218,7 @@ describe('validateConfig', () => {
         instruction: 'do it',
         provider: 'docker',
         docker: { base: 'node:20-slim' },
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     })).toThrow('Task "test-task" uses deprecated');
   });
@@ -227,7 +231,7 @@ describe('validateConfig', () => {
         type: 'instruction',
         instruction: 'do it',
         workspace: ['fixtures/app.js'],
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
     expect(config.tasks[0].workspace).toEqual([
@@ -243,7 +247,7 @@ describe('validateConfig', () => {
         type: 'instruction',
         instruction: 'do it',
         workspace: [{ src: 'scripts/run.sh', dest: '/workspace/run.sh', chmod: '+x' }],
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
     expect(config.tasks[0].workspace).toEqual([
@@ -265,7 +269,7 @@ describe('validateConfig', () => {
           },
           replies: [{ content: 'ok' }],
         },
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
     const task = config.tasks[0] as ConversationTaskConfig;
@@ -277,7 +281,7 @@ describe('validateConfig', () => {
     expect(() => validateConfig({
       version: '1',
       defaults: { agent: 'unknown-agent' },
-      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', run: 'echo ok' }] }],
+      tasks: [{ name: 'test-task', type: 'instruction', instruction: 'do it', graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }] }],
     })).toThrow('Invalid agent');
   });
 
@@ -289,7 +293,7 @@ describe('validateConfig', () => {
         type: 'instruction',
         instruction: 'do it',
         agent: 'unknown-agent',
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     })).toThrow('Invalid agent');
   });
@@ -301,7 +305,7 @@ describe('validateConfig', () => {
         name: 'test-task',
         type: 'instruction',
         instruction: 'do it',
-        graders: [{ type: 'deterministic', run: 'echo ok' }],
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
       }],
     });
     expect(config.tasks[0].graders[0].weight).toBe(1.0);
@@ -322,7 +326,7 @@ describe('resolveTask', () => {
       type: 'instruction' as const,
       name: 'test-task',
       instruction: 'line 1\nline 2',
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -341,7 +345,7 @@ describe('resolveTask', () => {
       trials: 10,
       timeout: 600,
       environment: { memory_mb: 4096 },
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -356,7 +360,7 @@ describe('resolveTask', () => {
       type: 'instruction' as const,
       name: 'test-task',
       instruction: 'line 1\nline 2\nline 3',
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base') as ResolvedInstructionTask;
@@ -368,7 +372,7 @@ describe('resolveTask', () => {
       type: 'instruction' as const,
       name: 'test-task',
       instruction: 'instruction.md',
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     mockPathExists.mockResolvedValue(true as any);
@@ -378,19 +382,17 @@ describe('resolveTask', () => {
     expect(resolved.instruction).toBe('File content here');
   });
 
-  it('resolves deterministic grader run from file', async () => {
+  it('preserves deterministic grader execute function through resolution', async () => {
+    const execute = async () => ({ score: 1, details: 'ok' });
     const task: EvalTaskConfig = {
       type: 'instruction' as const,
       name: 'test-task',
       instruction: 'multi\nline instruction',
-      graders: [{ type: 'deterministic', run: 'test.sh', weight: 1.0 }],
+      graders: [deterministicGrader({ execute })],
     };
 
-    mockPathExists.mockResolvedValue(true as any);
-    mockReadFile.mockResolvedValue('#!/bin/bash\necho pass' as any);
-
     const resolved = await resolveTask(task, defaults, '/base');
-    expect(resolved.graders[0].run).toBe('#!/bin/bash\necho pass');
+    expect(resolved.graders[0].execute).toBe(execute);
   });
 
   it('resolves llm_rubric grader rubric from file', async () => {
@@ -414,7 +416,7 @@ describe('resolveTask', () => {
       name: 'test-task',
       instruction: 'multi\nline',
       solution: 'solutions/solve.sh',
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -426,28 +428,11 @@ describe('resolveTask', () => {
       type: 'instruction' as const,
       name: 'test-task',
       instruction: 'multi\nline',
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
     expect(resolved.workspace).toEqual([]);
-  });
-
-  it('preserves grader setup field', async () => {
-    const task: EvalTaskConfig = {
-      type: 'instruction' as const,
-      name: 'test-task',
-      instruction: 'multi\nline',
-      graders: [{
-        type: 'deterministic',
-        setup: 'npm install -g typescript',
-        run: 'echo ok',
-        weight: 1.0,
-      }],
-    };
-
-    const resolved = await resolveTask(task, defaults, '/base');
-    expect(resolved.graders[0].setup).toBe('npm install -g typescript');
   });
 
   it('resolves conversation opener and scripted replies from files', async () => {
@@ -462,7 +447,7 @@ describe('resolveTask', () => {
           { content: 'Inline fallback', when: 'goal' },
         ],
       },
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     mockPathExists.mockImplementation(async (candidate: any) =>
@@ -500,7 +485,7 @@ describe('resolveTask', () => {
           facts: ['The feature is for Wix Stores'],
         },
       },
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     mockPathExists.mockImplementation(async (candidate: any) =>
@@ -532,7 +517,7 @@ describe('resolveTask', () => {
         completion: { max_turns: 4, done_when: 'Agent delivered the brief' },
         replies: [{ content: 'ok' }],
       },
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
@@ -551,7 +536,7 @@ describe('resolveTask', () => {
       name: 'test',
       type: 'instruction' as const,
       instruction: '../../etc/hostname',
-      graders: [{ type: 'deterministic' as const, run: 'echo ok', weight: 1.0 }],
+      graders: [stubGrader],
     };
     const resolved = await resolveTask(task, defaults, '/tmp/some-project');
     // Should return the literal string, not the file contents

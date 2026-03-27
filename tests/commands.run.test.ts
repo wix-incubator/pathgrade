@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as fsExtra from 'fs-extra';
 import { prepareTempTaskDir } from '../src/commands/run';
 import { ResolvedTask } from '../src/core/config.types';
+import { deterministicGrader, llmRubricGrader } from '../src/core/grader-factories';
 
 describe('prepareTempTaskDir path traversal', () => {
   it('rejects workspace src that escapes project directory', async () => {
@@ -71,7 +72,7 @@ describe('prepareTempTaskDir', () => {
       name: 'test-task',
       instruction: 'do it',
       workspace: [],
-      graders: [{ type: 'deterministic', run: 'echo ok', weight: 1.0 }],
+      graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
       agent: 'claude',
       trials: 1,
       timeout: 300,
@@ -80,27 +81,6 @@ describe('prepareTempTaskDir', () => {
     } as ResolvedTask;
   }
 
-  it('stages deterministic grader scripts into .pathgrade/tests/', async () => {
-    const baseDir = makeBaseDir();
-    const tmpDir = makeTmpDir();
-    await fsExtra.ensureDir(baseDir);
-
-    const resolved = makeResolvedTask({
-      graders: [
-        { type: 'deterministic', run: 'echo "hello"', weight: 0.7 },
-        { type: 'deterministic', run: 'node check.js', weight: 0.3 },
-      ],
-    });
-
-    await prepareTempTaskDir(resolved, baseDir, tmpDir);
-
-    const testSh = await fsExtra.readFile(path.join(tmpDir, '.pathgrade', 'tests', 'test.sh'), 'utf-8');
-    expect(testSh).toContain('echo "hello"');
-
-    const test1Sh = await fsExtra.readFile(path.join(tmpDir, '.pathgrade', 'tests', 'test_1.sh'), 'utf-8');
-    expect(test1Sh).toContain('node check.js');
-  });
-
   it('stages LLM rubric files into .pathgrade/prompts/', async () => {
     const baseDir = makeBaseDir();
     const tmpDir = makeTmpDir();
@@ -108,7 +88,7 @@ describe('prepareTempTaskDir', () => {
 
     const resolved = makeResolvedTask({
       graders: [
-        { type: 'llm_rubric', rubric: 'Evaluate code quality.', weight: 0.5 },
+        llmRubricGrader({ rubric: 'Evaluate code quality.', weight: 0.5 }),
       ],
     });
 
@@ -118,52 +98,25 @@ describe('prepareTempTaskDir', () => {
     expect(rubric).toBe('Evaluate code quality.');
   });
 
-  it('does NOT place grader scripts at the workspace root', async () => {
+  it('does NOT place grader artifacts at the workspace root', async () => {
     const baseDir = makeBaseDir();
     const tmpDir = makeTmpDir();
     await fsExtra.ensureDir(baseDir);
 
     const resolved = makeResolvedTask({
       graders: [
-        { type: 'deterministic', run: 'echo ok', weight: 0.5 },
-        { type: 'llm_rubric', rubric: 'rubric text', weight: 0.5 },
+        deterministicGrader({ weight: 0.5, execute: async () => ({ score: 1 }) }),
+        llmRubricGrader({ rubric: 'rubric text', weight: 0.5 }),
       ],
     });
 
     await prepareTempTaskDir(resolved, baseDir, tmpDir);
 
-    // These should NOT exist at the root level
-    expect(await fsExtra.pathExists(path.join(tmpDir, 'tests'))).toBe(false);
+    // Prompts should NOT exist at the root level
     expect(await fsExtra.pathExists(path.join(tmpDir, 'prompts'))).toBe(false);
 
-    // They should be inside .pathgrade/
-    expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade', 'tests', 'test.sh'))).toBe(true);
+    // LLM rubric should be inside .pathgrade/prompts/
     expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade', 'prompts', 'quality.md'))).toBe(true);
-  });
-
-  it('copies referenced grader directories to the workspace root', async () => {
-    const baseDir = makeBaseDir();
-    const tmpDir = makeTmpDir();
-    await fsExtra.ensureDir(baseDir);
-
-    // Create a grader file that the script references
-    await fsExtra.ensureDir(path.join(baseDir, 'graders'));
-    await fsExtra.writeFile(path.join(baseDir, 'graders', 'check-brief.js'), 'console.log("grader")');
-
-    const resolved = makeResolvedTask({
-      graders: [
-        { type: 'deterministic', run: 'node graders/check-brief.js', weight: 1.0 },
-      ],
-    });
-
-    await prepareTempTaskDir(resolved, baseDir, tmpDir);
-
-    // The graders/ directory should be at workspace root (not in .pathgrade/)
-    // because the grader script references it as a relative path
-    const graderFile = path.join(tmpDir, 'graders', 'check-brief.js');
-    expect(await fsExtra.pathExists(graderFile)).toBe(true);
-    const content = await fsExtra.readFile(graderFile, 'utf-8');
-    expect(content).toBe('console.log("grader")');
   });
 
   it('copies workspace files to the tmpDir root', async () => {
@@ -201,7 +154,7 @@ describe('prepareTempTaskDir', () => {
     expect(await fsExtra.pathExists(path.join(tmpDir, 'original-name.js'))).toBe(false);
   });
 
-  it('stages step grader assets into .pathgrade/ namespaced subdirectories', async () => {
+  it('stages step grader LLM rubrics into .pathgrade/prompts/steps/', async () => {
     const baseDir = makeBaseDir();
     const tmpDir = makeTmpDir();
     await fsExtra.ensureDir(baseDir);
@@ -209,7 +162,7 @@ describe('prepareTempTaskDir', () => {
     const resolved: ResolvedTask = {
       ...makeResolvedTask(),
       type: 'conversation' as const,
-      graders: [{ type: 'deterministic', run: 'echo final', weight: 1.0 }],
+      graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
       conversation: {
         opener: 'Hello',
         completion: { max_turns: 4 },
@@ -217,8 +170,8 @@ describe('prepareTempTaskDir', () => {
           {
             after_turn: 1,
             graders: [
-              { type: 'deterministic', run: 'echo step1', weight: 0.5 },
-              { type: 'llm_rubric', rubric: 'Turn 1 rubric', weight: 0.5 },
+              deterministicGrader({ weight: 0.5, execute: async () => ({ score: 1 }) }),
+              llmRubricGrader({ rubric: 'Turn 1 rubric', weight: 0.5 }),
             ],
           },
         ],
@@ -227,12 +180,7 @@ describe('prepareTempTaskDir', () => {
 
     await prepareTempTaskDir(resolved, baseDir, tmpDir);
 
-    // Grader index 0 is deterministic → .sh, index 1 is llm_rubric → .md
-    const stepScript = await fsExtra.readFile(
-      path.join(tmpDir, '.pathgrade', 'tests', 'steps', 'turn_1_0.sh'), 'utf-8'
-    );
-    expect(stepScript).toContain('echo step1');
-
+    // Grader index 1 is llm_rubric → .md in prompts/steps/
     const stepRubric = await fsExtra.readFile(
       path.join(tmpDir, '.pathgrade', 'prompts', 'steps', 'turn_1_1.md'), 'utf-8'
     );
