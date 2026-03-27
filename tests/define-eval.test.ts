@@ -178,18 +178,18 @@ describe('defineEval', () => {
           type: 'instruction',
           instruction: 'fix it',
           graders: [{
-            type: 'tool_usage' as any,
+            type: 'tool_usage',
             weight: 0.5,
             expectations: [
               { action: 'run_shell', min: 1 },
               { action: 'read_file', min: 1, max: 3 },
             ],
-          } as any],
+          }],
         },
       ],
     });
 
     expect(config.tasks[0].graders[0].type).toBe('tool_usage');
-    expect((config.tasks[0].graders[0] as any).expectations).toHaveLength(2);
+    expect(config.tasks[0].graders[0].expectations).toHaveLength(2);
   });
 });

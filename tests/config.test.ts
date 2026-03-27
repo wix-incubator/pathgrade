@@ -578,9 +578,8 @@ describe('tool_usage grader config', () => {
     expect(config.tasks[0].graders[0]).toEqual(
       expect.objectContaining({ type: 'tool_usage' })
     );
-    const grader = config.tasks[0].graders[0] as any;
-    expect(grader.expectations).toHaveLength(1);
-    expect(grader.expectations[0].action).toBe('run_shell');
+    expect(config.tasks[0].graders[0].expectations).toHaveLength(1);
+    expect(config.tasks[0].graders[0].expectations![0].action).toBe('run_shell');
   });
 
   it('resolves tool_usage grader with expectations', async () => {
@@ -589,13 +588,13 @@ describe('tool_usage grader config', () => {
       type: 'instruction',
       instruction: 'fix it',
       graders: [{
-        type: 'tool_usage' as any,
+        type: 'tool_usage',
         weight: 0.5,
         expectations: [
           { action: 'read_file', min: 1 },
           { action: 'edit_file', min: 1 },
         ],
-      } as any],
+      }],
     };
     const defaults: EvalDefaults = {
       agent: 'claude',
@@ -606,6 +605,6 @@ describe('tool_usage grader config', () => {
     };
     const resolved = await resolveTask(task, defaults, '/tmp/test');
     expect(resolved.graders[0].type).toBe('tool_usage');
-    expect((resolved.graders[0] as any).expectations).toHaveLength(2);
+    expect(resolved.graders[0].expectations).toHaveLength(2);
   });
 });

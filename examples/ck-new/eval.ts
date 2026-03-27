@@ -31,13 +31,13 @@ export default defineEval({
           weight: 0.6,
         },
         {
-          type: 'tool_usage' as any,
+          type: 'tool_usage',
           weight: 0.4,
           expectations: [
             { action: 'read_file', min: 1, weight: 0.5 },
             { action: 'edit_file', min: 1, weight: 0.5 },
           ],
-        } as any,
+        },
       ],
     },
 
