@@ -19,18 +19,6 @@ import { getGrader } from './graders';
 import { fmt, Spinner } from './utils/cli';
 import { withAbortTimeout } from './utils/timeout';
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-        }, timeoutMs);
-
-        promise.then(
-            (value) => { clearTimeout(timer); resolve(value); },
-            (error) => { clearTimeout(timer); reject(error); }
-        );
-    });
-}
 
 function calculatePassAtK(n: number, c: number, k: number): number {
     if (n - c < k) return 1.0;
@@ -361,8 +349,8 @@ export class EvalRunner {
             };
 
             const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
-            const result = await withTimeout(
-                grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env),
+            const result = await withAbortTimeout(
+                async (signal) => grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env, signal),
                 graderTimeoutMs,
                 `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
             );

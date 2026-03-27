@@ -10,7 +10,8 @@ export interface Grader {
         config: GraderConfig,
         taskPath: string,
         sessionLog: LogEntry[],
-        env?: Record<string, string>
+        env?: Record<string, string>,
+        signal?: AbortSignal
     ): Promise<GraderResult>;
 }
 
@@ -31,10 +32,11 @@ export class DeterministicGrader implements Grader {
         config: GraderConfig,
         _taskPath: string,
         _sessionLog: LogEntry[],
-        env?: Record<string, string>
+        env?: Record<string, string>,
+        signal?: AbortSignal
     ): Promise<GraderResult> {
         const command = config.command || 'bash .pathgrade/tests/test.sh';
-        const result = await provider.runCommand(workspace, command, env);
+        const result = await provider.runCommand(workspace, command, env, { signal });
 
         // Parse JSON from stdout
         const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
