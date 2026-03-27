@@ -10,6 +10,7 @@ import * as path from 'path';
 import { detectSkills } from '../core/skills';
 import { parseEnvFile } from '../utils/env';
 import { isClaudeCliAvailable, callClaudeCli } from '../utils/cli-llm';
+import { callLLM } from '../utils/llm';
 
 export async function runInit(dir: string, opts: { force?: boolean } = {}) {
   const evalPath = path.join(dir, 'eval.ts');
@@ -225,75 +226,19 @@ async function generateWithLLM(
 ): Promise<string> {
   const prompt = buildInitPrompt(skills);
 
-  let text: string;
-  const fetchOpts = { signal: AbortSignal.timeout(120_000) };
+  const envKeyMap: Record<string, string> = {
+    gemini: 'GEMINI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    openai: 'OPENAI_API_KEY',
+  };
 
-  if (provider === 'anthropic') {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-      }),
-      ...fetchOpts,
-    });
+  const result = await callLLM(prompt, {
+    env: { [envKeyMap[provider]]: apiKey },
+    temperature: 0.3,
+  });
 
-    if (!response.ok) {
-      throw new Error(`Anthropic API returned ${response.status}`);
-    }
-
-    const data = await response.json() as { content?: { text?: string }[] };
-    text = data.content?.[0]?.text ?? '';
-    if (!text) throw new Error('Empty response from Anthropic API');
-  } else if (provider === 'openai') {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-      }),
-      ...fetchOpts,
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API returned ${response.status}`);
-    }
-
-    const data = await response.json() as { choices?: { message?: { content?: string } }[] };
-    text = data.choices?.[0]?.message?.content ?? '';
-    if (!text) throw new Error('Empty response from OpenAI API');
-  } else {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3 },
-      }),
-      ...fetchOpts,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Gemini API returned ${response.status}`);
-    }
-
-    const data = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    if (!text) throw new Error('Empty response from Gemini API');
-  }
+  const text = result.text;
+  if (!text) throw new Error(`Empty response from ${provider} API`);
 
   // Extract TypeScript from response (strip markdown code fences if present)
   const tsContent = text.replace(/```(?:typescript|ts)?\n?/g, '').replace(/```\n?/g, '').trim();
