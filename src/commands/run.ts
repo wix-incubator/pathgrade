@@ -111,105 +111,106 @@ export async function runEvals(dir: string, opts: RunOptions) {
         const tmpTaskDir = path.join(outputDir, 'tmp', resolved.name);
         await prepareTempTaskDir(resolved, dir, tmpTaskDir);
 
-        // Pick agent: CLI flag > task-level override > default
-        // Currently only Claude is supported as the solver agent.
-        const agentName: AgentName = opts.agent || resolved.agent || 'claude';
+        try {
+            // Pick agent: CLI flag > task-level override > default
+            // Currently only Claude is supported as the solver agent.
+            const agentName: AgentName = opts.agent || resolved.agent || 'claude';
 
-        // Host-auth passthrough for CLI-authenticated agents
-        const cliAgents = ['claude', 'codex'];
-        const useHostAuth = cliAgents.includes(agentName) && await isClaudeCliAvailable();
+            // Host-auth passthrough for CLI-authenticated agents
+            const cliAgents = ['claude', 'codex'];
+            const useHostAuth = cliAgents.includes(agentName) && await isClaudeCliAvailable();
 
-        // Build eval options — pass resolved content directly
-        const filteredGraders = opts.grader
-            ? resolved.graders.filter(g => g.type === opts.grader)
-            : resolved.graders;
-        let evalOpts: EvalRunOptions;
-        if (resolved.type === 'conversation') {
-            evalOpts = {
-                instruction: undefined,
-                conversation: resolved.conversation,
-                graders: filteredGraders,
-                timeoutSec: resolved.conversation.completion.timeout ?? resolved.timeout,
-                graderModel: resolved.grader_model,
-                environment: resolved.environment,
-                authMode: useHostAuth ? 'host' : undefined,
-            };
-        } else {
-            evalOpts = {
-                instruction: resolved.instruction,
-                graders: filteredGraders,
-                timeoutSec: resolved.timeout,
-                graderModel: resolved.grader_model,
-                environment: resolved.environment,
-                authMode: useHostAuth ? 'host' : undefined,
-            };
-        }
-
-        const provider = new LocalProvider();
-
-        const runner = new EvalRunner(provider, resultsDir);
-
-        if (opts.validate) {
-            // Validation mode
-            if (!resolved.solution) {
-                console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no solution defined`);
-                continue;
-            }
+            // Build eval options — pass resolved content directly
+            const filteredGraders = opts.grader
+                ? resolved.graders.filter(g => g.type === opts.grader)
+                : resolved.graders;
+            let evalOpts: EvalRunOptions;
             if (resolved.type === 'conversation') {
-                console.error(`  ${fmt.red('error')}  validation mode does not support conversation tasks yet`);
-                allPassed = false;
-                continue;
+                evalOpts = {
+                    instruction: undefined,
+                    conversation: resolved.conversation,
+                    graders: filteredGraders,
+                    timeoutSec: resolved.conversation.completion.timeout ?? resolved.timeout,
+                    graderModel: resolved.grader_model,
+                    environment: resolved.environment,
+                    authMode: useHostAuth ? 'host' : undefined,
+                };
+            } else {
+                evalOpts = {
+                    instruction: resolved.instruction,
+                    graders: filteredGraders,
+                    timeoutSec: resolved.timeout,
+                    graderModel: resolved.grader_model,
+                    environment: resolved.environment,
+                    authMode: useHostAuth ? 'host' : undefined,
+                };
             }
 
-            header(`validate: ${resolved.name}`);
+            const provider = new LocalProvider();
 
-            const solveAgent = {
-                async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
-                    const result = await runCommand(`bash ${path.basename(resolved.solution!)}`);
-                    return result.stdout;
+            const runner = new EvalRunner(provider, resultsDir);
+
+            if (opts.validate) {
+                // Validation mode
+                if (!resolved.solution) {
+                    console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no solution defined`);
+                    continue;
                 }
-            } as BaseAgent;
+                if (resolved.type === 'conversation') {
+                    console.error(`  ${fmt.red('error')}  validation mode does not support conversation tasks yet`);
+                    allPassed = false;
+                    continue;
+                }
 
-            const report = await runner.runEval(() => solveAgent, tmpTaskDir, skillsPaths, evalOpts, 1, env);
-            const passed = report.trials[0].reward >= 0.5;
+                header(`validate: ${resolved.name}`);
 
-            validationResult(passed, report.trials[0].reward, report.trials[0].grader_results.map(gr => ({
-                type: gr.grader_type,
-                score: gr.score,
-                details: gr.details
-            })));
-
-            if (!passed) allPassed = false;
-        } else {
-            // Normal eval mode
-            header(resolved.name);
-            console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('runtime')} local  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
-            console.log();
-
-            try {
-                const report = await runner.runEval(() => createAgent(agentName), tmpTaskDir, skillsPaths, evalOpts, trials, env, parallel);
-                reports.push(report);
-
-                // LLM grader reasoning (condensed)
-                for (const trial of report.trials) {
-                    for (const g of trial.grader_results.filter(g => g.grader_type === 'llm_rubric')) {
-                        console.log(`    ${fmt.dim(`trial ${trial.trial_id} llm_rubric:`)} ${g.details.substring(0, 120)}`);
+                const solveAgent = {
+                    async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
+                        const result = await runCommand(`bash ${path.basename(resolved.solution!)}`);
+                        return result.stdout;
                     }
-                }
+                } as BaseAgent;
 
-                resultsSummary(report.pass_rate, report.pass_at_k, report.pass_pow_k, trials, opts.preset);
+                const report = await runner.runEval(() => solveAgent, tmpTaskDir, skillsPaths, evalOpts, 1, env);
+                const passed = report.trials[0].reward >= 0.5;
 
-                if (report.pass_rate < (opts.threshold ?? config.defaults.threshold)) {
+                validationResult(passed, report.trials[0].reward, report.trials[0].grader_results.map(gr => ({
+                    type: gr.grader_type,
+                    score: gr.score,
+                    details: gr.details
+                })));
+
+                if (!passed) allPassed = false;
+            } else {
+                // Normal eval mode
+                header(resolved.name);
+                console.log(`    ${fmt.dim('agent')} ${agentName}  ${fmt.dim('runtime')} local  ${fmt.dim('trials')} ${trials}${parallel > 1 ? `  ${fmt.dim('parallel')} ${parallel}` : ''}`);
+                console.log();
+
+                try {
+                    const report = await runner.runEval(() => createAgent(agentName), tmpTaskDir, skillsPaths, evalOpts, trials, env, parallel);
+                    reports.push(report);
+
+                    // LLM grader reasoning (condensed)
+                    for (const trial of report.trials) {
+                        for (const g of trial.grader_results.filter(g => g.grader_type === 'llm_rubric')) {
+                            console.log(`    ${fmt.dim(`trial ${trial.trial_id} llm_rubric:`)} ${g.details.substring(0, 120)}`);
+                        }
+                    }
+
+                    resultsSummary(report.pass_rate, report.pass_at_k, report.pass_pow_k, trials, opts.preset);
+
+                    if (report.pass_rate < (opts.threshold ?? config.defaults.threshold)) {
+                        allPassed = false;
+                    }
+                } catch (err) {
+                    console.error(`\n  ${fmt.fail('error')}  evaluation failed: ${err}\n`);
                     allPassed = false;
                 }
-            } catch (err) {
-                console.error(`\n  ${fmt.fail('error')}  evaluation failed: ${err}\n`);
-                allPassed = false;
             }
+        } finally {
+            try { await fs.remove(tmpTaskDir); } catch { /* ignore cleanup errors */ }
         }
-
-        // Cleanup temp dir
-        try { await fs.remove(tmpTaskDir); } catch { /* ignore cleanup errors */ }
     }
 
     // CI mode: exit with appropriate code
