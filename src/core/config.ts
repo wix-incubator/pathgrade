@@ -6,10 +6,8 @@ import * as path from 'path';
 import {
     EvalConfig,
     EvalDefaults,
-    EvalGraderConfig,
     EvalTaskConfig,
     ResolvedTask,
-    ResolvedGrader,
     ConversationConfig,
     ResolvedConversation,
     ResolvedStepGrader,
@@ -18,6 +16,7 @@ import {
     AgentName,
     VALID_AGENTS,
 } from './config.types';
+import type { GraderDescriptor } from './grader-factories';
 import { DEFAULT_CONFIG } from './defaults';
 
 /** Raw (unvalidated) input shape for validateConfig. */
@@ -43,7 +42,7 @@ interface RawTask {
     instruction?: string;
     conversation?: RawConversation;
     workspace?: (string | { src?: string; dest?: string; chmod?: string })[];
-    graders?: RawGrader[];
+    graders?: any[];
     solution?: string;
     agent?: string;
     trials?: number;
@@ -75,17 +74,7 @@ interface RawReply {
 
 interface RawStepGrader {
     after_turn?: number;
-    graders?: RawGrader[];
-}
-
-interface RawGrader {
-    type?: string;
-    setup?: string;
-    run?: string;
-    rubric?: string;
-    model?: string;
-    weight?: number;
-    expectations?: Array<Record<string, unknown>>;
+    graders?: any[];
 }
 
 /**
@@ -244,19 +233,25 @@ export function validateConfig(raw: unknown): EvalConfig {
         const base = {
             name: t.name,
             workspace,
-            graders: (t.graders || []).map((g: RawGrader) => {
-                if (g.setup) {
-                    console.warn(`  warning: grader "setup" field in task "${t.name}" is not yet implemented and will be ignored`);
+            graders: (t.graders || []).map((g: any, gIdx: number) => {
+                if (!g || typeof g !== 'object') {
+                    throw new Error(`Task "${t.name}" graders[${gIdx}] must be an object`);
                 }
-                return {
-                    type: g.type,
-                    setup: g.setup,
-                    run: g.run,
-                    rubric: g.rubric,
-                    model: g.model,
-                    weight: g.weight ?? 1.0,
-                    expectations: g.expectations,
-                };
+                if (!g.type || typeof g.type !== 'string') {
+                    throw new Error(`Task "${t.name}" graders[${gIdx}] must have a "type" field`);
+                }
+                if (g.type === 'deterministic' && typeof g.execute !== 'function') {
+                    throw new Error(`Task "${t.name}" graders[${gIdx}] (deterministic) must have an "execute" function`);
+                }
+                if (g.type === 'llm_rubric' && typeof g.rubric !== 'string') {
+                    throw new Error(`Task "${t.name}" graders[${gIdx}] (llm_rubric) must have a "rubric" string`);
+                }
+                if (g.type === 'tool_usage' && !Array.isArray(g.expectations)) {
+                    throw new Error(`Task "${t.name}" graders[${gIdx}] (tool_usage) must have an "expectations" array`);
+                }
+                // Pass descriptor through untouched — do NOT reconstruct field-by-field
+                // (reconstructing would strip the execute function)
+                return g as GraderDescriptor;
             }),
             solution: t.solution,
             agent: t.agent,
@@ -287,21 +282,22 @@ export function validateConfig(raw: unknown): EvalConfig {
                         facts: t.conversation!.persona.facts,
                         model: t.conversation!.persona.model,
                     } : undefined,
-                    step_graders: t.conversation!.step_graders?.map((sg: RawStepGrader) => ({
+                    step_graders: t.conversation!.step_graders?.map((sg: RawStepGrader, sgIdx: number) => ({
                         after_turn: sg.after_turn,
-                        graders: (sg.graders || []).map((g: RawGrader) => {
-                            if (g.setup) {
-                                console.warn(`  warning: grader "setup" field in task "${t.name}" is not yet implemented and will be ignored`);
+                        graders: (sg.graders || []).map((g: any, gIdx: number) => {
+                            if (!g || typeof g !== 'object') {
+                                throw new Error(`Task "${t.name}" step_graders[${sgIdx}].graders[${gIdx}] must be an object`);
                             }
-                            return {
-                                type: g.type,
-                                setup: g.setup,
-                                run: g.run,
-                                rubric: g.rubric,
-                                model: g.model,
-                                weight: g.weight ?? 1.0,
-                                expectations: g.expectations,
-                            };
+                            if (g.type === 'deterministic' && typeof g.execute !== 'function') {
+                                throw new Error(`Task "${t.name}" step_graders[${sgIdx}].graders[${gIdx}] (deterministic) must have an "execute" function`);
+                            }
+                            if (g.type === 'llm_rubric' && typeof g.rubric !== 'string') {
+                                throw new Error(`Task "${t.name}" step_graders[${sgIdx}].graders[${gIdx}] (llm_rubric) must have a "rubric" string`);
+                            }
+                            if (g.type === 'tool_usage' && !Array.isArray(g.expectations)) {
+                                throw new Error(`Task "${t.name}" step_graders[${sgIdx}].graders[${gIdx}] (tool_usage) must have an "expectations" array`);
+                            }
+                            return g as GraderDescriptor;
                         }),
                     })),
                 },
@@ -317,23 +313,12 @@ export function validateConfig(raw: unknown): EvalConfig {
     return { version, skillPath: config.skillPath, defaults, tasks };
 }
 
-async function resolveGrader(g: EvalGraderConfig, baseDir: string): Promise<ResolvedGrader> {
-    const resolved: ResolvedGrader = {
-        type: g.type,
-        setup: g.setup,
-        model: g.model,
-        weight: g.weight,
-    };
-    if (g.type === 'deterministic' && g.run) {
-        resolved.run = await resolveFileOrInline(g.run, baseDir);
-    }
+async function resolveGrader(g: GraderDescriptor, baseDir: string): Promise<GraderDescriptor> {
     if (g.type === 'llm_rubric' && g.rubric) {
-        resolved.rubric = await resolveFileOrInline(g.rubric, baseDir);
+        return { ...g, rubric: await resolveFileOrInline(g.rubric, baseDir) };
     }
-    if (g.type === 'tool_usage' && g.expectations) {
-        resolved.expectations = g.expectations;
-    }
-    return resolved;
+    // Deterministic and tool_usage descriptors pass through as-is
+    return { ...g };
 }
 
 /**
@@ -363,7 +348,7 @@ export async function resolveTask(
         : undefined;
 
     // Resolve graders
-    const graders: ResolvedGrader[] = await Promise.all(
+    const graders: GraderDescriptor[] = await Promise.all(
         task.graders.map(g => resolveGrader(g, baseDir))
     );
 

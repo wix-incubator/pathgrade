@@ -19,15 +19,8 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
             const base = {
                 name: t.name,
                 workspace: t.workspace,
-                graders: t.graders.map(g => ({
-                    type: g.type,
-                    setup: g.setup,
-                    run: g.run,
-                    rubric: g.rubric,
-                    model: g.model,
-                    weight: g.weight,
-                    expectations: g.expectations,
-                })),
+                // Pass grader descriptors through untouched
+                graders: t.graders,
                 solution: t.solution,
                 agent: t.agent,
                 trials: t.trials,
