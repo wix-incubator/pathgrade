@@ -15,8 +15,9 @@ export interface DetectedSkill {
  *
  * Looks in these locations (in order):
  * 1. SKILL.md in the root directory (the dir itself IS the skill)
- * 2. skills/{name}/SKILL.md (sub-skills)
- * 3. .agents/skills/{name}/SKILL.md (Gemini convention)
+ * 2. skill/SKILL.md (example layout with eval.ts at the root)
+ * 3. skills/{name}/SKILL.md (sub-skills)
+ * 4. .agents/skills/{name}/SKILL.md (Gemini convention)
  */
 export async function detectSkills(dir: string): Promise<DetectedSkill[]> {
     const skills: DetectedSkill[] = [];
@@ -30,7 +31,17 @@ export async function detectSkills(dir: string): Promise<DetectedSkill[]> {
         return skills; // If root is a skill, don't look for sub-skills
     }
 
-    // 2. Check skills/ subdirectory
+    // 2. Check singular skill/ directory used by example layouts
+    const nestedSkillDir = path.join(dir, 'skill');
+    const nestedSkillMd = path.join(nestedSkillDir, 'SKILL.md');
+    if (await fs.pathExists(nestedSkillMd)) {
+        const content = await fs.readFile(nestedSkillMd, 'utf-8');
+        const name = parseSkillName(content) || 'skill';
+        skills.push({ name, path: nestedSkillDir, skillMd: content });
+        return skills;
+    }
+
+    // 3. Check skills/ and agent skill subdirectories
     const searchDirs = ['skills', '.agents/skills', '.claude/skills'];
 
     for (const searchDir of searchDirs) {

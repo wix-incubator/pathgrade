@@ -80,6 +80,7 @@ Content here`;
       const s = String(p);
       if (s === path.join('/project', 'SKILL.md')) return false;
       if (s === path.join('/project', 'skills')) return true;
+      if (s === path.join('/project', 'skill')) return false;
       if (s === path.join('/project', '.agents/skills')) return false;
       if (s === path.join('/project', '.claude/skills')) return false;
       if (s.endsWith('SKILL.md')) return true;
@@ -94,6 +95,26 @@ Content here`;
     const skills = await detectSkills('/project');
     expect(skills).toHaveLength(1);
     expect(skills[0].name).toBe('skill-a');
+  });
+
+  it('detects a singular skill/ directory used by example layouts', async () => {
+    mockPathExists.mockImplementation(async (p: any) => {
+      const s = String(p);
+      if (s === path.join('/project', 'SKILL.md')) return false;
+      if (s === path.join('/project', 'skills')) return false;
+      if (s === path.join('/project', 'skill')) return true;
+      if (s === path.join('/project', '.agents/skills')) return false;
+      if (s === path.join('/project', '.claude/skills')) return false;
+      if (s === path.join('/project', 'skill', 'SKILL.md')) return true;
+      return false;
+    });
+    mockReadFile.mockResolvedValue('# Example Skill\nDescription' as any);
+
+    const skills = await detectSkills('/project');
+
+    expect(skills).toHaveLength(1);
+    expect(skills[0].name).toBe('example-skill');
+    expect(skills[0].path).toBe(path.join('/project', 'skill'));
   });
 
   it('returns empty array when no skills found anywhere', async () => {
