@@ -26,6 +26,7 @@ export interface ConversationTurn {
     commands: TurnCommand[];
     turn_status: 'completed' | 'error' | 'timeout';
     step_grader_results?: GraderResult[];
+    tool_events?: import('./tool-events').ToolEvent[];
 }
 
 export type ConversationCompletionReason =
@@ -73,7 +74,7 @@ export interface GraderCheck {
 }
 
 export interface LogEntry {
-    type: 'agent_start' | 'command' | 'agent_result' | 'grader' | 'reward' | 'user_reply' | 'step_grader';
+    type: 'agent_start' | 'command' | 'agent_result' | 'grader' | 'reward' | 'user_reply' | 'step_grader' | 'tool_event';
     timestamp: string;
     instruction?: string;
     command?: string;
@@ -87,6 +88,7 @@ export interface LogEntry {
     turn_number?: number;
     reply_source?: ConversationReplySource;
     step_grader_key?: string;
+    tool_event?: import('./tool-events').ToolEvent;
 }
 
 export interface TrialResult {
@@ -146,6 +148,7 @@ export interface AgentTurnResult {
     rawOutput: string;
     assistantMessage: string;
     exitCode: number;
+    traceOutput?: string;
 }
 
 export interface AgentSession {
@@ -170,7 +173,7 @@ export abstract class BaseAgent {
         // Default: wrap run() into a session for simple agents
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
             const rawOutput = await this.run(message, getWorkspacePath(runtime), runCommand);
-            return { rawOutput, assistantMessage: rawOutput, exitCode: 0 };
+            return { rawOutput, assistantMessage: rawOutput, exitCode: 0, traceOutput: rawOutput };
         };
         return {
             start: async ({ message }) => runTurn(message),

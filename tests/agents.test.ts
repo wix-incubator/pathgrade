@@ -403,6 +403,59 @@ describe('ClaudeAgent', () => {
   });
 });
 
+describe('traceOutput', () => {
+  it('exposes traceOutput for Codex turns', async () => {
+    const agent = new CodexAgent();
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('codex exec')) {
+        return { stdout: 'tool: exec_command {"cmd":"npm test"}', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'run tests' });
+    expect(result.traceOutput).toBeDefined();
+    expect(result.traceOutput).toContain('tool');
+    expect(result.traceOutput).toBe(result.rawOutput);
+  });
+
+  it('exposes traceOutput for Gemini turns', async () => {
+    const agent = new GeminiAgent();
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('gemini')) {
+        return { stdout: 'tool: read_file {"path":"src/app.ts"}', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'read file' });
+    expect(result.traceOutput).toBeDefined();
+    expect(result.traceOutput).toContain('tool');
+    expect(result.traceOutput).toBe(result.rawOutput);
+  });
+
+  it('sets traceOutput equal to rawOutput for Claude (MVP — no envelope extraction)', async () => {
+    const agent = new ClaudeAgent();
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      if (cmd.includes('claude')) {
+        return {
+          stdout: JSON.stringify({ result: 'hello from claude', session_id: 'sess-1' }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'hello' });
+    expect(result.traceOutput).toBeDefined();
+    expect(result.traceOutput).toBe(result.rawOutput);
+  });
+});
+
 describe('CodexAgent', () => {
   it('seeds isolated Codex auth from OPENAI_API_KEY before exec', async () => {
     const originalKey = process.env.OPENAI_API_KEY;

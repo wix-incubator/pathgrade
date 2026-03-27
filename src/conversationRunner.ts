@@ -40,6 +40,7 @@ interface ConversationRunOptions {
     taskPath: string;
     timeoutSec: number;
     timestamp: () => string;
+    agentName?: import('./core/config.types').AgentName;
 }
 
 export interface ConversationRunResult {

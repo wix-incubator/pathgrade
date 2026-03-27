@@ -52,6 +52,7 @@ export interface EvalRunOptions {
     };
     /** Set by the CLI entry point based on agent type + CLI availability. */
     authMode?: 'host' | 'isolated';
+    agentName?: import('./core/config.types').AgentName;
 }
 
 export class EvalRunner {
@@ -195,6 +196,7 @@ export class EvalRunner {
                     taskPath,
                     timeoutSec: opts.timeoutSec,
                     timestamp: () => this.timestamp(),
+                    agentName: opts.agentName,
                 });
                 sessionLog.push(...conversationResult.sessionLog);
                 commandCount = conversationResult.commandCount;

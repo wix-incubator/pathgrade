@@ -83,6 +83,7 @@ export class ClaudeAgent extends BaseAgent {
             assistantMessage: rawOutput.trim(),
             exitCode: result.exitCode,
             sessionId: parsed.extractedSessionId,
+            traceOutput: rawOutput,
         };
     }
 

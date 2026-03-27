@@ -142,6 +142,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                     graderModel: resolved.grader_model,
                     environment: resolved.environment,
                     authMode: useHostAuth ? 'host' : undefined,
+                    agentName,
                 };
             } else {
                 evalOpts = {
@@ -151,6 +152,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                     graderModel: resolved.grader_model,
                     environment: resolved.environment,
                     authMode: useHostAuth ? 'host' : undefined,
+                    agentName,
                 };
             }
 
