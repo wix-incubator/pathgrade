@@ -229,14 +229,19 @@ export function validateConfig(raw: unknown): EvalConfig {
         const base = {
             name: t.name,
             workspace,
-            graders: (t.graders || []).map((g: RawGrader) => ({
-                type: g.type,
-                setup: g.setup,
-                run: g.run,
-                rubric: g.rubric,
-                model: g.model,
-                weight: g.weight ?? 1.0,
-            })),
+            graders: (t.graders || []).map((g: RawGrader) => {
+                if (g.setup) {
+                    console.warn(`  warning: grader "setup" field in task "${t.name}" is not yet implemented and will be ignored`);
+                }
+                return {
+                    type: g.type,
+                    setup: g.setup,
+                    run: g.run,
+                    rubric: g.rubric,
+                    model: g.model,
+                    weight: g.weight ?? 1.0,
+                };
+            }),
             solution: t.solution,
             agent: t.agent,
             trials: t.trials,
@@ -268,14 +273,19 @@ export function validateConfig(raw: unknown): EvalConfig {
                     } : undefined,
                     step_graders: t.conversation!.step_graders?.map((sg: RawStepGrader) => ({
                         after_turn: sg.after_turn,
-                        graders: (sg.graders || []).map((g: RawGrader) => ({
-                            type: g.type,
-                            setup: g.setup,
-                            run: g.run,
-                            rubric: g.rubric,
-                            model: g.model,
-                            weight: g.weight ?? 1.0,
-                        })),
+                        graders: (sg.graders || []).map((g: RawGrader) => {
+                            if (g.setup) {
+                                console.warn(`  warning: grader "setup" field in task "${t.name}" is not yet implemented and will be ignored`);
+                            }
+                            return {
+                                type: g.type,
+                                setup: g.setup,
+                                run: g.run,
+                                rubric: g.rubric,
+                                model: g.model,
+                                weight: g.weight ?? 1.0,
+                            };
+                        }),
                     })),
                 },
             } as EvalTaskConfig;
