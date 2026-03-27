@@ -21,7 +21,7 @@ vi.mock('../src/utils/cli-llm', () => ({
 
 import * as fs from 'fs-extra';
 import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
-import { BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
+import { AgentCommandRunner, BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
 
 const mockRuntime = {
   handle: '/trial',
@@ -67,9 +67,11 @@ describe('EvalRunner', () => {
   }
 
   function makeMockAgent(output = 'Agent done'): BaseAgent {
-    return {
-      run: vi.fn().mockResolvedValue(output),
-    } as any;
+    return new class extends BaseAgent {
+      override run(_instruction: string, _workspacePath: string, _runCommand: AgentCommandRunner) {
+        return Promise.resolve(output);
+      }
+    }();
   }
 
   it('runs a single trial and returns report', async () => {
@@ -409,9 +411,11 @@ describe('EvalRunner', () => {
 
   it('handles agent errors gracefully', async () => {
     const provider = makeMockProvider();
-    const agent = {
-      run: vi.fn().mockRejectedValue(new Error('Agent crashed')),
-    } as any as BaseAgent;
+    const agent = new class extends BaseAgent {
+      override run(_instruction: string, _workspace: string, _runCommand: AgentCommandRunner) {
+        return Promise.reject(new Error('Agent crashed'));
+      }
+    }();
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
@@ -437,12 +441,12 @@ describe('EvalRunner', () => {
         })
     );
 
-    const agent = {
-      run: vi.fn().mockImplementation(async (_instruction: string, _workspace: string, runCommand: any) => {
+    const agent = new class extends BaseAgent {
+      override async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
         const res = await runCommand('sleep forever');
         return `Result: ${res.stderr}`;
-      }),
-    } as any as BaseAgent;
+      }
+    }();
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts({ timeoutSec: 0.01 }), 1);
@@ -481,12 +485,12 @@ describe('EvalRunner', () => {
       stderr: '',
       exitCode: 0,
     });
-    const agent = {
-      run: vi.fn().mockImplementation(async (instruction: string, workspace: string, runCommand: any) => {
+    const agent = new class extends BaseAgent {
+      override async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
         const res = await runCommand('echo test');
         return `Output: ${res.stdout}`;
-      }),
-    } as any as BaseAgent;
+      }
+    }();
 
     const gradersModule = await import('../src/graders/index');
     vi.spyOn(gradersModule, 'getGrader').mockReturnValue({
@@ -568,9 +572,11 @@ describe('EvalRunner', () => {
     const provider = makeMockProvider();
     (provider as any).diagnose = vi.fn().mockResolvedValue('Diagnostics output');
 
-    const agent = {
-      run: vi.fn().mockRejectedValue(new Error('Failed')),
-    } as any as BaseAgent;
+    const agent = new class extends BaseAgent {
+      override run(_instruction: string, _workspacePath: string, _runCommand: AgentCommandRunner) {
+        return Promise.reject(new Error('Failed'));
+      }
+    }();
 
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);

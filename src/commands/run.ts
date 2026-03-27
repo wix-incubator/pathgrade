@@ -172,12 +172,12 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
                 header(`validate: ${resolved.name}`);
 
-                const solveAgent = {
+                const solveAgent = new class extends BaseAgent {
                     async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
                         const result = await runCommand(`bash ${path.basename(resolved.solution!)}`);
                         return result.stdout;
                     }
-                } as BaseAgent;
+                }();
 
                 const report = await runner.runEval(() => solveAgent, tmpTaskDir, skillsPaths, evalOpts, 1, env);
                 const passed = report.trials[0].reward >= 0.5;
