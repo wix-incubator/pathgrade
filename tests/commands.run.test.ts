@@ -185,6 +185,22 @@ describe('prepareTempTaskDir', () => {
     expect(await fsExtra.pathExists(path.join(tmpDir, 'input.txt'))).toBe(true);
   });
 
+  it('copies workspace files using dest path', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+    await fsExtra.writeFile(path.join(baseDir, 'original-name.js'), 'content');
+
+    const resolved = makeResolvedTask({
+      workspace: [{ src: 'original-name.js', dest: 'renamed.js' }],
+    });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    expect(await fsExtra.pathExists(path.join(tmpDir, 'renamed.js'))).toBe(true);
+    expect(await fsExtra.pathExists(path.join(tmpDir, 'original-name.js'))).toBe(false);
+  });
+
   it('stages step grader assets into .pathgrade/ namespaced subdirectories', async () => {
     const baseDir = makeBaseDir();
     const tmpDir = makeTmpDir();
