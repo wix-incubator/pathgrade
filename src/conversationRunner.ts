@@ -1,8 +1,10 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { ResolvedConversation } from './core/config.types';
-import { getGrader } from './graders';
-import { stepDeterministicCommand, stepLlmRubricPath } from './graders/paths';
+import type { GraderDescriptor, GraderContext } from './core/grader-factories';
+import { LLMGrader } from './graders';
+import { ToolUsageGrader } from './graders/tool-usage';
+import { stepLlmRubricPath } from './graders/paths';
 import { generatePersonaReply } from './persona';
 import {
     BaseAgent,
@@ -181,21 +183,62 @@ async function runStepGraders(
     for (const sg of stepGraders) {
         if (sg.after_turn !== turnNumber) continue;
         for (let graderIdx = 0; graderIdx < sg.graders.length; graderIdx++) {
-            const graderDef = sg.graders[graderIdx];
-            const grader = getGrader(graderDef.type);
+            const descriptor = sg.graders[graderIdx];
 
-            const graderConfig = {
-                type: graderDef.type,
-                command: graderDef.type === 'deterministic' ? stepDeterministicCommand(turnNumber, graderIdx) : undefined,
-                rubric: graderDef.type === 'llm_rubric' ? stepLlmRubricPath(turnNumber, graderIdx) : undefined,
-                model: graderDef.model || opts.graderModel,
-                weight: graderDef.weight,
-            };
+            let result: GraderResult;
 
-            const result = await grader.grade(
-                opts.runtime, opts.provider, graderConfig,
-                opts.taskPath, sessionLog, opts.env
-            );
+            if (descriptor.type === 'deterministic') {
+                const ctx: GraderContext = {
+                    workspacePath: getWorkspacePath(opts.runtime),
+                    runCommand: (cmd: string) => opts.provider.runCommand(opts.runtime, cmd, opts.env),
+                    sessionLog,
+                    env: opts.env ?? {},
+                };
+                try {
+                    const output = await descriptor.execute!(ctx);
+                    const score = Math.max(0, Math.min(1, parseFloat(String(output.score)) || 0));
+                    result = {
+                        grader_type: 'deterministic',
+                        score,
+                        weight: descriptor.weight,
+                        details: output.details || `score=${score.toFixed(2)}`,
+                    };
+                } catch (e: unknown) {
+                    result = {
+                        grader_type: 'deterministic',
+                        score: 0,
+                        weight: descriptor.weight,
+                        details: `execute() threw: ${(e as Error)?.message || String(e)}`,
+                    };
+                }
+            } else if (descriptor.type === 'llm_rubric') {
+                const graderConfig = {
+                    type: 'llm_rubric' as const,
+                    rubric: stepLlmRubricPath(turnNumber, graderIdx),
+                    model: descriptor.model || opts.graderModel,
+                    weight: descriptor.weight,
+                    include_tool_events: descriptor.include_tool_events,
+                };
+                const grader = new LLMGrader();
+                result = await grader.grade(
+                    opts.runtime, opts.provider, graderConfig,
+                    opts.taskPath, sessionLog, opts.env
+                );
+            } else if (descriptor.type === 'tool_usage') {
+                const graderConfig = {
+                    type: 'tool_usage' as const,
+                    weight: descriptor.weight,
+                    expectations: descriptor.expectations,
+                };
+                const grader = new ToolUsageGrader();
+                result = await grader.grade(
+                    opts.runtime, opts.provider, graderConfig,
+                    opts.taskPath, sessionLog
+                );
+            } else {
+                throw new Error(`Unknown step grader type: ${descriptor.type}`);
+            }
+
             results.push(result);
             sessionLog.push({
                 type: 'step_grader',
