@@ -267,7 +267,7 @@ graders: ResolvedGrader[];
 graders: GraderDescriptor[];
 ```
 
-Remove the `VALID_GRADER_TYPES` constant and `GraderType` type — move these to `grader-factories.ts` (they are already used there). Actually, keep `VALID_GRADER_TYPES` and `GraderType` in `config.types.ts` since `grader-factories.ts` imports from it. Just remove the old interfaces.
+Keep `VALID_GRADER_TYPES` and `GraderType` in `config.types.ts` — `grader-factories.ts` imports from it. Just remove the old interfaces (`EvalGraderConfig`, `DefineEvalGraderInput`, `ResolvedGrader`).
 
 - [ ] **Step 2: Update public exports in core/index.ts**
 
@@ -385,7 +385,32 @@ Do the same for the step_graders mapping (around lines 290-305):
                     }),
 ```
 
-Remove the `RawGrader` interface (lines 81-89) — no longer needed.
+Remove the `RawGrader` interface (lines 81-89) — no longer needed. Also change `RawTask.graders` and `RawStepGrader.graders` to `any[]` since they no longer reference `RawGrader`:
+
+```ts
+// In RawTask interface:
+graders?: any[];
+
+// In RawStepGrader interface:
+graders?: any[];
+```
+
+Also update `resolveTask()` (around line 366) — change the `ResolvedGrader[]` annotation:
+
+```ts
+// Before:
+const graders: ResolvedGrader[] = await Promise.all(
+// After:
+const graders: GraderDescriptor[] = await Promise.all(
+```
+
+And update the `resolveTask` import to include `GraderDescriptor`:
+
+```ts
+import type { GraderDescriptor } from './grader-factories';
+```
+
+(This import was already added in Step 1 for validateConfig — just verify it's there.)
 
 - [ ] **Step 2: Simplify resolveGrader in config.ts**
 
@@ -754,7 +779,7 @@ Replace the entire `runGraders` method:
         sessionLog: LogEntry[],
         env?: Record<string, string>,
         signal?: AbortSignal,
-        graderIndex?: number
+        graderIndex: number
     ): Promise<GraderResult> {
         if (descriptor.type === 'deterministic') {
             const ctx: GraderContext = {
@@ -1145,7 +1170,7 @@ git commit -m "test: replace DeterministicGrader tests with factory/descriptor t
 - [ ] **Step 1: Create graders/check-eval-ts.ts**
 
 ```ts
-import { deterministicGrader } from './src/core/grader-factories';
+import { deterministicGrader } from '../src/core/grader-factories';
 import * as fs from 'fs';
 
 export const checkEvalTs = deterministicGrader({
@@ -1191,7 +1216,7 @@ export const checkEvalTs = deterministicGrader({
 - [ ] **Step 2: Create graders/check-grader-authoring.ts for task 2**
 
 ```ts
-import { deterministicGrader } from './src/core/grader-factories';
+import { deterministicGrader } from '../src/core/grader-factories';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -1256,7 +1281,7 @@ Replace `pathgrade.eval.ts`:
 
 ```ts
 import { defineEval } from './src/core/define-eval';
-import { llmRubricGrader } from './src/core/grader-factories';
+import { llmRubricGrader } from '../src/core/grader-factories';
 import { checkEvalTs } from './graders/check-eval-ts';
 import { checkGraderAuthoring } from './graders/check-grader-authoring';
 
@@ -1678,15 +1703,75 @@ Create each file following the pattern shown in Task 10. The logic is ported dir
 
 **`examples/ck-product-strategy/graders/check-strategy.ts`** — Port from `check-strategy.js`. Same 8 section checks, wrapped in `deterministicGrader`.
 
-**`examples/superlint/graders/check-lint.ts`** — Port from inline bash. Check for `.superlint-passed` file and `const greeting = 'hello world';` in `app.js`.
+**`examples/superlint/graders/check-lint.ts`** — Port from inline bash:
 
-**`examples/typescript-example/graders/check-output.ts`** — Port from inline bash. Check `output.txt` exists and contains "hello world".
+```ts
+import { deterministicGrader } from '../../../src/core/grader-factories';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export const checkLint = deterministicGrader({
+    weight: 0.7,
+    execute: async ({ workspacePath }) => {
+        const checks: Array<{ name: string; passed: boolean; message: string }> = [];
+
+        const passedFile = path.join(workspacePath, '.superlint-passed');
+        const hasPassed = fs.existsSync(passedFile);
+        checks.push({
+            name: 'superlint-passed',
+            passed: hasPassed,
+            message: hasPassed ? 'Verification file exists' : 'Verification file missing',
+        });
+
+        const appPath = path.join(workspacePath, 'app.js');
+        let codeFixed = false;
+        if (fs.existsSync(appPath)) {
+            const content = fs.readFileSync(appPath, 'utf-8');
+            codeFixed = content.includes("const greeting = 'hello world';");
+        }
+        checks.push({
+            name: 'code-fixed',
+            passed: codeFixed,
+            message: codeFixed ? 'Code uses const and single quotes' : 'Code not properly fixed',
+        });
+
+        const passed = checks.filter(c => c.passed).length;
+        const score = parseFloat((passed / checks.length).toFixed(2));
+        return { score, details: `${passed}/${checks.length} checks passed`, checks };
+    },
+});
+```
+
+**`examples/typescript-example/graders/check-output.ts`** — Port from inline bash:
+
+```ts
+import { deterministicGrader } from '../../../src/core/grader-factories';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export const checkOutput = deterministicGrader({
+    weight: 1.0,
+    execute: async ({ workspacePath }) => {
+        const filePath = path.join(workspacePath, 'output.txt');
+        if (!fs.existsSync(filePath)) {
+            return { score: 0, details: 'output.txt missing or wrong content' };
+        }
+        const content = fs.readFileSync(filePath, 'utf-8');
+        if (content.includes('hello world')) {
+            return { score: 1, details: 'output.txt contains hello world' };
+        }
+        return { score: 0, details: 'output.txt missing or wrong content' };
+    },
+});
+```
 
 - [ ] **Step 2: Update all 5 eval files to use imports and factories**
 
 Replace `{ type: 'deterministic', run: '...', weight: N }` with imported descriptor.
 Replace `{ type: 'llm_rubric', rubric: '...', weight: N }` with `llmRubricGrader({ ... })`.
 Replace `{ type: 'tool_usage', expectations: [...], weight: N }` with `toolUsageGrader({ ... })`.
+
+**Important:** `tool-usage.eval.ts` and `ck-product-strategy.eval.ts` currently import from `'@wix/pathgrade'` (package name). Switch these to relative imports like the other examples — e.g., `import { defineEval } from '../../src/core/define-eval'` and `import { llmRubricGrader } from '../../src/core/grader-factories'`. This avoids requiring a package build during development.
 
 - [ ] **Step 3: Delete old .js grader files**
 
@@ -1715,7 +1800,78 @@ git commit -m "refactor: migrate all remaining example evals to grader descripto
 
 ---
 
-### Task 12: Final verification
+### Task 12: Update init.ts templates
+
+**Files:**
+- Modify: `src/commands/init.ts`
+
+- [ ] **Step 1: Update buildInitPrompt template**
+
+In `src/commands/init.ts`, update `buildInitPrompt()` (around line 153). Replace the grader format instructions and example template to use factory functions:
+
+Change the instruction text from:
+```
+- Write a deterministic grader (shell script that outputs JSON to stdout)
+```
+to:
+```
+- Write a deterministic grader using deterministicGrader({ execute: ... }) that returns { score, details, checks }
+```
+
+Replace the `IMPORTANT GRADING RULES` section to reference the new API:
+```
+IMPORTANT GRADING RULES:
+- Deterministic graders use deterministicGrader({ execute: async (ctx) => { ... } })
+- The execute function receives ctx with: workspacePath, runCommand, sessionLog, env
+- It must return: { score: 0.0-1.0, details: "...", checks: [{name, passed, message}] }
+- LLM rubric graders use llmRubricGrader({ rubric: '...', weight: N })
+```
+
+Replace the example template at the end of the prompt from old format:
+```ts
+import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
+
+export default defineEval({
+  defaults: { agent: 'gemini', trials: 5, timeout: 300, threshold: 0.8 },
+  tasks: [
+    {
+      name: '<descriptive-task-name>',
+      type: 'instruction',
+      instruction: \`<realistic user instruction>
+Save <expected output> as <exact-filename>.\`,
+      workspace: [],
+      graders: [
+        deterministicGrader({
+          weight: 0.7,
+          execute: async ({ workspacePath }) => {
+            // Check conditions and return result
+            return { score: 0.0, details: '...', checks: [] };
+          },
+        }),
+        llmRubricGrader({
+          rubric: \`<evaluation criteria>\`,
+          weight: 0.3,
+        }),
+      ],
+    },
+  ],
+});
+```
+
+- [ ] **Step 2: Update getInlineTemplate**
+
+Replace the `getInlineTemplate()` function (around line 234) with the same new format — `deterministicGrader({ execute })` and `llmRubricGrader({ rubric })` instead of `{ type: 'deterministic', run: '...' }`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/commands/init.ts
+git commit -m "refactor: update init.ts templates to use grader factory functions"
+```
+
+---
+
+### Task 13: Final verification
 
 - [ ] **Step 1: Full compilation check**
 
