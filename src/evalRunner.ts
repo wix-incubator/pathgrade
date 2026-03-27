@@ -12,11 +12,14 @@ import {
     LogEntry,
     TrialResult,
     createAgentSession,
+    getWorkspacePath,
 } from './types';
-import { ResolvedConversation, ResolvedGrader } from './core/config.types';
+import { ResolvedConversation } from './core/config.types';
+import type { GraderDescriptor, GraderContext } from './core/grader-factories';
 import { runConversationTrial } from './conversationRunner';
-import { getGrader } from './graders';
-import { deterministicCommand, llmRubricPath } from './graders/paths';
+import { LLMGrader } from './graders';
+import { ToolUsageGrader } from './graders/tool-usage';
+import { llmRubricPath } from './graders/paths';
 import { fmt, Spinner } from './utils/cli';
 import { withAbortTimeout } from './utils/timeout';
 import { extractToolEvents } from './tool-event-extractors';
@@ -43,7 +46,7 @@ function estimateTokens(text: string): number {
 export interface EvalRunOptions {
     instruction?: string;
     conversation?: ResolvedConversation;
-    graders: ResolvedGrader[];
+    graders: GraderDescriptor[];
     timeoutSec: number;
     graderModel?: string;
     graderTimeoutSec?: number;
@@ -350,36 +353,23 @@ export class EvalRunner {
         const graderResults: GraderResult[] = [];
 
         for (let gIdx = 0; gIdx < opts.graders.length; gIdx++) {
-            const graderDef = opts.graders[gIdx];
-            const grader = getGrader(graderDef.type);
-            spinner.update(`grading (${graderDef.type}${opts.graders.length > 1 ? ` ${gIdx + 1}/${opts.graders.length}` : ''})`);
-
-            const detIndex = opts.graders.slice(0, gIdx).filter((graderEntry) => graderEntry.type === 'deterministic').length;
-            const llmIndex = opts.graders.slice(0, gIdx).filter((graderEntry) => graderEntry.type === 'llm_rubric').length;
-
-            const graderConfig = {
-                type: graderDef.type,
-                command: graderDef.type === 'deterministic' ? deterministicCommand(detIndex) : undefined,
-                rubric: graderDef.type === 'llm_rubric' ? llmRubricPath(llmIndex) : undefined,
-                expectations: graderDef.type === 'tool_usage' ? graderDef.expectations : undefined,
-                model: graderDef.model || opts.graderModel,
-                weight: graderDef.weight,
-            };
+            const descriptor = opts.graders[gIdx];
+            spinner.update(`grading (${descriptor.type}${opts.graders.length > 1 ? ` ${gIdx + 1}/${opts.graders.length}` : ''})`);
 
             try {
                 const graderTimeoutMs = (opts.graderTimeoutSec ?? 120) * 1000;
                 const result = await withAbortTimeout(
-                    async (signal) => grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env, signal),
+                    async (signal) => this.executeGrader(descriptor, runtime, taskPath, opts, sessionLog, env, signal, gIdx),
                     graderTimeoutMs,
-                    `Grader ${graderDef.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
+                    `Grader ${descriptor.type} (limit: ${opts.graderTimeoutSec ?? 120}s)`
                 );
                 graderResults.push(result);
             } catch (err: unknown) {
                 const errorMsg = (err as Error)?.message || String(err);
                 graderResults.push({
-                    grader_type: graderDef.type,
+                    grader_type: descriptor.type,
                     score: 0,
-                    weight: graderDef.weight,
+                    weight: descriptor.weight,
                     details: `[grader error] ${errorMsg}`,
                 });
             }
@@ -397,6 +387,77 @@ export class EvalRunner {
             : 0;
 
         return { graderResults, reward };
+    }
+
+    private async executeGrader(
+        descriptor: GraderDescriptor,
+        runtime: EnvironmentHandle,
+        taskPath: string,
+        opts: EvalRunOptions,
+        sessionLog: LogEntry[],
+        env?: Record<string, string>,
+        signal?: AbortSignal,
+        graderIndex: number = 0
+    ): Promise<GraderResult> {
+        if (descriptor.type === 'deterministic') {
+            const ctx: GraderContext = {
+                workspacePath: getWorkspacePath(runtime),
+                runCommand: (cmd: string) => this.provider.runCommand(runtime, cmd, env, { signal }),
+                sessionLog,
+                env: env ?? {},
+                signal,
+            };
+            try {
+                const output = await descriptor.execute!(ctx);
+                const score = Math.max(0, Math.min(1, parseFloat(String(output.score)) || 0));
+                const details = output.details || `score=${score.toFixed(2)}`;
+                const checks = output.checks || [];
+                const checkLines = checks.map((c) =>
+                    `  ${c.passed ? '✓' : '✗'} ${c.name}: ${c.message || ''}`
+                );
+                const fullDetails = checkLines.length > 0
+                    ? `${details}\n${checkLines.join('\n')}`
+                    : details;
+                return {
+                    grader_type: 'deterministic',
+                    score,
+                    weight: descriptor.weight,
+                    details: fullDetails,
+                };
+            } catch (e: unknown) {
+                return {
+                    grader_type: 'deterministic',
+                    score: 0,
+                    weight: descriptor.weight,
+                    details: `execute() threw: ${(e as Error)?.message || String(e)}`,
+                };
+            }
+        }
+
+        if (descriptor.type === 'llm_rubric') {
+            const llmIndex = opts.graders.slice(0, graderIndex).filter((g) => g.type === 'llm_rubric').length;
+            const graderConfig = {
+                type: 'llm_rubric' as const,
+                rubric: llmRubricPath(llmIndex),
+                model: descriptor.model || opts.graderModel,
+                weight: descriptor.weight,
+                include_tool_events: descriptor.include_tool_events,
+            };
+            const grader = new LLMGrader();
+            return grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog, env);
+        }
+
+        if (descriptor.type === 'tool_usage') {
+            const graderConfig = {
+                type: 'tool_usage' as const,
+                weight: descriptor.weight,
+                expectations: descriptor.expectations,
+            };
+            const grader = new ToolUsageGrader();
+            return grader.grade(runtime, this.provider, graderConfig, taskPath, sessionLog);
+        }
+
+        throw new Error(`Unknown grader type: ${descriptor.type}`);
     }
 
     private sanitize(report: EvalReport, env?: Record<string, string>): EvalReport {

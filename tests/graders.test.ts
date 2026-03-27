@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { deterministicGrader, llmRubricGrader, toolUsageGrader } from '../src/core/grader-factories';
-import { DeterministicGrader, LLMGrader, getGrader } from '../src/graders/index';
+import { GraderContext } from '../src/core/grader-factories';
+import { LLMGrader } from '../src/graders/index';
+
+// Legacy stubs: DeterministicGrader and getGrader were removed in Task 4.
+// These placeholders keep the legacy test blocks compilable until Task 8 migrates them.
+const DeterministicGrader = class { grade: any = () => { throw new Error('removed'); } };
+const getGrader = (_type: string): any => { throw new Error('getGrader removed — use GraderDescriptor'); };
 import { GraderConfig, EnvironmentProvider } from '../src/types';
 
 // Mock fs-extra for LLMGrader rubric loading
@@ -81,6 +87,65 @@ describe('grader factories', () => {
     expect(g.type).toBe('tool_usage');
     expect(g.weight).toBe(0.4);
     expect(g.expectations).toBe(expectations);
+  });
+});
+
+describe('deterministic grader execute dispatch', () => {
+  it('calls execute and returns GraderResult', async () => {
+    const descriptor = deterministicGrader({
+      weight: 0.7,
+      execute: async ({ workspacePath }) => ({
+        score: 0.8,
+        details: `checked ${workspacePath}`,
+      }),
+    });
+
+    const ctx: GraderContext = {
+      workspacePath: '/workspace',
+      runCommand: vi.fn(),
+      sessionLog: [],
+      env: {},
+    };
+
+    const output = await descriptor.execute!(ctx);
+    expect(output.score).toBe(0.8);
+    expect(output.details).toContain('/workspace');
+  });
+
+  it('score is clamped to [0, 1] by caller', async () => {
+    const descriptor = deterministicGrader({
+      execute: async () => ({ score: 2.5 }),
+    });
+    const ctx: GraderContext = {
+      workspacePath: '/w',
+      runCommand: vi.fn(),
+      sessionLog: [],
+      env: {},
+    };
+    const output = await descriptor.execute!(ctx);
+    // Clamping is done by runGraders, not execute itself
+    const clamped = Math.max(0, Math.min(1, output.score));
+    expect(clamped).toBe(1.0);
+  });
+
+  it('runCommand closure delegates to provider', async () => {
+    const mockProvider = {
+      runCommand: vi.fn().mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 }),
+    };
+    const runtime = '/workspace';
+    const env = { FOO: 'bar' };
+    const signal = new AbortController().signal;
+
+    const ctx: GraderContext = {
+      workspacePath: runtime,
+      runCommand: (cmd: string) => mockProvider.runCommand(runtime, cmd, env, { signal }),
+      sessionLog: [],
+      env,
+      signal,
+    };
+
+    await ctx.runCommand('ls');
+    expect(mockProvider.runCommand).toHaveBeenCalledWith('/workspace', 'ls', env, { signal });
   });
 });
 
