@@ -425,6 +425,9 @@ export class EvalRunner {
         const fileName = `${report.task}_${timestamp}.json`;
         const filePath = path.join(this.logDir, fileName);
 
-        await fs.writeJSON(filePath, report, { spaces: 2 });
+        const tmpPath = filePath + '.tmp';
+
+        await fs.writeJSON(tmpPath, report, { spaces: 2 });
+        await fs.move(tmpPath, filePath, { overwrite: true });
     }
 }
