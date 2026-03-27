@@ -716,4 +716,42 @@ describe('EvalRunner', () => {
 
     expect(report.trials[0].grader_results).toHaveLength(3);
   });
+
+  it('calculates weighted reward from multiple graders', async () => {
+    const mockProvider = makeMockProvider();
+
+    const graderModule = await import('../src/graders');
+    vi.spyOn(graderModule, 'getGrader').mockImplementation((type: string) => ({
+      grade: async (_ws: any, _provider: any, config: any) => ({
+        grader_type: type,
+        score: type === 'deterministic' ? 1.0 : 0.0,
+        weight: config.weight, // use the actual config weight, not a hardcoded 1.0
+        details: 'test',
+      }),
+    }));
+
+    const runner = new EvalRunner(mockProvider);
+    const report = await runner.runEval(
+      () => makeMockAgent('output'),
+      '/tmp/task',
+      [],
+      {
+        instruction: 'test',
+        graders: [
+          { type: 'deterministic', run: 'test.sh', weight: 0.7 },
+          { type: 'llm_rubric', rubric: 'rubric.md', weight: 0.3 },
+        ],
+        timeoutSec: 60,
+        environment: { cpus: 1, memory_mb: 512 },
+      },
+      1,
+      {},
+    );
+
+    // deterministic scored 1.0 (weight 0.7), llm scored 0.0 (weight 0.3)
+    // weighted reward = (1.0 * 0.7 + 0.0 * 0.3) / (0.7 + 0.3) = 0.7
+    expect(report.trials[0].reward).toBeCloseTo(0.7);
+    expect(report.trials[0].grader_results[0].weight).toBe(0.7);
+    expect(report.trials[0].grader_results[1].weight).toBe(0.3);
+  });
 });
