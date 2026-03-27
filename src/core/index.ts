@@ -1,18 +1,17 @@
 export { defineEval } from './define-eval';
 export { loadEvalConfig, resolveTask } from './config';
+export { deterministicGrader, llmRubricGrader, toolUsageGrader } from './grader-factories';
 export type {
     AgentName,
     TaskMode,
     DefineEvalInput,
     DefineEvalTaskInput,
-    DefineEvalGraderInput,
-    DefineEvalConversationInput,
+    GraderDescriptor,
+    GraderContext,
     EvalConfig,
     EvalDefaults,
     EvalTaskConfig,
-    EvalGraderConfig,
     ResolvedTask,
-    ResolvedGrader,
     WorkspaceMapping,
     EnvironmentConfig,
     ConversationConfig,

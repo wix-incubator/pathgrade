@@ -38,10 +38,13 @@ export interface ConversationCompletionConfig {
     timeout?: number;
 }
 
+export type { GraderDescriptor, GraderContext } from './grader-factories';
+import type { GraderDescriptor } from './grader-factories';
+
 /** Graders that run at intermediate conversation steps */
 export interface StepGraderConfig {
     after_turn: number;       // 1-indexed turn number
-    graders: EvalGraderConfig[];
+    graders: GraderDescriptor[];
 }
 
 export interface ConversationConfig {
@@ -59,7 +62,7 @@ export interface ResolvedConversationReply {
 
 export interface ResolvedStepGrader {
     after_turn: number;
-    graders: ResolvedGrader[];
+    graders: GraderDescriptor[];
 }
 
 export interface ResolvedConversation {
@@ -87,16 +90,6 @@ export interface ToolUsageExpectation {
     weight?: number;
 }
 
-/** Grader definition */
-export interface EvalGraderConfig {
-    type: GraderType;
-    setup?: string;     // commands to install grader dependencies (runs during image build)
-    run?: string;       // inline script or file path (deterministic)
-    rubric?: string;    // inline rubric or file path (llm_rubric)
-    model?: string;     // LLM model override (e.g. 'gemini-2.0-flash', 'claude-sonnet-4-20250514')
-    weight: number;
-    expectations?: ToolUsageExpectation[];  // for tool_usage
-}
 
 /** Environment resource limits */
 export interface EnvironmentConfig {
@@ -108,7 +101,7 @@ export interface EnvironmentConfig {
 interface EvalTaskBase {
     name: string;
     workspace?: WorkspaceMapping[];
-    graders: EvalGraderConfig[];
+    graders: GraderDescriptor[];
     solution?: string;
     agent?: AgentName;
     trials?: number;
@@ -154,7 +147,7 @@ export interface EvalConfig {
 interface ResolvedTaskBase {
     name: string;
     workspace: WorkspaceMapping[];
-    graders: ResolvedGrader[];
+    graders: GraderDescriptor[];
     solution?: string;
     agent: AgentName;
     trials: number;
@@ -175,26 +168,6 @@ export interface ResolvedConversationTask extends ResolvedTaskBase {
 
 export type ResolvedTask = ResolvedInstructionTask | ResolvedConversationTask;
 
-export interface ResolvedGrader {
-    type: GraderType;
-    setup?: string;     // resolved setup commands
-    run?: string;       // resolved content for deterministic
-    rubric?: string;    // resolved content for llm_rubric
-    model?: string;     // LLM model override
-    weight: number;
-    expectations?: ToolUsageExpectation[];  // for tool_usage
-}
-
-/** User-friendly input for defineEval() — all defaults are optional */
-export interface DefineEvalGraderInput {
-    type: GraderType;
-    setup?: string;
-    run?: string;
-    rubric?: string;
-    model?: string;
-    weight?: number;    // defaults to 1.0
-    expectations?: ToolUsageExpectation[];  // for tool_usage
-}
 
 export interface DefineEvalConversationInput {
     opener: string;
@@ -208,7 +181,7 @@ export interface DefineEvalConversationInput {
 interface DefineEvalTaskBase {
     name: string;
     workspace?: WorkspaceMapping[];
-    graders: DefineEvalGraderInput[];
+    graders: GraderDescriptor[];
     solution?: string;
     agent?: AgentName;
     trials?: number;
