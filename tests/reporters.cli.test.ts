@@ -129,6 +129,39 @@ describe('runCliPreview', () => {
     expect(allOutput).toContain('Excellent work');
   });
 
+  it('prints tool_usage grader results and tool-event counts', async () => {
+    const report = {
+      task: 'tool-task',
+      pass_rate: 1,
+      pass_at_k: 1,
+      pass_pow_k: 1,
+      skills_used: [],
+      trials: [{
+        trial_id: 1,
+        reward: 1,
+        grader_results: [{ grader_type: 'tool_usage', score: 1, weight: 1, details: '2/2 expectation weight passed' }],
+        duration_ms: 1000,
+        n_commands: 1,
+        input_tokens: 10,
+        output_tokens: 20,
+        session_log: [
+          { type: 'tool_event', timestamp: 't', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+          { type: 'tool_event', timestamp: 't', tool_event: { action: 'read_file', provider: 'codex', providerToolName: 'localGetFileContent', summary: 'read', confidence: 'high', rawSnippet: '...' } },
+        ],
+      }],
+    };
+    await fsExtra.writeJSON(path.join(tempDir, 'tool-test.json'), report);
+
+    const { runCliPreview } = await import('../src/reporters/cli');
+    const logSpy = vi.spyOn(console, 'log');
+
+    await runCliPreview(tempDir);
+
+    const allOutput = logSpy.mock.calls.map(c => String(c[0])).join('\n');
+    expect(allOutput).toContain('tool_usage');
+    expect(allOutput).toContain('2 tool events');
+  });
+
   it('handles reports with missing optional fields', async () => {
     await fsExtra.writeJSON(path.join(tempDir, 'minimal.json'), {
       task: 'minimal-task',

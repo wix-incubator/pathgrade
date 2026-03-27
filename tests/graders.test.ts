@@ -327,6 +327,76 @@ describe('LLMGrader', () => {
     });
   });
 
+  it('includes normalized tool events in llm_rubric transcript when include_tool_events is set', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('rubric' as any);
+
+    let capturedBody: any;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+      capturedBody = JSON.parse(opts.body as string);
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+        }),
+        text: () => Promise.resolve(''),
+      };
+    }));
+
+    const provider = makeProvider('');
+    const sessionLog: import('../src/types').LogEntry[] = [
+      { type: 'agent_start', instruction: 'Fix bug', timestamp: '' },
+      { type: 'agent_result', output: 'Done!', timestamp: '' },
+      { type: 'tool_event', timestamp: '', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+      { type: 'tool_event', timestamp: '', tool_event: { action: 'read_file', provider: 'codex', providerToolName: 'localGetFileContent', summary: 'read src/app.ts', confidence: 'high', rawSnippet: '...' } },
+    ];
+
+    const config: import('../src/types').GraderConfig = {
+      type: 'llm_rubric',
+      rubric: 'rubric.md',
+      weight: 1.0,
+      include_tool_events: true,
+    } as any;
+
+    const env = { GEMINI_API_KEY: 'test-key' };
+    await grader.grade('/workspace', provider, config, '/task', sessionLog, env);
+
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).toContain('Tool Events');
+    expect(prompt).toContain('run_shell via exec_command');
+    expect(prompt).toContain('read_file via localGetFileContent');
+  });
+
+  it('omits tool events from llm_rubric transcript when include_tool_events is not set', async () => {
+    mockPathExists.mockResolvedValue(true as any);
+    mockReadFile.mockResolvedValue('rubric' as any);
+
+    let capturedBody: any;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
+      capturedBody = JSON.parse(opts.body as string);
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+        }),
+        text: () => Promise.resolve(''),
+      };
+    }));
+
+    const provider = makeProvider('');
+    const sessionLog: import('../src/types').LogEntry[] = [
+      { type: 'agent_start', instruction: 'Fix bug', timestamp: '' },
+      { type: 'agent_result', output: 'Done!', timestamp: '' },
+      { type: 'tool_event', timestamp: '', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
+    ];
+
+    const env = { GEMINI_API_KEY: 'test-key' };
+    await grader.grade('/workspace', provider, baseConfig, '/task', sessionLog, env);
+
+    const prompt = capturedBody.contents[0].parts[0].text;
+    expect(prompt).not.toContain('Tool Events');
+  });
+
   it('builds transcript with instruction, commands, agent output, and prior graders', async () => {
     mockPathExists.mockResolvedValue(true as any);
     mockReadFile.mockResolvedValue('rubric' as any);

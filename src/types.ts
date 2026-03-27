@@ -45,6 +45,7 @@ export interface GraderConfig {
     model?: string;           // for llm_rubric: LLM model override
     weight: number;
     expectations?: import('./core/config.types').ToolUsageExpectation[];  // for tool_usage
+    include_tool_events?: boolean;  // for llm_rubric: opt-in to include tool events in transcript
 }
 
 export interface GraderResult {

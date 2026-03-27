@@ -171,6 +171,21 @@ export class LLMGrader implements Grader {
             }
         }
 
+        // Include normalized tool events when opted in
+        if (config.include_tool_events) {
+            const toolEvents = sessionLog
+                .filter((entry) => entry.type === 'tool_event' && entry.tool_event)
+                .map((entry) => entry.tool_event!);
+
+            if (toolEvents.length > 0) {
+                const lines = toolEvents.map((event) => {
+                    const turn = event.turnNumber ? `turn ${event.turnNumber}` : 'instruction';
+                    return `- ${turn}: ${event.action} via ${event.providerToolName} (${event.provider})`;
+                });
+                sections.push(`## Tool Events\n${lines.join('\n')}`);
+            }
+        }
+
         // Include results from any prior graders (e.g., deterministic tests)
         const priorGraders = sessionLog
             .filter(e => e.type === 'grader' && e.grader_result)

@@ -893,6 +893,10 @@
             + (e.value?.toFixed(2) || '0.00') + '</span>'
             + (e.output ? '<div class="grader-details" style="margin-top:0.25rem">' + esc(e.output) + '</div>' : '');
           break;
+        case 'tool_event':
+          body = '<span class="badge badge-type">' + esc(e.tool_event?.action || 'unknown') + '</span> '
+            + '<span class="grader-details">' + esc(e.tool_event?.summary || '') + '</span>';
+          break;
       }
       return '<div class="log-entry ' + e.type + '">'
         + '<span class="log-label">' + e.type + '</span>'

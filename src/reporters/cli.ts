@@ -65,11 +65,14 @@ export async function runCliPreview(resultsDir: string) {
                 return `${fmt.dim(g.grader_type)} ${colored}`;
             }).join('  ');
 
+            const toolEvents = (trial.session_log || []).filter((entry: any) => entry.type === 'tool_event');
+            const toolSuffix = toolEvents.length ? `  ${fmt.dim(toolEvents.length + ' tool events')}` : '';
+
             const convSuffix = trial.conversation
                 ? `  ${fmt.dim(`${trial.conversation.total_turns} turns`)}  ${fmt.dim(trial.conversation.completion_reason)}`
                 : '';
 
-            console.log(`    ${fmt.dim(`${trial.trial_id}`.padEnd(4))} ${trialStatus}  ${reward}  ${fmt.dim(dur.padEnd(7))} ${fmt.dim(cmds.padEnd(7))} ${graders}${convSuffix}`);
+            console.log(`    ${fmt.dim(`${trial.trial_id}`.padEnd(4))} ${trialStatus}  ${reward}  ${fmt.dim(dur.padEnd(7))} ${fmt.dim(cmds.padEnd(7))} ${graders}${convSuffix}${toolSuffix}`);
         }
         console.log();
 
