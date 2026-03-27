@@ -23,7 +23,10 @@ export async function runBrowserPreview(resultsDir: string, port: number = 3847)
         } else if (url.pathname === '/api/report') {
             const file = url.searchParams.get('file');
             if (!file) { res.writeHead(400); res.end('Missing file param'); return; }
-            const filePath = path.join(resolved, file);
+            const filePath = path.resolve(resolved, file);
+            if (!filePath.startsWith(resolved + path.sep) && filePath !== resolved) {
+                res.writeHead(403); res.end('Forbidden'); return;
+            }
             if (await fs.pathExists(filePath)) {
                 const report = await fs.readJSON(filePath);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
