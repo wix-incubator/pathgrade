@@ -162,14 +162,14 @@ Given the following skill definition(s), generate an eval.ts file that defines 1
 For each task:
 - Write a realistic instruction (what a user would ask the agent to do)
 - Define workspace files if needed (fixture files the agent works on)
-- Write a deterministic grader (shell script that outputs JSON to stdout)
+- Write a deterministic grader using deterministicGrader({ execute: ... }) that returns { score, details, checks }
 - Write an LLM rubric (criteria for the LLM judge)
 
 IMPORTANT GRADING RULES:
-- Deterministic graders MUST output JSON to stdout: {"score": 0.0-1.0, "details": "...", "checks": [{name, passed, message}]}
-- Do NOT use exit codes for scoring. Exit code is ignored — only stdout JSON matters.
-- Use awk for floating point arithmetic (bc is not available in node:20-slim).
-- The "checks" array is optional but recommended for per-check breakdown.
+- Deterministic graders use deterministicGrader({ execute: async (ctx) => { ... } })
+- The execute function receives ctx with: workspacePath, runCommand, sessionLog, env
+- It must return: { score: 0.0-1.0, details: "...", checks: [{name, passed, message}] }
+- LLM rubric graders use llmRubricGrader({ rubric: '...', weight: N })
 - For workspace files, only reference files that exist in the skill directory or that the agent will create.
 
 CRITICAL — FILENAME CONSISTENCY:
@@ -182,7 +182,7 @@ ${skillSummaries}
 
 Respond with ONLY the eval.ts file content. Start with the import statement. Use this format:
 
-import { defineEval } from '@wix/pathgrade';
+import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
 
 export default defineEval({
   defaults: { agent: 'gemini', trials: 5, timeout: 300, threshold: 0.8 },
@@ -192,23 +192,19 @@ export default defineEval({
       type: 'instruction',
       instruction: \`<realistic user instruction>
 Save <expected output> as <exact-filename>.\`,
-      workspace: [
-        // Files to copy into the agent's workspace (optional).
-        // { src: 'fixtures/app.js', dest: 'app.js' },
-      ],
+      workspace: [],
       graders: [
-        {
-          type: 'deterministic',
-          run: \`# Check conditions and output JSON
-...
-echo '{"score": ..., "details": "...", "checks": [...]}'\`,
+        deterministicGrader({
           weight: 0.7,
-        },
-        {
-          type: 'llm_rubric',
+          execute: async ({ workspacePath }) => {
+            // Check conditions and return result
+            return { score: 0.0, details: '...', checks: [] };
+          },
+        }),
+        llmRubricGrader({
           rubric: \`<evaluation criteria>\`,
           weight: 0.3,
-        },
+        }),
       ],
     },
   ],
@@ -232,7 +228,7 @@ async function generateWithLLM(
 }
 
 function getInlineTemplate(): string {
-  return `import { defineEval } from '@wix/pathgrade';
+  return `import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
 
 export default defineEval({
   defaults: {
@@ -250,22 +246,21 @@ export default defineEval({
 
       // workspace: [
       //   { src: 'fixtures/broken-file.js', dest: 'app.js' },
-      //   { src: 'bin/my-tool', dest: '/usr/local/bin/my-tool', chmod: '+x' },
       // ],
 
       graders: [
-        {
-          type: 'deterministic',
-          // Grader must output JSON to stdout. See: docs/grader-authoring.md
-          // Contract: { "score": 0.0-1.0, "details": "...", "checks": [{name, passed, message}] }
-          run: \`echo '{"score": 0.0, "details": "TODO: implement grader"}'\`,
+        deterministicGrader({
           weight: 0.7,
-        },
-        {
-          type: 'llm_rubric',
+          // Grader execute function receives { workspacePath, runCommand, sessionLog, env }
+          // Must return: { score: 0.0-1.0, details: "...", checks: [{name, passed, message}] }
+          execute: async ({ workspacePath }) => {
+            return { score: 0.0, details: 'TODO: implement grader', checks: [] };
+          },
+        }),
+        llmRubricGrader({
           rubric: \`TODO: Write evaluation criteria.\`,
           weight: 0.3,
-        },
+        }),
       ],
 
       // Optional: reference solution for --validate
