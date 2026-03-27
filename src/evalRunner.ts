@@ -1,5 +1,6 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import { shutdown } from './utils/shutdown';
 import {
     AgentCommandRunner,
     BaseAgent,
@@ -179,6 +180,9 @@ export class EvalRunner {
 
         const spinner = new Spinner(`${index + 1}/${total}`, 'setting up environment');
         const runtime = await this.provider.setup(taskPath, skillsPaths, opts, env);
+        const cleanupId = shutdown.register(async () => {
+            try { await this.provider.cleanup(runtime); } catch {}
+        });
 
         try {
             let inputText = '';
@@ -321,6 +325,7 @@ export class EvalRunner {
                 session_log: sessionLog,
             };
         } finally {
+            shutdown.unregister(cleanupId);
             await this.provider.cleanup(runtime);
         }
     }
