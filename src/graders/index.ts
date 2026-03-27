@@ -2,7 +2,6 @@ import { GraderConfig, GraderResult, EnvironmentProvider, EnvironmentHandle, Log
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { callLLM } from '../utils/llm';
-import { ToolUsageGrader } from './tool-usage';
 
 export interface Grader {
     grade(
@@ -14,71 +13,6 @@ export interface Grader {
         env?: Record<string, string>,
         signal?: AbortSignal
     ): Promise<GraderResult>;
-}
-
-/**
- * Runs a command and parses structured JSON from stdout.
- *
- * The grader script MUST output JSON to stdout:
- *   { "score": 0.0-1.0, "details": "...", "checks": [...] }
- *
- * - score: float between 0.0 and 1.0
- * - details: human-readable summary
- * - checks: optional array of { name, passed, message } for per-check breakdown
- */
-export class DeterministicGrader implements Grader {
-    async grade(
-        workspace: EnvironmentHandle,
-        provider: EnvironmentProvider,
-        config: GraderConfig,
-        _taskPath: string,
-        _sessionLog: LogEntry[],
-        env?: Record<string, string>,
-        signal?: AbortSignal
-    ): Promise<GraderResult> {
-        const command = config.command || 'bash .pathgrade/tests/test.sh';
-        const result = await provider.runCommand(workspace, command, env, { signal });
-
-        // Parse JSON from stdout
-        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            return {
-                grader_type: 'deterministic',
-                score: 0,
-                weight: config.weight,
-                details: `Grader did not output JSON. stdout: ${result.stdout.trim() || '(empty)'} stderr: ${result.stderr.trim() || '(empty)'}`
-            };
-        }
-
-        try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            const score = Math.max(0, Math.min(1, parseFloat(parsed.score) || 0));
-            const details = parsed.details || `score=${score.toFixed(2)}`;
-            const checks = parsed.checks || [];
-
-            // Build rich details string with per-check breakdown
-            const checkLines = checks.map((c: { passed?: boolean; name?: string; message?: string }) =>
-                `  ${c.passed ? '✓' : '✗'} ${c.name}: ${c.message || ''}`
-            );
-            const fullDetails = checkLines.length > 0
-                ? `${details}\n${checkLines.join('\n')}`
-                : details;
-
-            return {
-                grader_type: 'deterministic',
-                score,
-                weight: config.weight,
-                details: fullDetails
-            };
-        } catch (e) {
-            return {
-                grader_type: 'deterministic',
-                score: 0,
-                weight: config.weight,
-                details: `Failed to parse grader JSON: ${jsonMatch[0].substring(0, 200)}`
-            };
-        }
-    }
 }
 
 /**
@@ -268,15 +202,5 @@ Respond with ONLY a JSON object: {"score": <number>, "reasoning": "<brief explan
             }
         }
         return { grader_type: 'llm_rubric', score: 0, weight: config.weight, details: `Failed to parse LLM response: ${text.substring(0, 200)}` };
-    }
-}
-
-/** Resolve a grader implementation by type */
-export function getGrader(type: string): Grader {
-    switch (type) {
-        case 'deterministic': return new DeterministicGrader();
-        case 'llm_rubric': return new LLMGrader();
-        case 'tool_usage': return new ToolUsageGrader();
-        default: throw new Error(`Unknown grader type: ${type}`);
     }
 }

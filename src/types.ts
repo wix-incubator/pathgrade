@@ -40,8 +40,7 @@ export type ConversationCompletionReason =
 
 export interface GraderConfig {
     type: 'deterministic' | 'llm_rubric' | 'tool_usage';
-    command?: string;         // for deterministic: shell command to execute (e.g. 'bash tests/test.sh')
-    rubric?: string;          // for llm_rubric: file path to rubric (e.g. 'prompts/quality.md')
+    rubric?: string;          // for llm_rubric: file path to rubric
     model?: string;           // for llm_rubric: LLM model override
     weight: number;
     expectations?: import('./core/config.types').ToolUsageExpectation[];  // for tool_usage
