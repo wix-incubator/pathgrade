@@ -1,16 +1,6 @@
-// Angular Modern Syntax Example (Advanced)
-//
-// This example demonstrates advanced grader features:
-// - TypeScript grader with static analysis
-// - Grader setup field for installing dependencies
-// - Multi-check scoring with partial credit (5 checks, each worth 0.2)
-// - Combined deterministic + LLM grading
-//
-// Run:
-//   cd examples/angular-signals
-//   GEMINI_API_KEY=your-key pathgrade --smoke
-
 import { defineEval } from '../../src/core/define-eval';
+import { llmRubricGrader } from '../../src/core/grader-factories';
+import { checkModernApis } from './graders/check-modern-apis';
 
 export default defineEval({
   defaults: {
@@ -44,13 +34,8 @@ Specifically:
         },
       ],
       graders: [
-        {
-          type: 'deterministic',
-          run: 'node graders/check-modern-apis.js',
-          weight: 0.7,
-        },
-        {
-          type: 'llm_rubric',
+        checkModernApis,
+        llmRubricGrader({
           rubric: `Evaluate the agent's migration approach:
 
 Correctness (0-0.4):
@@ -69,7 +54,7 @@ Code Quality (0-0.3):
 - Were unnecessary imports removed?
 - Is the component properly typed (no \`any\`)?`,
           weight: 0.3,
-        },
+        }),
       ],
     },
   ],

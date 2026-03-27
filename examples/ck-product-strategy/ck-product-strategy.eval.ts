@@ -1,4 +1,6 @@
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from '../../src/core/define-eval';
+import { llmRubricGrader } from '../../src/core/grader-factories';
+import { checkStrategy } from './graders/check-strategy';
 
 const WORKSPACE = [
   {
@@ -16,14 +18,7 @@ const WORKSPACE = [
   { src: 'fixtures/annual-plan.md', dest: 'annual-plan.md' },
 ];
 
-const DETERMINISTIC_GRADER = {
-  type: 'deterministic' as const,
-  run: 'node graders/check-strategy.js',
-  weight: 0.5,
-};
-
-const LLM_RUBRIC_GRADER = {
-  type: 'llm_rubric' as const,
+const LLM_RUBRIC = llmRubricGrader({
   rubric: `Evaluate the agent's execution of the ck-product-strategy skill across a multi-turn conversation.
 
 Workflow Compliance (0-0.4):
@@ -48,7 +43,7 @@ Conversation Quality (0-0.2):
 - Did the agent present drafted sections before asking for approval (not just asking questions endlessly)?
 - Was the final document saved to the correct path (artifacts/product/product-strategy-*.md)?`,
   weight: 0.5,
-};
+});
 
 export default defineEval({
   skillPath: 'skill',
@@ -61,7 +56,6 @@ export default defineEval({
   },
 
   tasks: [
-    // ── Scripted: pre-defined replies walk through all strategy steps ──
     {
       name: 'scripted-smart-cart',
       type: 'conversation',
@@ -74,62 +68,24 @@ export default defineEval({
           signal: 'artifacts/product/product-strategy-*.md',
         },
 
-        // NOTE: pathgrade consumes each pattern reply after first match (splice).
-        // Replies that must fire multiple times need duplicate entries.
         replies: [
-          // First reply (no when): provide context and confirm start
           {
             content: `It's about adding AI-powered product recommendations to the Wix Stores
 shopping cart. Store owners want to increase average order value by suggesting
 relevant products at checkout. Let's start from scratch.\n`,
           },
-
-          // KB enrichment fails in eval (no MCP) — may happen at multiple steps
           { content: 'Skip', when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich' },
           { content: 'Skip', when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich' },
           { content: 'Skip', when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich' },
-
-          // Start fresh confirmation
-          {
-            content: 'Start strategy from scratch',
-            when: 'start.*scratch|from scratch|continue.*left off|start.*strategy',
-          },
-
-          // Missing research — proceed with assumptions
-          {
-            content: 'Proceed with assumptions',
-            when: 'missing|proceed.*assumption|how.*proceed|critical.*missing',
-          },
-
-          // Domain gameplan — skip
-          {
-            content: 'No gameplan available, proceed without it',
-            when: 'gameplan|domain.*game',
-          },
-
-          // Annual plan not found (shouldn't happen since it's in workspace, but just in case)
-          {
-            content: 'Proceed without it',
-            when: "annual.*plan.*not found|can't find.*annual|add.*annual.*plan",
-          },
-
-          // Solution direction choice — go with recommendation (may happen twice: choose + confirm)
-          {
-            content: 'Go with your recommended direction',
-            when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]',
-          },
-          {
-            content: 'Go with your recommended direction',
-            when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]',
-          },
-
-          // General confirmation — multiple copies for various confirmation prompts
+          { content: 'Start strategy from scratch', when: 'start.*scratch|from scratch|continue.*left off|start.*strategy' },
+          { content: 'Proceed with assumptions', when: 'missing|proceed.*assumption|how.*proceed|critical.*missing' },
+          { content: 'No gameplan available, proceed without it', when: 'gameplan|domain.*game' },
+          { content: 'Proceed without it', when: "annual.*plan.*not found|can't find.*annual|add.*annual.*plan" },
+          { content: 'Go with your recommended direction', when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]' },
+          { content: 'Go with your recommended direction', when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]' },
           { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
           { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
           { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
-
-          // Section approval — one per section step (TA, Problem, Intents, Solution,
-          // Solution Summary, Why Now+KPIs, plus buffer for extra approval rounds)
           { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
           { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
           { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
@@ -144,10 +100,9 @@ relevant products at checkout. Let's start from scratch.\n`,
       },
 
       workspace: WORKSPACE,
-      graders: [DETERMINISTIC_GRADER, LLM_RUBRIC_GRADER],
+      graders: [checkStrategy, LLM_RUBRIC],
     },
 
-    // ── Persona: LLM-simulated PM responds naturally ──────────────────
     {
       name: 'persona-smart-cart',
       type: 'conversation',
@@ -193,7 +148,7 @@ choose between solution directions, pick the one the agent recommends.\n`,
       },
 
       workspace: WORKSPACE,
-      graders: [DETERMINISTIC_GRADER, LLM_RUBRIC_GRADER],
+      graders: [checkStrategy, LLM_RUBRIC],
     },
   ],
 });
