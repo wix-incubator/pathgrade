@@ -50,7 +50,7 @@ function makeConversation(overrides: Partial<ResolvedConversation> = {}): Resolv
     completion: {
       max_turns: 5,
     },
-    replies: [],
+    reactions: [],
     ...overrides,
   };
 }
@@ -77,9 +77,9 @@ describe('runConversationTrial', () => {
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: maxTurns },
-        replies: [
-          { content: 'Reply 1' },
-          { content: 'Reply 2' },
+        reactions: [
+          { when: '.*', reply: 'Reply 1' },
+          { when: '.*', reply: 'Reply 2' },
         ],
       });
 
@@ -107,7 +107,7 @@ describe('runConversationTrial', () => {
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: 2 },
-        replies: [{ content: 'Keep going' }],
+        reactions: [{ when: '.*', reply: 'Keep going' }],
       });
 
       const result = await runConversationTrial({
@@ -136,7 +136,7 @@ describe('runConversationTrial', () => {
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: 10, done_phrase: 'task complete' },
-        replies: [{ content: 'Continue please.' }],
+        reactions: [{ when: '.*', reply: 'Continue please.' }],
       });
 
       const result = await runConversationTrial({
@@ -215,7 +215,7 @@ describe('runConversationTrial', () => {
       // Only 1 scripted reply — after first turn, no more replies and no persona
       const conversation = makeConversation({
         completion: { max_turns: 10 },
-        replies: [{ content: 'One scripted reply.' }],
+        reactions: [{ when: '.*', reply: 'One scripted reply.', once: true }],
         // no persona
       });
 
@@ -242,7 +242,7 @@ describe('runConversationTrial', () => {
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: 10 },
-        replies: [], // empty — no scripted replies
+        reactions: [],
         // no persona
       });
 
@@ -269,7 +269,7 @@ describe('runConversationTrial', () => {
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: 10 },
-        replies: [{ content: 'Scripted reply text' }],
+        reactions: [{ when: '.*', reply: 'Scripted reply text' }],
       });
 
       const result = await runConversationTrial({
@@ -283,7 +283,7 @@ describe('runConversationTrial', () => {
       });
 
       expect(result.conversation.turns[0].user_message_source).toBe('opener');
-      expect(result.conversation.turns[1].user_message_source).toBe('scripted');
+      expect(result.conversation.turns[1].user_message_source).toBe('reaction');
       expect(result.conversation.turns[1].user_message).toBe('Scripted reply text');
     });
   });
@@ -299,9 +299,9 @@ describe('runConversationTrial', () => {
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: 10, done_phrase: 'task complete' },
-        replies: [
-          { content: 'The budget is $500.', when: 'budget' },
-          { content: 'The fallback reply' },
+        reactions: [
+          { when: 'budget', reply: 'The budget is $500.' },
+          { when: '.*', reply: 'The fallback reply' },
         ],
       });
 
@@ -318,22 +318,22 @@ describe('runConversationTrial', () => {
       // Turn 2 should use the pattern reply (agent asked about budget)
       const turn2 = result.conversation.turns[1];
       expect(turn2.user_message).toBe('The budget is $500.');
-      expect(turn2.user_message_source).toBe('scripted_pattern');
+      expect(turn2.user_message_source).toBe('reaction');
       expect(result.conversation.completion_reason).toBe('done_phrase');
     });
 
-    it('falls back to ordered queue when pattern does not match', async () => {
+    it('reuses the same reaction on multiple matching turns', async () => {
       const responses = [
-        { rawOutput: 'I will start now.', assistantMessage: 'I will start now.', exitCode: 0 },
+        { rawOutput: 'What is the budget?', assistantMessage: 'What is the budget?', exitCode: 0 },
+        { rawOutput: 'What is the budget again?', assistantMessage: 'What is the budget again?', exitCode: 0 },
         { rawOutput: 'Task complete!', assistantMessage: 'Task complete!', exitCode: 0 },
       ];
       const { agent } = makeSessionAgent(responses);
       const provider = makeProvider();
       const conversation = makeConversation({
         completion: { max_turns: 10, done_phrase: 'task complete' },
-        replies: [
-          { content: 'Budget reply.', when: 'budget' },
-          { content: 'Ordered reply.' },
+        reactions: [
+          { when: 'budget', reply: 'The budget is $500.' },
         ],
       });
 
@@ -347,10 +347,72 @@ describe('runConversationTrial', () => {
         timestamp,
       });
 
-      // Turn 2: pattern 'budget' didn't match 'I will start now.', use ordered
-      const turn2 = result.conversation.turns[1];
-      expect(turn2.user_message).toBe('Ordered reply.');
-      expect(turn2.user_message_source).toBe('scripted');
+      // Same reaction fires on turns 2 and 3 (reusable by default)
+      expect(result.conversation.turns[1].user_message).toBe('The budget is $500.');
+      expect(result.conversation.turns[1].user_message_source).toBe('reaction');
+      expect(result.conversation.turns[2].user_message).toBe('The budget is $500.');
+      expect(result.conversation.turns[2].user_message_source).toBe('reaction');
+    });
+
+    it('once:true reactions fire only once then are skipped', async () => {
+      const responses = [
+        { rawOutput: 'What is the budget?', assistantMessage: 'What is the budget?', exitCode: 0 },
+        { rawOutput: 'What is the budget?', assistantMessage: 'What is the budget?', exitCode: 0 },
+      ];
+      const { agent } = makeSessionAgent(responses);
+      const provider = makeProvider();
+      const conversation = makeConversation({
+        completion: { max_turns: 10 },
+        reactions: [
+          { when: 'budget', reply: 'The budget is $500.', once: true },
+        ],
+      });
+
+      const result = await runConversationTrial({
+        agent,
+        conversation,
+        provider,
+        runtime: mockRuntime,
+        taskPath: '/task',
+        timeoutSec: 30,
+        timestamp,
+      });
+
+      // Turn 2: once-reaction fires
+      expect(result.conversation.turns[1].user_message).toBe('The budget is $500.');
+      expect(result.conversation.turns[1].user_message_source).toBe('reaction');
+      // Turn 2 agent asks about budget again, but once-reaction already used → no_replies
+      expect(result.conversation.completion_reason).toBe('no_replies');
+      expect(result.conversation.total_turns).toBe(2);
+    });
+
+    it('returns no_replies when reactions exist but none match agent response', async () => {
+      const responses = [
+        { rawOutput: 'Tell me about the timeline.', assistantMessage: 'Tell me about the timeline.', exitCode: 0 },
+      ];
+      const { agent } = makeSessionAgent(responses);
+      const provider = makeProvider();
+      const conversation = makeConversation({
+        completion: { max_turns: 10 },
+        reactions: [
+          { when: 'budget', reply: 'The budget is $500.' },
+          { when: 'team', reply: 'The team is 5 people.' },
+        ],
+      });
+
+      const result = await runConversationTrial({
+        agent,
+        conversation,
+        provider,
+        runtime: mockRuntime,
+        taskPath: '/task',
+        timeoutSec: 30,
+        timestamp,
+      });
+
+      // Agent said "timeline" which matches neither "budget" nor "team", no persona → no_replies
+      expect(result.conversation.completion_reason).toBe('no_replies');
+      expect(result.conversation.total_turns).toBe(1);
     });
   });
 
@@ -494,7 +556,7 @@ describe('runConversationTrial', () => {
       const conversation = makeConversation({
         opener: 'Opener message',
         completion: { max_turns: 10, done_phrase: 'task complete' },
-        replies: [{ content: 'User reply 2' }],
+        reactions: [{ when: '.*', reply: 'User reply 2' }],
       });
 
       const result = await runConversationTrial({
