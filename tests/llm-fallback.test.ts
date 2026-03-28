@@ -64,6 +64,29 @@ describe('callLLM CLI-first fallback', () => {
         expect(result.provider).toBe('cli');
     });
 
+    it('falls back to API keys when Claude CLI is available but invocation fails', async () => {
+        mockIsAvailable.mockResolvedValue(true);
+        mockCallCli.mockRejectedValue(new Error('Claude CLI exited with code 1'));
+
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                candidates: [{ content: { parts: [{ text: 'gemini fallback' }] } }],
+                usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 5 },
+            }),
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await callLLM('test', {
+            env: { GEMINI_API_KEY: 'gemini-key' },
+        });
+
+        expect(mockCallCli).toHaveBeenCalled();
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(result.provider).toBe('gemini');
+        expect(result.text).toBe('gemini fallback');
+    });
+
     it('skips CLI when opts.model specifies a non-Claude model', async () => {
         mockIsAvailable.mockResolvedValue(true);
         // model: 'gemini-flash' should NOT use CLI — it's not a Claude model

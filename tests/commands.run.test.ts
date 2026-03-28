@@ -154,7 +154,28 @@ describe('prepareTempTaskDir', () => {
     expect(await fsExtra.pathExists(path.join(tmpDir, 'original-name.js'))).toBe(false);
   });
 
-  it('stages step grader LLM rubrics into .pathgrade/prompts/steps/', async () => {
+  it('applies symbolic +x chmod when staging workspace files', async () => {
+    const baseDir = makeBaseDir();
+    const tmpDir = makeTmpDir();
+    await fsExtra.ensureDir(baseDir);
+
+    const scriptPath = path.join(baseDir, 'bin', 'tool.sh');
+    await fsExtra.ensureDir(path.dirname(scriptPath));
+    await fsExtra.writeFile(scriptPath, '#!/bin/sh\necho ok\n');
+    await fsExtra.chmod(scriptPath, 0o644);
+
+    const resolved = makeResolvedTask({
+      workspace: [{ src: 'bin/tool.sh', dest: 'usr/local/bin/tool', chmod: '+x' }],
+    });
+
+    await prepareTempTaskDir(resolved, baseDir, tmpDir);
+
+    const stagedPath = path.join(tmpDir, 'usr', 'local', 'bin', 'tool');
+    const stat = await fsExtra.stat(stagedPath);
+    expect(stat.mode & 0o111).toBe(0o111);
+  });
+
+  it('stages step grader assets into .pathgrade/ namespaced subdirectories', async () => {
     const baseDir = makeBaseDir();
     const tmpDir = makeTmpDir();
     await fsExtra.ensureDir(baseDir);

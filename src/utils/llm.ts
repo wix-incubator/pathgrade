@@ -226,12 +226,21 @@ export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promis
         if (opts.model) cliOpts.model = opts.model;
         if (opts.jsonSchema) cliOpts.jsonSchema = opts.jsonSchema;
 
-        const cliResult = await callClaudeCli(prompt, cliOpts);
-        return {
-            text: cliResult.text,
-            provider: 'cli',
-            model: cliResult.model,
-        };
+        try {
+            const cliResult = await callClaudeCli(prompt, cliOpts);
+            return {
+                text: cliResult.text,
+                provider: 'cli',
+                model: cliResult.model,
+            };
+        } catch (error) {
+            const hasApiFallback = requestedProvider
+                ? !!keys[requestedProvider]
+                : Object.values(keys).some(Boolean);
+            if (!hasApiFallback) {
+                throw error;
+            }
+        }
     }
 
     // Existing API-key path (CI, explicit provider keys)

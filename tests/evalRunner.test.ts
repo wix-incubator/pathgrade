@@ -39,7 +39,7 @@ vi.mock('../src/utils/cli-llm', () => ({
 
 import * as fs from 'fs-extra';
 import { EvalRunner, EvalRunOptions } from '../src/evalRunner';
-import { AgentCommandRunner, BaseAgent, EnvironmentProvider, GraderResult } from '../src/types';
+import { AgentCommandRunner, BaseAgent, EnvironmentProvider } from '../src/types';
 import { deterministicGrader, llmRubricGrader } from '../src/core/grader-factories';
 import { LLMGrader } from '../src/graders';
 import { ToolUsageGrader } from '../src/graders/tool-usage';
@@ -118,6 +118,21 @@ describe('EvalRunner', () => {
     expect(provider.setup).toHaveBeenCalled();
     expect(provider.cleanup).toHaveBeenCalled();
     expect(provider.teardown).toHaveBeenCalled();
+  });
+
+  it('does not fail the eval when provider cleanup throws after a completed trial', async () => {
+    const provider = makeMockProvider();
+    provider.cleanup = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error('directory not empty'), { code: 'ENOTEMPTY' }));
+    const agent = makeMockAgent();
+    const opts = makeEvalOpts();
+
+    const runner = new EvalRunner(provider);
+    const report = await runner.runEval(() => agent, '/task', [], opts, 1);
+
+    expect(report.pass_rate).toBe(1);
+    expect(provider.cleanup).toHaveBeenCalledTimes(1);
   });
 
   it('uses a session-capable agent when available', async () => {

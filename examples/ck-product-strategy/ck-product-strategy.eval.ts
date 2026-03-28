@@ -20,7 +20,8 @@ export default defineEval({
       type: 'conversation',
       conversation: {
         opener:
-          'I want to work on product strategy for our smart cart feature for Wix Stores.\n',
+          'I want to work on product strategy for our smart cart feature for Wix Stores.\n' +
+          'When the strategy is complete, save it to artifacts/product/product-strategy-smart-cart.md.\n',
 
         completion: {
           max_turns: 25,
@@ -42,6 +43,14 @@ relevant products at checkout. Let's start from scratch.\n`,
           { content: 'Proceed without it', when: "annual.*plan.*not found|can't find.*annual|add.*annual.*plan" },
           { content: 'Go with your recommended direction', when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]' },
           { content: 'Go with your recommended direction', when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]' },
+          {
+            content: 'Looks good — save the final strategy to artifacts/product/product-strategy-smart-cart.md',
+            when: 'finalized product strategy|final product strategy|execution-ready KPI spec|PRD-ready strategy doc|save.*artifacts/product|saved to|next artifact',
+          },
+          {
+            content: 'Looks good — save the final strategy to artifacts/product/product-strategy-smart-cart.md',
+            when: 'finalized product strategy|final product strategy|execution-ready KPI spec|PRD-ready strategy doc|save.*artifacts/product|saved to|next artifact',
+          },
           { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
           { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
           { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
@@ -67,7 +76,8 @@ relevant products at checkout. Let's start from scratch.\n`,
       type: 'conversation',
       conversation: {
         opener:
-          "Let's shape the product strategy for a smart cart recommendations feature for Wix Stores.\n",
+          "Let's shape the product strategy for a smart cart recommendations feature for Wix Stores.\n" +
+          'When the strategy is complete, save it to artifacts/product/product-strategy-smart-cart.md.\n',
 
         completion: {
           max_turns: 30,
@@ -82,7 +92,9 @@ multiple-choice question, pick the most appropriate option. When asked
 for confirmation or approval of a drafted section, approve it if the
 content is reasonable and accurate. You're collaborative but don't
 volunteer extra information unless asked. When the agent asks you to
-choose between solution directions, pick the one the agent recommends.\n`,
+choose between solution directions, pick the one the agent recommends.
+If the strategy is complete or the agent asks what to do next, tell it
+to save the final strategy to artifacts/product/product-strategy-smart-cart.md.\n`,
           facts: [
             'The feature is for the Wix Stores platform — AI-powered cart recommendations',
             'Target users are Self-Creators (online store owners managing their own shops)',
@@ -102,6 +114,7 @@ choose between solution directions, pick the one the agent recommends.\n`,
             'eCommerce goals include 25% GMV growth and 15% AOV improvement',
             'You want business KPIs focused on AOV increase, Premium conversion, and feature adoption',
             'When asked about kb-retrieval or MCP tools that fail, just say to skip it',
+            'The final product strategy file should be saved to artifacts/product/product-strategy-smart-cart.md',
           ],
         },
       },

@@ -20,7 +20,7 @@ import {
     llmRubricName,
 } from '../graders/paths';
 import { fmt, header, kv, trialRow, resultsSummary, validationResult } from '../utils/cli';
-import { isClaudeCliAvailable } from '../utils/cli-llm';
+import { isClaudeCliAvailable, isCodexCliAvailable } from '../utils/cli-llm';
 
 interface RunOptions {
     eval?: string;       // run specific eval(s) by name (comma-separated)
@@ -118,12 +118,19 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
         try {
             // Pick agent: CLI flag > task-level override > default
-            // Currently only Claude is supported as the solver agent.
             const agentName: AgentName = opts.agent || resolved.agent || 'claude';
 
-            // Host-auth passthrough for CLI-authenticated agents
-            const cliAgents = ['claude', 'codex'];
-            const useHostAuth = cliAgents.includes(agentName) && await isClaudeCliAvailable();
+            const useHostAuth = agentName === 'claude'
+                ? await isClaudeCliAvailable()
+                : agentName === 'codex'
+                    ? await isCodexCliAvailable()
+                    : false;
+
+            if (agentName === 'codex' && useHostAuth) {
+                env.PATHGRADE_CODEX_USE_HOST_AUTH = '1';
+            } else {
+                delete env.PATHGRADE_CODEX_USE_HOST_AUTH;
+            }
 
             // Build eval options — pass resolved content directly
             const filteredGraders = opts.grader
@@ -240,6 +247,16 @@ function isContainedIn(childPath: string, parentPath: string): boolean {
     return resolved.startsWith(parent) || resolved === path.resolve(parentPath);
 }
 
+async function applyWorkspaceChmod(targetPath: string, mode: string): Promise<void> {
+    if (mode === '+x') {
+        const currentMode = (await fs.stat(targetPath)).mode;
+        await fs.chmod(targetPath, currentMode | 0o111);
+        return;
+    }
+
+    await fs.chmod(targetPath, mode);
+}
+
 /**
  * Create a temp task directory for runtime execution.
  * Contains shared workspace files and LLM rubric prompts for the local runtime.
@@ -290,7 +307,7 @@ export async function prepareTempTaskDir(
         if (await fs.pathExists(srcPath)) {
             await fs.copy(srcPath, destInTmp);
             if (w.chmod) {
-                await fs.chmod(destInTmp, w.chmod);
+                await applyWorkspaceChmod(destInTmp, w.chmod);
             }
         }
     }

@@ -1,5 +1,5 @@
 import { defineEval } from '../../src/core/define-eval';
-import { checkFix } from './graders/check';
+import { checkFix } from './graders/check.ts';
 import { toolUsageFix } from './graders/tool-usage-fix';
 
 export default defineEval({

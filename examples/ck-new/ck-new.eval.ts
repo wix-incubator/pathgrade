@@ -41,11 +41,18 @@ export default defineEval({
         completion: { max_turns: 12, signal: 'artifacts/project-brief-*.md', timeout: 300 },
         replies: [
           { content: `It's for the Wix Stores platform. Online store owners have been\nrequesting the ability to sell digital gift cards that customers\ncan purchase and redeem at checkout.\n` },
-          { content: "Yes, that's right", when: "right\\?|correct\\?|confirm|sound right" },
+          {
+            content: "Yes, that's right. The goal is to solve a user pain point, and the target group is Self-Creator.",
+            when: "right\\?|correct\\?|confirm|sound right",
+          },
           { content: 'Solve user pain point', when: 'goal|trying to achieve|what are you trying' },
           { content: 'Self-Creator', when: 'target|audience|who|Self-Creator|adjust if needed' },
           { content: 'Skip', when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip' },
           { content: 'Skip for now', when: 'gameplan|strategy doc' },
+          {
+            content: 'Looks good so far. Please write the brief now.',
+            when: 'take on this so far|what.*so far|ready to write|write the brief|next step',
+          },
           { content: 'Looks good, no changes', when: "look right|approve|feedback|changes|edit|you'd change|anything.*change|move on|before moving" },
           { content: 'No, skip repos for now', when: 'github|repo|reference' },
         ],

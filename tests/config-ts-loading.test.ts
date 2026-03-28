@@ -122,4 +122,28 @@ describe('loadEvalConfig with *.eval.ts', () => {
     tmpDir = makeTmpDir();
     await expect(loadEvalConfig(tmpDir)).rejects.toThrow('No *.eval.ts found');
   });
+
+  it('loads the repository eval.ts config', async () => {
+    const repoDir = path.resolve(__dirname, '..');
+
+    const config = await loadEvalConfig(repoDir);
+
+    expect(config.tasks.map(task => task.name)).toEqual([
+      'create-eval-config',
+      'write-deterministic-grader',
+    ]);
+  });
+
+  it('loads package-backed example evals from a source checkout', async () => {
+    const repoDir = path.resolve(__dirname, '..');
+
+    const toolUsageConfig = await loadEvalConfig(path.join(repoDir, 'examples', 'tool-usage'));
+    const strategyConfig = await loadEvalConfig(path.join(repoDir, 'examples', 'ck-product-strategy'));
+
+    expect(toolUsageConfig.tasks.map(task => task.name)).toEqual(['tool-aware-fix']);
+    expect(strategyConfig.tasks.map(task => task.name)).toEqual([
+      'scripted-smart-cart',
+      'persona-smart-cart',
+    ]);
+  });
 });

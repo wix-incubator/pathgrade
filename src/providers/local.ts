@@ -13,6 +13,85 @@ import {
     getRuntimeHandle,
     getWorkspacePath,
 } from '../types';
+import {
+    buildClaudeMd,
+    composeAgentsMd,
+    readSkillDescriptors,
+    SkillDescriptor,
+    stageSkills,
+} from './skill-bootstrap';
+
+async function copyCodexAuth(hostHomePath: string, trialHomePath: string): Promise<void> {
+    const hostAuthPath = path.join(hostHomePath, '.codex', 'auth.json');
+    if (!await fs.pathExists(hostAuthPath)) {
+        return;
+    }
+
+    const trialCodexDir = path.join(trialHomePath, '.codex');
+    await fs.ensureDir(trialCodexDir);
+    await fs.copy(hostAuthPath, path.join(trialCodexDir, 'auth.json'));
+}
+
+async function copyCodexSupportFiles(hostHomePath: string, trialHomePath: string): Promise<void> {
+    const supportDirs = [
+        {
+            source: path.join(hostHomePath, '.agents', 'skills', 'ck-shared'),
+            target: path.join(trialHomePath, '.agents', 'skills', 'ck-shared'),
+        },
+    ];
+
+    for (const { source, target } of supportDirs) {
+        if (!await fs.pathExists(source)) {
+            continue;
+        }
+        await fs.ensureDir(path.dirname(target));
+        await fs.copy(source, target);
+    }
+}
+
+async function stageCodexHomeSkillAliases(trialHomePath: string, skills: SkillDescriptor[]): Promise<void> {
+    const skillsRoot = path.join(trialHomePath, '.agents', 'skills');
+    await fs.ensureDir(skillsRoot);
+
+    for (const skill of skills) {
+        const aliases = new Set([skill.displayName, skill.directoryName]);
+        for (const alias of aliases) {
+            const targetPath = path.join(skillsRoot, alias);
+            if (await fs.pathExists(targetPath)) {
+                continue;
+            }
+            await fs.copy(skill.sourcePath, targetPath);
+        }
+    }
+}
+
+function makeIsolatedRuntime(rootDir: string, workspacePath: string, tmpPath: string, homePath: string, xdgPath: string): TrialRuntime {
+    const xdgStatePath = path.join(xdgPath, 'state');
+    const xdgCachePath = path.join(xdgPath, 'cache');
+
+    return {
+        handle: rootDir,
+        workspacePath,
+        env: {
+            HOME: homePath,
+            XDG_CONFIG_HOME: xdgPath,
+            XDG_STATE_HOME: xdgStatePath,
+            XDG_CACHE_HOME: xdgCachePath,
+            TMPDIR: tmpPath,
+            TMP: tmpPath,
+            TEMP: tmpPath,
+        },
+        paths: {
+            root: rootDir,
+            workspace: workspacePath,
+            home: homePath,
+            xdg: xdgPath,
+            xdgState: xdgStatePath,
+            xdgCache: xdgCachePath,
+            tmp: tmpPath,
+        },
+    };
+}
 
 export class LocalProvider implements EnvironmentProvider {
     async setup(taskPath: string, skillsPaths: string[], opts: EnvironmentSetupOpts, _env?: Record<string, string>): Promise<TrialRuntime> {
@@ -24,49 +103,39 @@ export class LocalProvider implements EnvironmentProvider {
         await fs.ensureDir(tmpPath);
         await fs.copy(taskPath, workspacePath);
 
-        // Inject skills into agent discovery paths inside the isolated workspace.
-        const discoveryDirs = [
-            path.join(workspacePath, '.agents', 'skills'),
-            path.join(workspacePath, '.claude', 'skills'),
-        ];
+        const skills = await readSkillDescriptors(skillsPaths);
 
-        for (const skillsDir of discoveryDirs) {
-            await fs.ensureDir(skillsDir);
-            for (const spath of skillsPaths) {
-                const skillName = path.basename(spath);
-                await fs.copy(spath, path.join(skillsDir, skillName));
+        if (skills.length > 0) {
+            await stageSkills(workspacePath, path.join('.agents', 'skills'), skills);
+            const claudeSkills = await stageSkills(workspacePath, path.join('.claude', 'skills'), skills);
+            const codexSkills = await stageSkills(workspacePath, path.join('.pathgrade', 'skills'), skills);
+
+            const claudeMd = buildClaudeMd(claudeSkills);
+            if (claudeMd) {
+                await fs.writeFile(path.join(workspacePath, 'CLAUDE.md'), claudeMd);
+            }
+
+            const agentsMdPath = path.join(workspacePath, 'AGENTS.md');
+            const existingAgents = await fs.pathExists(agentsMdPath)
+                ? await fs.readFile(agentsMdPath, 'utf-8')
+                : null;
+            const agentsMd = composeAgentsMd(existingAgents, codexSkills);
+            if (agentsMd) {
+                await fs.writeFile(agentsMdPath, agentsMd);
             }
         }
 
-        // Generate a CLAUDE.md that tells the agent about available skills.
-        // Without this, the agent may not discover skills in -p (pipe) mode.
-        if (skillsPaths.length > 0) {
-            const skillEntries: string[] = [];
-            for (const spath of skillsPaths) {
-                const skillMdPath = path.join(spath, 'SKILL.md');
-                if (await fs.pathExists(skillMdPath)) {
-                    const content = await fs.readFile(skillMdPath, 'utf-8');
-                    // Extract name and description from frontmatter
-                    const nameMatch = content.match(/^name:\s*(.+)$/m);
-                    const descMatch = content.match(/^description:\s*(.+)$/m);
-                    const name = nameMatch?.[1]?.trim() || path.basename(spath);
-                    const desc = descMatch?.[1]?.trim() || '';
-                    skillEntries.push(`- **${name}**: ${desc}`);
-                }
-            }
-
-            if (skillEntries.length > 0) {
-                const claudeMd = [
-                    '# Project Skills',
-                    '',
-                    'This project has the following skills available. When the user\'s request matches a skill, follow it exactly.',
-                    '',
-                    ...skillEntries,
-                    '',
-                    'Skills are located in `.claude/skills/`. Read the SKILL.md to understand the full workflow before responding.',
-                ].join('\n');
-                await fs.writeFile(path.join(workspacePath, 'CLAUDE.md'), claudeMd);
-            }
+        const wantsCodexHostAuth = opts.authMode === 'host' && _env?.PATHGRADE_CODEX_USE_HOST_AUTH === '1';
+        if (wantsCodexHostAuth) {
+            const homePath = path.join(rootDir, 'home');
+            const xdgPath = path.join(rootDir, 'xdg');
+            await fs.ensureDir(homePath);
+            await fs.ensureDir(path.join(xdgPath, 'state'));
+            await fs.ensureDir(path.join(xdgPath, 'cache'));
+            await copyCodexAuth(process.env.HOME || os.homedir(), homePath);
+            await copyCodexSupportFiles(process.env.HOME || os.homedir(), homePath);
+            await stageCodexHomeSkillAliases(homePath, skills);
+            return makeIsolatedRuntime(rootDir, workspacePath, tmpPath, homePath, xdgPath);
         }
 
         if (opts.authMode === 'host') {
@@ -92,41 +161,32 @@ export class LocalProvider implements EnvironmentProvider {
         // Isolated mode (default): override HOME to kill CLI auth
         const homePath = path.join(rootDir, 'home');
         const xdgPath = path.join(rootDir, 'xdg');
-        const xdgStatePath = path.join(xdgPath, 'state');
-        const xdgCachePath = path.join(xdgPath, 'cache');
 
         await fs.ensureDir(homePath);
-        await fs.ensureDir(xdgStatePath);
-        await fs.ensureDir(xdgCachePath);
+        await fs.ensureDir(path.join(xdgPath, 'state'));
+        await fs.ensureDir(path.join(xdgPath, 'cache'));
 
-        return {
-            handle: rootDir,
-            workspacePath,
-            env: {
-                HOME: homePath,
-                XDG_CONFIG_HOME: xdgPath,
-                XDG_STATE_HOME: xdgStatePath,
-                XDG_CACHE_HOME: xdgCachePath,
-                TMPDIR: tmpPath,
-                TMP: tmpPath,
-                TEMP: tmpPath,
-            },
-            paths: {
-                root: rootDir,
-                workspace: workspacePath,
-                home: homePath,
-                xdg: xdgPath,
-                xdgState: xdgStatePath,
-                xdgCache: xdgCachePath,
-                tmp: tmpPath,
-            },
-        };
+        return makeIsolatedRuntime(rootDir, workspacePath, tmpPath, homePath, xdgPath);
     }
 
     async cleanup(runtime: EnvironmentHandle): Promise<void> {
         const cleanupPath = getRuntimeHandle(runtime);
-        if (await fs.pathExists(cleanupPath)) {
-            await fs.remove(cleanupPath);
+        if (!await fs.pathExists(cleanupPath)) {
+            return;
+        }
+
+        for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+                await fs.remove(cleanupPath);
+                return;
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException).code;
+                const retryable = code === 'ENOTEMPTY' || code === 'EBUSY' || code === 'EPERM';
+                if (!retryable || attempt === 3) {
+                    throw error;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+            }
         }
     }
 

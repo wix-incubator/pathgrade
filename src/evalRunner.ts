@@ -338,7 +338,11 @@ export class EvalRunner {
             };
         } finally {
             shutdown.unregister(cleanupId);
-            await this.provider.cleanup(runtime);
+            try {
+                await this.provider.cleanup(runtime);
+            } catch (cleanupError) {
+                console.error(`Warning: failed to clean up trial runtime: ${(cleanupError as Error)?.message || cleanupError}`);
+            }
         }
     }
 

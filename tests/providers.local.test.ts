@@ -70,6 +70,24 @@ describe('LocalProvider', () => {
       expect(await fsExtra.pathExists(claudePath)).toBe(true);
     });
 
+    it('stages skills into .pathgrade/skills for Codex bootstrap', async () => {
+      const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
+      const skillDir = path.join(os.tmpdir(), `pathgrade-test-skill-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.ensureDir(skillDir);
+      await fsExtra.writeFile(path.join(skillDir, 'SKILL.md'), '# Test Skill');
+      tempDirs.push(taskDir, skillDir);
+
+      const runtime = await provider.setup(taskDir, [skillDir], {
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+      });
+      tempDirs.push(runtime.handle);
+
+      const stagedPath = path.join(runtime.workspacePath, '.pathgrade', 'skills', path.basename(skillDir), 'SKILL.md');
+      expect(await fsExtra.pathExists(stagedPath)).toBe(true);
+    });
+
     it('generates CLAUDE.md with skill descriptions when skills are present', async () => {
       const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
       const skillDir = path.join(os.tmpdir(), `pathgrade-test-skill-${Date.now()}`);
@@ -100,6 +118,55 @@ describe('LocalProvider', () => {
       expect(content).toContain('.claude/skills/');
     });
 
+    it('generates AGENTS.md with a PathGrade-managed Codex bootstrap section', async () => {
+      const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
+      const skillDir = path.join(os.tmpdir(), `pathgrade-test-skill-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.ensureDir(skillDir);
+      await fsExtra.writeFile(path.join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: my-skill',
+        'description: A test skill for evaluation',
+        '---',
+        '# My Skill',
+      ].join('\n'));
+      tempDirs.push(taskDir, skillDir);
+
+      const runtime = await provider.setup(taskDir, [skillDir], {
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+      });
+      tempDirs.push(runtime.handle);
+
+      const agentsMdPath = path.join(runtime.workspacePath, 'AGENTS.md');
+      expect(await fsExtra.pathExists(agentsMdPath)).toBe(true);
+
+      const content = await fsExtra.readFile(agentsMdPath, 'utf-8');
+      expect(content).toContain('PathGrade-managed skill bootstrap');
+      expect(content).toContain('my-skill');
+      expect(content).toContain('.pathgrade/skills/');
+    });
+
+    it('preserves existing AGENTS.md content when composing Codex bootstrap', async () => {
+      const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
+      const skillDir = path.join(os.tmpdir(), `pathgrade-test-skill-${Date.now()}`);
+      await fsExtra.ensureDir(taskDir);
+      await fsExtra.ensureDir(skillDir);
+      await fsExtra.writeFile(path.join(taskDir, 'AGENTS.md'), '# Existing repo instructions');
+      await fsExtra.writeFile(path.join(skillDir, 'SKILL.md'), '# Test Skill');
+      tempDirs.push(taskDir, skillDir);
+
+      const runtime = await provider.setup(taskDir, [skillDir], {
+        timeoutSec: 300,
+        environment: { cpus: 2, memory_mb: 2048 },
+      });
+      tempDirs.push(runtime.handle);
+
+      const content = await fsExtra.readFile(path.join(runtime.workspacePath, 'AGENTS.md'), 'utf-8');
+      expect(content).toContain('# Existing repo instructions');
+      expect(content).toContain('PathGrade-managed skill bootstrap');
+    });
+
     it('does NOT generate CLAUDE.md when no skills are provided', async () => {
       const taskDir = path.join(os.tmpdir(), `pathgrade-test-task-${Date.now()}`);
       await fsExtra.ensureDir(taskDir);
@@ -113,6 +180,7 @@ describe('LocalProvider', () => {
 
       const claudeMdPath = path.join(runtime.workspacePath, 'CLAUDE.md');
       expect(await fsExtra.pathExists(claudeMdPath)).toBe(false);
+      expect(await fsExtra.pathExists(path.join(runtime.workspacePath, 'AGENTS.md'))).toBe(false);
     });
   });
 

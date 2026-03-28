@@ -1,3 +1,7 @@
+import { randomUUID } from 'crypto';
+import fs from 'fs-extra';
+import os from 'os';
+import path from 'path';
 import { AgentCommandRunner, AgentSession, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
 
 /**
@@ -39,9 +43,10 @@ export abstract class TranscriptAgent extends BaseAgent {
     }
 
     protected async writePromptFile(instruction: string, runCommand: AgentCommandRunner): Promise<string> {
-        const promptPath = '"${TMPDIR:-/tmp}/.pathgrade-prompt.md"';
-        const b64 = Buffer.from(instruction).toString('base64');
-        await runCommand(`mkdir -p "\${TMPDIR:-/tmp}" && echo '${b64}' | base64 -d > ${promptPath}`);
+        void runCommand;
+        const promptPath = path.join(process.env.TMPDIR || os.tmpdir(), `.pathgrade-prompt-${randomUUID()}.md`);
+        await fs.ensureDir(path.dirname(promptPath));
+        await fs.writeFile(promptPath, instruction, 'utf8');
         return promptPath;
     }
 

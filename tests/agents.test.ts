@@ -1,3 +1,6 @@
+import fs from 'fs-extra';
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GeminiAgent } from '../src/agents/gemini';
 import { ClaudeAgent } from '../src/agents/claude';
@@ -16,6 +19,20 @@ function decodePromptWriteCommand(cmd: string): string {
   return Buffer.from(match[1], 'base64').toString('utf8');
 }
 
+function extractPromptPath(cmd: string): string {
+  const inputRedirectMatch = cmd.match(/< ("[^"]+"|'[^']+'|[^\s)]+)/);
+  if (inputRedirectMatch) {
+    return inputRedirectMatch[1].replace(/^["'](.*)["']$/, '$1');
+  }
+
+  const catMatch = cmd.match(/cat ("[^"]+"|'[^']+'|[^\s)]+)/);
+  if (catMatch) {
+    return catMatch[1].replace(/^["'](.*)["']$/, '$1');
+  }
+
+  throw new Error(`Could not extract prompt path from command: ${cmd}`);
+}
+
 describe('GeminiAgent', () => {
   it('writes instruction via base64 and runs gemini CLI', async () => {
     const agent = new GeminiAgent();
@@ -27,19 +44,20 @@ describe('GeminiAgent', () => {
 
     const result = await agent.run('Test instruction', '/workspace', mockRunCommand);
 
-    expect(commands).toHaveLength(2);
-    expect(commands[0]).toContain('base64');
-    expect(commands[0]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
-    expect(commands[1]).toContain('gemini');
-    expect(commands[1]).toContain('-y');
-    expect(commands[1]).toContain('--sandbox=none');
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain('gemini');
+    expect(commands[0]).toContain('-y');
+    expect(commands[0]).toContain('--sandbox=none');
+    expect(commands[0]).toContain('.pathgrade-prompt-');
+
+    const promptPath = extractPromptPath(commands[0]);
+    expect(await fs.readFile(promptPath, 'utf8')).toBe('Test instruction');
     expect(result).toContain('output');
   });
 
   it('returns combined stdout and stderr', async () => {
     const agent = new GeminiAgent();
     const mockRunCommand = vi.fn()
-      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 })
       .mockResolvedValueOnce({ stdout: 'out', stderr: 'err', exitCode: 0 });
 
     const result = await agent.run('Test', '/workspace', mockRunCommand);
@@ -50,7 +68,6 @@ describe('GeminiAgent', () => {
   it('handles non-zero exit code without throwing', async () => {
     const agent = new GeminiAgent();
     const mockRunCommand = vi.fn()
-      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 })
       .mockResolvedValueOnce({ stdout: 'partial', stderr: 'error', exitCode: 1 });
 
     const result = await agent.run('Test', '/workspace', mockRunCommand);
@@ -63,14 +80,14 @@ describe('GeminiAgent', () => {
     const instruction = 'Hello World!';
     let capturedCmd = '';
     const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
-      if (cmd.includes('base64')) capturedCmd = cmd;
+      if (cmd.includes('gemini')) capturedCmd = cmd;
       return { stdout: '', stderr: '', exitCode: 0 };
     });
 
     await agent.run(instruction, '/workspace', mockRunCommand);
 
-    const expectedB64 = Buffer.from(instruction).toString('base64');
-    expect(capturedCmd).toContain(expectedB64);
+    const promptPath = extractPromptPath(capturedCmd);
+    expect(await fs.readFile(promptPath, 'utf8')).toBe(instruction);
   });
 
   it('falls back to transcript accumulation for session replies', async () => {
@@ -94,10 +111,10 @@ describe('GeminiAgent', () => {
     await session.start({ message: 'First user message' });
     await session.reply({ message: 'Second user message', continueSession: true });
 
+    expect(commands[0]).toContain('gemini');
     expect(commands[1]).toContain('gemini');
-    expect(commands[3]).toContain('gemini');
 
-    const secondPrompt = decodePromptWriteCommand(commands[2]);
+    const secondPrompt = await fs.readFile(extractPromptPath(commands[1]), 'utf8');
     expect(secondPrompt).toContain('First user message');
     expect(secondPrompt).toContain('assistant one');
     expect(secondPrompt).toContain('Second user message');
@@ -497,10 +514,10 @@ describe('CodexAgent', () => {
 
       await agent.run('Test instruction', '/workspace', mockRunCommand);
 
-      expect(commands).toHaveLength(3);
+      expect(commands).toHaveLength(2);
       expect(commands[0]).toContain('codex login --with-api-key');
-      expect(commands[1]).toContain('base64');
-      expect(commands[2]).toContain('codex exec');
+      expect(commands[1]).toContain('codex exec');
+      expect(commands[1]).toContain(' < ');
     } finally {
       if (originalKey === undefined) {
         delete process.env.OPENAI_API_KEY;
@@ -520,13 +537,15 @@ describe('CodexAgent', () => {
 
     const result = await agent.run('Test instruction', '/workspace', mockRunCommand);
 
-    expect(commands).toHaveLength(3);
+    expect(commands).toHaveLength(2);
     expect(commands[0]).toContain('codex login --with-api-key');
-    expect(commands[1]).toContain('base64');
-    expect(commands[1]).toContain('${TMPDIR:-/tmp}/.pathgrade-prompt.md');
-    expect(commands[2]).toContain('codex exec');
-    expect(commands[2]).toContain('--full-auto');
-    expect(commands[2]).toContain('--skip-git-repo-check');
+    expect(commands[1]).toContain('codex exec');
+    expect(commands[1]).toContain('--full-auto');
+    expect(commands[1]).toContain('--skip-git-repo-check');
+    expect(commands[1]).toContain(' < ');
+
+    const promptPath = extractPromptPath(commands[1]);
+    expect(await fs.readFile(promptPath, 'utf8')).toBe('Test instruction');
     expect(result).toContain('output');
   });
 
@@ -552,13 +571,64 @@ describe('CodexAgent', () => {
     await session.reply({ message: 'Second user message', continueSession: true });
 
     expect(commands[0]).toContain('codex login --with-api-key');
-    expect(commands[2]).toContain('codex exec');
-    expect(commands[3]).toContain('codex login --with-api-key');
-    expect(commands[5]).toContain('codex exec');
+    expect(commands[1]).toContain('codex exec');
+    expect(commands[2]).toContain('codex login --with-api-key');
+    expect(commands[3]).toContain('codex exec');
 
-    const secondPrompt = decodePromptWriteCommand(commands[4]);
+    const secondPrompt = await fs.readFile(extractPromptPath(commands[3]), 'utf8');
     expect(secondPrompt).toContain('First user message');
     expect(secondPrompt).toContain('assistant one');
     expect(secondPrompt).toContain('Second user message');
+  });
+
+  it('guards API-key login seeding and Codex exec env for host-auth mode', async () => {
+    const agent = new CodexAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      return { stdout: 'output', stderr: '', exitCode: 0 };
+    });
+
+    await agent.run('Test instruction', '/workspace', mockRunCommand);
+
+    expect(commands[0]).toContain('PATHGRADE_CODEX_USE_HOST_AUTH');
+    expect(commands[0]).toContain('codex login --with-api-key');
+    expect(commands[1]).toContain('env -u OPENAI_API_KEY -u OPENAI_BASE_URL codex exec');
+  });
+
+  it('keeps the full Codex trace in traceOutput but only the final answer in assistantMessage', async () => {
+    const agent = new CodexAgent();
+    const mockRunCommand = vi.fn()
+      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 })
+      .mockResolvedValueOnce({
+        stdout: 'Fixed the bug.',
+        stderr: 'OpenAI Codex v0.117.0-alpha.10\nexec\n/bin/zsh -lc "sed -n \'1,200p\' app.js"',
+        exitCode: 0,
+      });
+
+    const session = await agent.createSession('/workspace', mockRunCommand);
+    const result = await session.start({ message: 'Fix app.js' });
+
+    expect(result.assistantMessage).toBe('Fixed the bug.');
+    expect(result.traceOutput).toContain('OpenAI Codex');
+    expect(result.traceOutput).toContain('sed -n');
+    expect(result.rawOutput).toContain('Fixed the bug.');
+  });
+
+  it('writes transcript prompts to a temp file instead of shell-encoding them', async () => {
+    const agent = new CodexAgent();
+    const commands: string[] = [];
+    const largeMessage = 'x'.repeat(50_000);
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      return { stdout: 'ok', stderr: '', exitCode: 0 };
+    });
+
+    await agent.run(largeMessage, path.join(os.tmpdir(), 'pathgrade-agent-test'), mockRunCommand);
+
+    expect(commands).toHaveLength(2);
+    expect(commands[1]).not.toContain('base64');
+    const promptPath = extractPromptPath(commands[1]);
+    expect(await fs.readFile(promptPath, 'utf8')).toBe(largeMessage);
   });
 });
