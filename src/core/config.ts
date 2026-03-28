@@ -64,14 +64,15 @@ interface RawConversation {
         done_when?: string;
         timeout?: number;
     };
-    replies?: RawReply[];
+    reactions?: RawReaction[];
     persona?: { description?: string; facts?: string[]; model?: string };
     step_graders?: RawStepGrader[];
 }
 
-interface RawReply {
-    content?: string;
+interface RawReaction {
     when?: string;
+    reply?: string;
+    once?: boolean;
 }
 
 interface RawStepGrader {
@@ -205,11 +206,30 @@ export function validateConfig(raw: unknown): EvalConfig {
                     }
                 }
             }
-            if (!Array.isArray(t.conversation.replies) && t.conversation.replies !== undefined) {
-                throw new Error(`Task "${t.name}" conversation.replies must be an array when provided`);
+            if (t.conversation.reactions !== undefined && !Array.isArray(t.conversation.reactions)) {
+                throw new Error(`Task "${t.name}" conversation.reactions must be an array when provided`);
             }
-            if (!t.conversation.persona && (!Array.isArray(t.conversation.replies) || t.conversation.replies.length === 0)) {
-                throw new Error(`Task "${t.name}" conversation must include at least one of "replies" or "persona"`);
+            if (!t.conversation.persona && (!Array.isArray(t.conversation.reactions) || t.conversation.reactions.length === 0)) {
+                throw new Error(`Task "${t.name}" conversation must include at least one of "reactions" or "persona"`);
+            }
+            if (Array.isArray(t.conversation.reactions)) {
+                for (let rIdx = 0; rIdx < t.conversation.reactions.length; rIdx++) {
+                    const r = t.conversation.reactions[rIdx];
+                    if (!r?.when || typeof r.when !== 'string') {
+                        throw new Error(`Task "${t.name}" reactions[${rIdx}].when must be a non-empty string`);
+                    }
+                    if (!r?.reply || typeof r.reply !== 'string') {
+                        throw new Error(`Task "${t.name}" reactions[${rIdx}].reply must be a non-empty string`);
+                    }
+                    if (r.once !== undefined && typeof r.once !== 'boolean') {
+                        throw new Error(`Task "${t.name}" reactions[${rIdx}].once must be a boolean when provided`);
+                    }
+                    try {
+                        new RegExp(r.when, 'i');
+                    } catch (e) {
+                        throw new Error(`Task "${t.name}" reactions[${rIdx}].when is not a valid regex: ${(e as Error).message}`);
+                    }
+                }
             }
             if (t.conversation.persona !== undefined) {
                 if (!t.conversation.persona.description || typeof t.conversation.persona.description !== 'string') {
@@ -274,13 +294,17 @@ export function validateConfig(raw: unknown): EvalConfig {
                 conversation: {
                     opener: t.conversation!.opener,
                     completion: { ...t.conversation!.completion },
-                    replies: t.conversation!.replies?.map((reply: RawReply) => {
-                        if (!reply?.content) {
-                            throw new Error(`Task "${t.name}" conversation replies must include "content"`);
+                    reactions: t.conversation!.reactions?.map((reaction: RawReaction) => {
+                        if (!reaction?.when) {
+                            throw new Error(`Task "${t.name}" conversation reactions must include "when"`);
+                        }
+                        if (!reaction?.reply) {
+                            throw new Error(`Task "${t.name}" conversation reactions must include "reply"`);
                         }
                         return {
-                            content: reply.content,
-                            when: reply.when,
+                            when: reaction.when,
+                            reply: reaction.reply,
+                            once: reaction.once,
                         };
                     }),
                     persona: t.conversation!.persona ? {
@@ -458,11 +482,12 @@ async function resolveConversation(
     return {
         opener: await resolveFileOrInline(conversation.opener, baseDir),
         completion: conversation.completion,
-        replies: conversation.replies
+        reactions: conversation.reactions
             ? await Promise.all(
-                conversation.replies.map(async (reply) => ({
-                    content: await resolveFileOrInline(reply.content, baseDir),
-                    when: reply.when,
+                conversation.reactions.map(async (reaction) => ({
+                    when: reaction.when,
+                    reply: await resolveFileOrInline(reaction.reply, baseDir),
+                    once: reaction.once,
                 }))
             )
             : undefined,
