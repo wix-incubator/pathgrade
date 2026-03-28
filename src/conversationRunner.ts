@@ -599,7 +599,7 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
             opts.graderModel
         );
 
-        // Run step graders after checkCompletion, before pickReply
+        // Run step graders after checkCompletion, before pickReaction
         const stepResults = await runStepGraders(turnNumber, opts, sessionLog);
         if (stepResults.length > 0) {
             turns[turns.length - 1].step_grader_results = stepResults;

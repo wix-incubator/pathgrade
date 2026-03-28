@@ -234,7 +234,7 @@ describe('runConversationTrial', () => {
       expect(result.conversation.total_turns).toBe(2);
     });
 
-    it('returns no_replies with zero scripted replies and no persona on first pickReply', async () => {
+    it('returns no_replies with zero scripted replies and no persona on first pickReaction', async () => {
       const responses = [
         { rawOutput: 'Response', assistantMessage: 'Response', exitCode: 0 },
       ];
