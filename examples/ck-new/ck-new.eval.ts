@@ -1,7 +1,7 @@
 import { defineEval } from '../../src/core/define-eval';
-import { toolUsageGrader } from '../../src/core/grader-factories';
 import { checkFix } from './graders/check-fix';
 import { checkBrief } from './graders/check-brief';
+import { toolUsageFix } from './graders/tool-usage-fix';
 import { rubricScripted } from './graders/rubric-scripted';
 import { rubricPersona } from './graders/rubric-persona';
 
@@ -30,13 +30,7 @@ export default defineEval({
       timeout: 120,
       graders: [
         checkFix,
-        toolUsageGrader({
-          weight: 0.4,
-          expectations: [
-            { action: 'read_file', argument_pattern: 'app\\.js', min: 1, weight: 0.5 },
-            { action: 'edit_file', min: 1, weight: 0.5 },
-          ],
-        }),
+        toolUsageFix,
       ],
     },
 
