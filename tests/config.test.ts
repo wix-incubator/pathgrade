@@ -255,6 +255,73 @@ describe('validateConfig', () => {
     ]);
   });
 
+  it('handles workspace directory mapping', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'instruction',
+        instruction: 'do it',
+        workspace: [{ dir: 'fixtures' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    });
+    expect(config.tasks[0].workspace).toEqual([
+      { dir: 'fixtures' },
+    ]);
+  });
+
+  it('handles workspace directory mapping with chmod', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'instruction',
+        instruction: 'do it',
+        workspace: [{ dir: 'scripts', chmod: '+x' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    });
+    expect(config.tasks[0].workspace).toEqual([
+      { dir: 'scripts', chmod: '+x' },
+    ]);
+  });
+
+  it('handles mixed workspace entries (dir + file + string)', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'instruction',
+        instruction: 'do it',
+        workspace: [
+          { dir: 'fixtures' },
+          { src: 'bin/tool', dest: '/usr/local/bin/tool', chmod: '+x' },
+          'extra/readme.txt',
+        ],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    });
+    expect(config.tasks[0].workspace).toEqual([
+      { dir: 'fixtures' },
+      { src: 'bin/tool', dest: '/usr/local/bin/tool', chmod: '+x' },
+      { src: 'extra/readme.txt', dest: 'readme.txt' },
+    ]);
+  });
+
+  it('throws on workspace directory mapping with empty dir', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'instruction',
+        instruction: 'do it',
+        workspace: [{ dir: '' }],
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    })).toThrow('without');
+  });
+
   it('passes through done_when in conversation completion config', () => {
     const config = validateConfig({
       version: '1',

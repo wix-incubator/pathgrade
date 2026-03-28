@@ -12,6 +12,7 @@ import {
     ResolvedConversation,
     ResolvedStepGrader,
     WorkspaceMapping,
+    WorkspaceEntry,
     EnvironmentConfig,
     AgentName,
     VALID_AGENTS,
@@ -41,7 +42,7 @@ interface RawTask {
     type?: string;
     instruction?: string;
     conversation?: RawConversation;
-    workspace?: (string | { src?: string; dest?: string; chmod?: string })[];
+    workspace?: (string | { src?: string; dest?: string; dir?: string; chmod?: string })[];
     graders?: any[];
     solution?: string;
     agent?: string;
@@ -219,13 +220,17 @@ export function validateConfig(raw: unknown): EvalConfig {
             }
         }
 
-        const workspace: WorkspaceMapping[] = (t.workspace || []).map((w) => {
+        const workspace: WorkspaceEntry[] = (t.workspace || []).map((w) => {
             if (typeof w === 'string') {
                 // Support shorthand: "fixtures/app.js" → same filename in workspace
                 return { src: w, dest: path.basename(w) };
             }
+            if ('dir' in w && w.dir) {
+                // Directory mapping: mirror entire directory
+                return { dir: w.dir, ...(w.chmod ? { chmod: w.chmod } : {}) };
+            }
             if (!w.src || !w.dest) {
-                throw new Error(`Task "${t.name}" has a workspace mapping without src/dest`);
+                throw new Error(`Task "${t.name}" has a workspace mapping without src/dest or dir`);
             }
             return { src: w.src, dest: w.dest, chmod: w.chmod };
         });
