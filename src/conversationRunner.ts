@@ -23,14 +23,11 @@ import { callLLM } from './utils/llm';
 import { extractToolEvents } from './tool-event-extractors';
 import { withAbortTimeout } from './utils/timeout';
 
-interface CompiledReply {
-    content: string;
+interface CompiledReaction {
     when: RegExp;
-}
-
-interface ReplyPool {
-    orderedQueue: string[];
-    patternReplies: CompiledReply[];
+    reply: string;
+    once: boolean;
+    used: boolean;
 }
 
 interface ConversationRunOptions {
@@ -55,19 +52,13 @@ export interface ConversationRunResult {
     sessionLog: LogEntry[];
 }
 
-function createReplyPool(conversation: ResolvedConversation): ReplyPool {
-    const replies = conversation.replies ?? [];
-    return {
-        orderedQueue: replies
-            .filter((reply) => !reply.when)
-            .map((reply) => reply.content),
-        patternReplies: replies
-            .filter((reply) => reply.when)
-            .map((reply) => ({
-                content: reply.content,
-                when: new RegExp(reply.when!, 'i'),
-            })),
-    };
+function compileReactions(conversation: ResolvedConversation): CompiledReaction[] {
+    return (conversation.reactions ?? []).map((r) => ({
+        when: new RegExp(r.when, 'i'),
+        reply: r.reply,
+        once: r.once ?? false,
+        used: false,
+    }));
 }
 
 function normalizeAssistantMessage(rawOutput: string, assistantMessage?: string): string {
@@ -252,9 +243,9 @@ async function runStepGraders(
     return results;
 }
 
-async function pickReply(
+async function pickReaction(
     assistantMessage: string,
-    replyPool: ReplyPool,
+    reactions: CompiledReaction[],
     conversation: ResolvedConversation,
     transcript: NonNullable<TrialResult['conversation']>['turns'],
     env: Record<string, string> | undefined,
@@ -265,25 +256,19 @@ async function pickReply(
     personaInputTokens?: number;
     personaOutputTokens?: number;
 } | null> {
-    const patternIndex = replyPool.patternReplies.findIndex((reply) => reply.when.test(assistantMessage));
-    if (patternIndex >= 0) {
-        const [reply] = replyPool.patternReplies.splice(patternIndex, 1);
-        return {
-            content: reply.content,
-            source: 'scripted_pattern',
-        };
+    // Find first matching reaction (skip once-reactions already used)
+    const match = reactions.find((r) => {
+        if (r.once && r.used) return false;
+        return r.when.test(assistantMessage);
+    });
+
+    if (match) {
+        if (match.once) match.used = true;
+        return { content: match.reply, source: 'reaction' };
     }
 
-    const orderedReply = replyPool.orderedQueue.shift();
-    if (orderedReply) {
-        return {
-            content: orderedReply,
-            source: 'scripted',
-        };
-    }
-
+    // Fallback: persona (unchanged)
     if (conversation.persona) {
-        // Retry once on failure (design Section 16), then return null to end conversation
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
                 const personaReply = await generatePersonaReply(
@@ -304,7 +289,6 @@ async function pickReply(
                 };
             } catch (err) {
                 if (attempt === 0) continue;
-                // Second failure — fall through to return null
             }
         }
         return null;
@@ -324,7 +308,7 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
     const turns: NonNullable<TrialResult['conversation']>['turns'] = [];
     let commandCount = 0;
     const inputMessages: string[] = [];
-    const replyPool = createReplyPool(opts.conversation);
+    const reactions = compileReactions(opts.conversation);
     const deadlineMs = Date.now() + (opts.timeoutSec * 1000);
     let personaInputTokens = 0;
     let personaOutputTokens = 0;
@@ -636,9 +620,9 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
             };
         }
 
-        const reply = await pickReply(
+        const reply = await pickReaction(
             assistantMessage,
-            replyPool,
+            reactions,
             opts.conversation,
             turns,
             opts.env,
