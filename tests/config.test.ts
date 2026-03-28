@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateConfig, resolveTask } from '../src/core/config';
 import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig, ResolvedInstructionTask, ResolvedConversationTask, InstructionTaskConfig } from '../src/core/config.types';
 import { deterministicGrader } from '../src/core/grader-factories';
+import * as os from 'os';
+import * as path from 'path';
+import { promises as nativeFs } from 'fs';
 
 // Mock fs-extra for resolveTask tests only (file reference resolution)
 vi.mock('fs-extra', () => ({
@@ -608,6 +611,151 @@ describe('resolveTask', () => {
     const resolved = await resolveTask(task, defaults, '/tmp/some-project');
     // Should return the literal string, not the file contents
     expect(resolved.type === 'instruction' && resolved.instruction).toBe('../../etc/hostname');
+  });
+
+  it('expands workspace directory into individual file mappings', async () => {
+    // Create a temp fixtures directory with files
+    const baseDir = path.join(os.tmpdir(), `pathgrade-resolve-dir-${Date.now()}`);
+    const fixturesDir = path.join(baseDir, 'fixtures');
+    await nativeFs.mkdir(fixturesDir, { recursive: true });
+    await nativeFs.writeFile(path.join(fixturesDir, 'app.js'), 'console.log("app")');
+    await nativeFs.writeFile(path.join(fixturesDir, 'helper.js'), 'console.log("helper")');
+
+    try {
+      const task: EvalTaskConfig = {
+        type: 'instruction' as const,
+        name: 'dir-test',
+        instruction: 'do it',
+        workspace: [{ dir: 'fixtures' }],
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      };
+
+      const resolved = await resolveTask(task, defaults, baseDir);
+      const ws = resolved.workspace.sort((a, b) => a.dest.localeCompare(b.dest));
+      expect(ws).toEqual([
+        { src: 'fixtures/app.js', dest: 'app.js' },
+        { src: 'fixtures/helper.js', dest: 'helper.js' },
+      ]);
+    } finally {
+      await nativeFs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it('expands nested directory structure preserving paths', async () => {
+    const baseDir = path.join(os.tmpdir(), `pathgrade-resolve-nested-${Date.now()}`);
+    await nativeFs.mkdir(path.join(baseDir, 'fixtures', 'src', 'app'), { recursive: true });
+    await nativeFs.writeFile(path.join(baseDir, 'fixtures', 'src', 'app', 'main.ts'), 'main');
+    await nativeFs.writeFile(path.join(baseDir, 'fixtures', 'config.json'), '{}');
+
+    try {
+      const task: EvalTaskConfig = {
+        type: 'instruction' as const,
+        name: 'nested-test',
+        instruction: 'do it',
+        workspace: [{ dir: 'fixtures' }],
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      };
+
+      const resolved = await resolveTask(task, defaults, baseDir);
+      const ws = resolved.workspace.sort((a, b) => a.dest.localeCompare(b.dest));
+      expect(ws).toEqual([
+        { src: 'fixtures/config.json', dest: 'config.json' },
+        { src: 'fixtures/src/app/main.ts', dest: 'src/app/main.ts' },
+      ]);
+    } finally {
+      await nativeFs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it('applies chmod from directory mapping to all expanded files', async () => {
+    const baseDir = path.join(os.tmpdir(), `pathgrade-resolve-chmod-${Date.now()}`);
+    await nativeFs.mkdir(path.join(baseDir, 'scripts'), { recursive: true });
+    await nativeFs.writeFile(path.join(baseDir, 'scripts', 'run.sh'), '#!/bin/bash');
+
+    try {
+      const task: EvalTaskConfig = {
+        type: 'instruction' as const,
+        name: 'chmod-test',
+        instruction: 'do it',
+        workspace: [{ dir: 'scripts', chmod: '+x' }],
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      };
+
+      const resolved = await resolveTask(task, defaults, baseDir);
+      expect(resolved.workspace).toEqual([
+        { src: 'scripts/run.sh', dest: 'run.sh', chmod: '+x' },
+      ]);
+    } finally {
+      await nativeFs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it('skips dotfiles when expanding directories', async () => {
+    const baseDir = path.join(os.tmpdir(), `pathgrade-resolve-dotfiles-${Date.now()}`);
+    await nativeFs.mkdir(path.join(baseDir, 'fixtures'), { recursive: true });
+    await nativeFs.writeFile(path.join(baseDir, 'fixtures', 'app.js'), 'app');
+    await nativeFs.writeFile(path.join(baseDir, 'fixtures', '.DS_Store'), 'junk');
+    await nativeFs.mkdir(path.join(baseDir, 'fixtures', '.hidden'), { recursive: true });
+    await nativeFs.writeFile(path.join(baseDir, 'fixtures', '.hidden', 'secret'), 'x');
+
+    try {
+      const task: EvalTaskConfig = {
+        type: 'instruction' as const,
+        name: 'dotfile-test',
+        instruction: 'do it',
+        workspace: [{ dir: 'fixtures' }],
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      };
+
+      const resolved = await resolveTask(task, defaults, baseDir);
+      expect(resolved.workspace).toEqual([
+        { src: 'fixtures/app.js', dest: 'app.js' },
+      ]);
+    } finally {
+      await nativeFs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns empty workspace for nonexistent directory', async () => {
+    const task: EvalTaskConfig = {
+      type: 'instruction' as const,
+      name: 'missing-dir-test',
+      instruction: 'do it',
+      workspace: [{ dir: 'nonexistent' }],
+      graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+    };
+
+    const resolved = await resolveTask(task, defaults, '/tmp');
+    expect(resolved.workspace).toEqual([]);
+  });
+
+  it('mixes directory and file mappings in workspace', async () => {
+    const baseDir = path.join(os.tmpdir(), `pathgrade-resolve-mix-${Date.now()}`);
+    await nativeFs.mkdir(path.join(baseDir, 'fixtures'), { recursive: true });
+    await nativeFs.writeFile(path.join(baseDir, 'fixtures', 'data.json'), '{}');
+    await nativeFs.mkdir(path.join(baseDir, 'bin'), { recursive: true });
+    await nativeFs.writeFile(path.join(baseDir, 'bin', 'tool'), '#!/bin/bash');
+
+    try {
+      const task: EvalTaskConfig = {
+        type: 'instruction' as const,
+        name: 'mix-test',
+        instruction: 'do it',
+        workspace: [
+          { dir: 'fixtures' },
+          { src: 'bin/tool', dest: '/usr/local/bin/tool', chmod: '+x' },
+        ],
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      };
+
+      const resolved = await resolveTask(task, defaults, baseDir);
+      expect(resolved.workspace).toEqual([
+        { src: 'fixtures/data.json', dest: 'data.json' },
+        { src: 'bin/tool', dest: '/usr/local/bin/tool', chmod: '+x' },
+      ]);
+    } finally {
+      await nativeFs.rm(baseDir, { recursive: true, force: true });
+    }
   });
 });
 

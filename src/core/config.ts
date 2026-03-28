@@ -2,6 +2,7 @@
  * Parser and validator for eval config files (*.eval.ts).
  */
 import * as fs from 'fs-extra';
+import { promises as nativeFs } from 'fs';
 import * as path from 'path';
 import {
     EvalConfig,
@@ -327,6 +328,61 @@ async function resolveGrader(g: GraderDescriptor, baseDir: string): Promise<Grad
 }
 
 /**
+ * Recursively walk a directory, returning absolute paths of all files.
+ * Skips dotfiles and dot-directories.
+ */
+async function walkDir(dir: string): Promise<string[]> {
+    const entries = await nativeFs.readdir(dir, { withFileTypes: true });
+    const files: string[] = [];
+    for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...await walkDir(fullPath));
+        } else {
+            files.push(fullPath);
+        }
+    }
+    return files;
+}
+
+/**
+ * Expand workspace entries: directory mappings become individual file mappings.
+ */
+async function expandWorkspace(
+    entries: WorkspaceEntry[],
+    baseDir: string,
+): Promise<WorkspaceMapping[]> {
+    const result: WorkspaceMapping[] = [];
+    for (const entry of entries) {
+        if ('dir' in entry) {
+            const dirPath = path.resolve(baseDir, entry.dir);
+            let exists = false;
+            try {
+                await nativeFs.stat(dirPath);
+                exists = true;
+            } catch {
+                exists = false;
+            }
+            if (exists) {
+                const files = await walkDir(dirPath);
+                for (const file of files) {
+                    const relToDir = path.relative(dirPath, file);
+                    result.push({
+                        src: path.join(entry.dir, relToDir),
+                        dest: relToDir,
+                        ...(entry.chmod ? { chmod: entry.chmod } : {}),
+                    });
+                }
+            }
+        } else {
+            result.push(entry);
+        }
+    }
+    return result;
+}
+
+/**
  * Resolve a single task: apply defaults, resolve file references to content.
  */
 export async function resolveTask(
@@ -362,12 +418,15 @@ export async function resolveTask(
         ? path.resolve(baseDir, task.solution)
         : undefined;
 
+    // Expand workspace: { dir } entries become individual file mappings
+    const workspace = await expandWorkspace(task.workspace || [], baseDir);
+
     if (task.type === 'conversation') {
         return {
             type: 'conversation' as const,
             name: task.name,
             conversation: conversation!,
-            workspace: (task.workspace || []) as WorkspaceMapping[],
+            workspace,
             graders,
             solution,
             agent,
@@ -381,7 +440,7 @@ export async function resolveTask(
         type: 'instruction' as const,
         name: task.name,
         instruction: instruction!,
-        workspace: (task.workspace || []) as WorkspaceMapping[],
+        workspace,
         graders,
         solution,
         agent,
