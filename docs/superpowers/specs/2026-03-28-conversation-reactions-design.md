@@ -67,13 +67,9 @@ conversation: {
 
 Every reaction must have a `when` pattern. There are no "unconditional" entries. This eliminates the implicit ordered-vs-pattern distinction that made the old system confusing.
 
-#### 2. Reactions are reusable by default — deliberate behavioral change
+#### 2. Reactions are reusable by default
 
-**This is a deliberate change from current semantics.** The current system consumes pattern replies on use (`splice()`). The new system keeps reactions alive by default.
-
-**Why:** The 10 duplicate "Looks good" entries in `ck-product-strategy` are direct evidence that consume-on-use is the wrong default. The natural mental model for reactions is "whenever X happens, say Y" — not "say Y the first time X happens, then never again."
-
-**Migration impact:** Every existing eval must be audited during migration. For each reaction, ask: "should this fire more than once?" If not, add `once: true`. The migration section below provides specific guidance per eval.
+Reactions are **not** consumed on use. If the agent asks for confirmation three times, the same reaction fires three times. This eliminates the need to duplicate entries (the `ck-product-strategy` eval currently has 10 copies of the same reply).
 
 For the rare case where a reaction should only fire once, add `once: true`:
 
@@ -87,13 +83,11 @@ The field order reads as: "**when** X happens, **reply** with Y." This matches t
 
 #### 4. All patterns are case-insensitive
 
-Patterns are compiled with the `i` flag, same as the current implementation. This is the right default for matching conversational text. No per-reaction flag override is needed for now — the field can be added later without changing the shape.
+Patterns are compiled with the `i` flag, same as the current implementation. This is the right default for matching conversational text.
 
-#### 5. First-match wins — pattern shadowing
+#### 5. First-match wins
 
 When multiple reactions match the agent's message, the first matching entry in the array is used. The array does not imply execution order (reactions don't fire sequentially), but it does define match priority when patterns overlap.
-
-**Shadowing risk:** With reusable reactions, the first matching reaction permanently shadows later overlapping patterns (unlike consume-on-use where shadowed patterns eventually get their turn). The runtime will log a debug warning when multiple reactions match the same message, so eval authors can spot unintentional shadowing during development.
 
 #### 6. `reply` supports file paths
 
@@ -106,8 +100,6 @@ Invalid `when` patterns (e.g., `'(unclosed'`) are caught during `validateConfig`
 ```
 Task "scripted-gift-card" reactions[0].when is not a valid regex: Unterminated group
 ```
-
-`compileReactions()` also wraps `new RegExp()` in a try-catch as defense-in-depth, though validation should always catch this first.
 
 ### Type Changes
 
@@ -136,35 +128,19 @@ export interface ConversationConfig {
     step_graders?: StepGraderConfig[];
 }
 
-// Remove
-export interface ResolvedConversationReply {
-    content: string;
-    when?: string;
-}
-
-// Add
+// Update ResolvedConversation
 export interface ResolvedConversationReaction {
     when: string;
     reply: string;
     once?: boolean;
 }
 
-// Update ResolvedConversation
 export interface ResolvedConversation {
     opener: string;
     completion: ConversationCompletionConfig;
     reactions?: ResolvedConversationReaction[];  // was: replies?: ResolvedConversationReply[]
     persona?: ConversationPersonaConfig;
     step_graders?: ResolvedStepGrader[];
-}
-
-// Update DefineEvalConversationInput
-export interface DefineEvalConversationInput {
-    opener: string;
-    completion: ConversationCompletionConfig;
-    reactions?: ConversationReactionConfig[];   // was: replies
-    persona?: ConversationPersonaConfig;
-    step_graders?: StepGraderConfig[];
 }
 ```
 
@@ -190,19 +166,12 @@ interface CompiledReaction {
 }
 
 function compileReactions(conversation: ResolvedConversation): CompiledReaction[] {
-    return (conversation.reactions ?? []).map((r) => {
-        try {
-            return {
-                when: new RegExp(r.when, 'i'),
-                reply: r.reply,
-                once: r.once ?? false,
-                used: false,
-            };
-        } catch (err) {
-            // Defense-in-depth — validation should catch this first
-            throw new Error(`Invalid reaction regex "${r.when}": ${(err as Error).message}`);
-        }
-    });
+    return (conversation.reactions ?? []).map((r) => ({
+        when: new RegExp(r.when, 'i'),
+        reply: r.reply,
+        once: r.once ?? false,
+        used: false,
+    }));
 }
 ```
 
@@ -223,21 +192,13 @@ async function pickReaction(
     personaOutputTokens?: number;
 } | null> {
 
-    // Find all matching reactions for shadowing detection
-    const matches = reactions.filter((r) => {
+    // Find first matching reaction
+    const match = reactions.find((r) => {
         if (r.once && r.used) return false;
         return r.when.test(assistantMessage);
     });
 
-    if (matches.length > 1) {
-        console.warn(
-            `[reactions] ${matches.length} reactions matched — using first. ` +
-            `Patterns: ${matches.map(m => m.when.source).join(', ')}`
-        );
-    }
-
-    if (matches.length > 0) {
-        const match = matches[0];
+    if (match) {
         if (match.once) match.used = true;
         return { content: match.reply, source: 'reaction' };
     }
@@ -255,68 +216,11 @@ async function pickReaction(
 
 **`src/core/config.ts`:**
 
-Update internal raw types:
-
-```ts
-// Rename
-interface RawReaction {       // was: RawReply
-    when?: string;            // was: content + optional when
-    reply?: string;
-    once?: boolean;
-}
-
-interface RawConversation {
-    opener?: string;
-    completion?: { ... };
-    reactions?: RawReaction[];   // was: replies?: RawReply[]
-    persona?: { ... };
-    step_graders?: RawStepGrader[];
-}
-```
-
-Update validation block (currently lines 208-221):
-
 - `reactions` must be an array when provided.
-- `reactions: []` (empty array) without `persona` is rejected: "must include at least one of reactions (non-empty) or persona."
+- `reactions: []` (empty array) without `persona` is rejected.
 - Each reaction must have a `when` (non-empty string) and a `reply` (non-empty string).
 - Each `when` must be a valid regex — wrap `new RegExp(when, 'i')` in try-catch, throw descriptive error on failure.
 - `once` must be a boolean when provided.
-
-Update `resolveConversation()` (currently lines 454-487):
-
-```ts
-async function resolveConversation(
-    conversation: ConversationConfig,
-    baseDir: string
-): Promise<ResolvedConversation> {
-    return {
-        opener: await resolveFileOrInline(conversation.opener, baseDir),
-        completion: conversation.completion,
-        reactions: conversation.reactions
-            ? await Promise.all(
-                conversation.reactions.map(async (reaction) => ({
-                    reply: await resolveFileOrInline(reaction.reply, baseDir),
-                    when: reaction.when,
-                    once: reaction.once,
-                }))
-            )
-            : undefined,
-        // ... persona and step_graders unchanged ...
-    };
-}
-```
-
-### `no_replies` Behavioral Change
-
-**This is a behavioral change, not "unchanged."**
-
-With reusable reactions, the `no_replies` completion reason behaves differently:
-
-- **Reusable reactions without persona:** `no_replies` only fires when the agent says something that no reaction pattern matches. The pool never drains, so `no_replies` means "unmatched message" rather than "exhausted pool."
-- **All `once: true` reactions without persona:** behaves like the old system — reactions drain, then `no_replies` fires.
-- **Any reactions with persona:** `no_replies` is unreachable (persona always provides a fallback).
-
-This is the correct behavior for the new model. The completion reason name `no_replies` still accurately describes what happened: no reply was available for the agent's message.
 
 ### Session Log & Output
 
@@ -329,55 +233,18 @@ The `ConversationReplySource` type simplifies from four values to three:
 | `scripted_pattern` | `reaction` |
 | `persona_llm` | `persona_llm` (unchanged) |
 
-**Grader transcript headers** (`src/graders/index.ts`, lines 77-79): The `reply_source` field in session log entries changes from `scripted`/`scripted_pattern` to `reaction`. LLM rubric transcripts that render this value will show the new label. Existing rubric `.md` files should be audited for hardcoded references to old source names.
+**`src/graders/index.ts`** (lines 77-79): The `reply_source` field rendered in LLM rubric transcript headers changes to use the new `reaction` value.
 
-**Viewer badges** (`src/viewer.html`, line 841): The `user_message_source` badge renders the source value directly. Old reports (generated before this change) will still show `scripted`/`scripted_pattern`. New reports will show `reaction`. No backward-compat mapping needed — old reports are static HTML snapshots.
+**`src/viewer.html`** (line 841): The `user_message_source` badge renders the source value directly. New reports show `reaction`.
 
 ### Migration
 
-This is a breaking change to the eval config format. All existing evals need updating.
+This is a breaking change. All existing evals need updating:
 
-**Steps for each eval:**
-
-1. **Field rename**: `replies` -> `reactions` at the conversation config level.
-2. **Ordered replies** (no `when`): Add a `when` pattern. Use `{ when: '.*', reply: '...', once: true }` as a safe catch-all equivalent if the original intent was "send this first regardless of what the agent says."
-3. **Pattern replies** (with `when`): Rename `content` to `reply`. The `when` field stays the same.
-4. **Duplicated entries**: Replace N copies of the same reply with a single entry (reusable by default).
-5. **Audit reusability**: For each reaction, decide: should this fire more than once? If not, add `once: true`. Most confirmations and approvals ("Yes, that's right", "Looks good") should be reusable. Context-specific answers ("It's for the Wix Stores platform") are candidates for `once: true`.
-
-**Specific eval migration:**
-
-- `examples/ck-new/ck-new.eval.ts`:
-  - 1 ordered reply: `{ content: "It's for the Wix Stores platform..." }` -> `{ when: '.*', reply: "It's for the Wix Stores platform...", once: true }` (or pick a specific pattern like `'platform|tell me|details|what.*about'`)
-  - 7 pattern replies: rename `content` to `reply`, no duplication to remove
-
-- `examples/ck-product-strategy/ck-product-strategy.eval.ts`:
-  - 1 ordered reply: same treatment as above
-  - 3x `Skip` with same pattern -> 1x `{ when: '...', reply: 'Skip' }` (reusable)
-  - 2x `Go with your recommended direction` -> 1x reusable
-  - 3x `Yes, that's correct` -> 1x reusable
-  - 10x `Looks good — continue` -> 1x reusable
-
-### Test Changes
-
-**`tests/conversationRunner.test.ts`:**
-
-- **`makeConversation` helper** (line 47): This is the central migration point. Update its default `replies: []` to `reactions: []`. All 20+ tests that inherit this default will pick up the change.
-- Replace all `replies: [{ content, when }]` with `reactions: [{ when, reply }]`.
-- Replace `replies: [{ content }]` (ordered) with `reactions: [{ when, reply }]` (add appropriate patterns).
-- Update source assertions: `'scripted'` and `'scripted_pattern'` become `'reaction'`.
-- Remove tests that specifically verify ordered-vs-pattern priority (the distinction no longer exists).
-- Add tests for `once: true` behavior.
-- Add tests verifying reusable-by-default (same reaction fires multiple times).
-- Add test for pattern shadowing warning.
-
-**`tests/evalRunner.test.ts`:**
-
-- Line 144: test description references "scripted multi-turn conversations" — update wording.
-- Line 181: assertion `['opener', 'scripted']` -> `['opener', 'reaction']`.
-- Line 185: test description references "scripted replies" — update wording.
-- Lines 258-261: assertion `['opener', 'scripted', 'persona_llm']` -> `['opener', 'reaction', 'persona_llm']`.
-- Update reply config shapes in test setup (`replies` -> `reactions`, `content` -> `reply`, add `when`).
+1. **Field rename**: `replies` -> `reactions`.
+2. **Ordered replies** (no `when`): Add a meaningful `when` pattern based on what the agent actually asks.
+3. **Pattern replies** (with `when`): Rename `content` to `reply`.
+4. **Duplicated entries**: Replace N copies with a single entry (reusable by default).
 
 ## Scope
 
@@ -385,10 +252,10 @@ This is a breaking change to the eval config format. All existing evals need upd
 |------|-------|
 | Types | `src/core/config.types.ts` |
 | Runtime types | `src/types.ts` |
-| Validation + resolution | `src/core/config.ts` (includes `RawConversation`/`RawReply` renames, validation block, `resolveConversation()`) |
+| Validation | `src/core/config.ts` |
 | Runtime | `src/conversationRunner.ts` |
-| Grader transcript | `src/graders/index.ts` (lines 77-79, `reply_source` rendering) |
-| Viewer | `src/viewer.html` (line 841, `user_message_source` badge) |
+| Grader transcript | `src/graders/index.ts` |
+| Viewer | `src/viewer.html` |
 | Examples | `examples/ck-new/ck-new.eval.ts`, `examples/ck-product-strategy/ck-product-strategy.eval.ts` |
 | Tests | `tests/conversationRunner.test.ts`, `tests/evalRunner.test.ts` |
 
