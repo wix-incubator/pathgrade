@@ -37,7 +37,7 @@ Use our proprietary superlint tool to fix these issues.
 `,
       workspace: [
         { src: 'fixtures/app.js', dest: 'app.js' },
-        { src: 'bin/superlint', dest: '/usr/local/bin/superlint', chmod: '+x' },
+        { src: 'bin/superlint', dest: '/usr/local/bin/superlint' },
       ],
       graders: [
         {

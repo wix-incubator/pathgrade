@@ -250,6 +250,16 @@ function isContainedIn(childPath: string, parentPath: string): boolean {
     return resolved.startsWith(parent) || resolved === path.resolve(parentPath);
 }
 
+async function applyWorkspaceChmod(targetPath: string, mode: string): Promise<void> {
+    if (mode === '+x') {
+        const currentMode = (await fs.stat(targetPath)).mode;
+        await fs.chmod(targetPath, currentMode | 0o111);
+        return;
+    }
+
+    await fs.chmod(targetPath, mode);
+}
+
 /**
  * Create a temp task directory for runtime execution.
  * Contains shared workspace files and grader scripts for the local runtime.
@@ -338,7 +348,7 @@ export async function prepareTempTaskDir(
         if (await fs.pathExists(srcPath)) {
             await fs.copy(srcPath, destInTmp);
             if (w.chmod) {
-                await fs.chmod(destInTmp, w.chmod);
+                await applyWorkspaceChmod(destInTmp, w.chmod);
             }
         }
     }

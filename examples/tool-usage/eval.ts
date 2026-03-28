@@ -1,4 +1,4 @@
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from '../../src/core/define-eval';
 
 export default defineEval({
   tasks: [{
