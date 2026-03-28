@@ -142,6 +142,15 @@ export interface ResolvedConversation {
     persona?: ConversationPersonaConfig;
     step_graders?: ResolvedStepGrader[];
 }
+
+// Update DefineEvalConversationInput (public API for defineEval())
+export interface DefineEvalConversationInput {
+    opener: string;
+    completion: ConversationCompletionConfig;
+    reactions?: ConversationReactionConfig[];   // was: replies?: ConversationReplyConfig[]
+    persona?: ConversationPersonaConfig;
+    step_graders?: StepGraderConfig[];
+}
 ```
 
 **`src/types.ts`:**
