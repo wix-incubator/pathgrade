@@ -60,7 +60,7 @@ export interface StepGraderConfig {
 export interface ConversationConfig {
     opener: string;
     completion: ConversationCompletionConfig;
-    reactions?: ConversationReactionConfig[];   // was: replies?: ConversationReplyConfig[]
+    reactions?: ConversationReactionConfig[];
     persona?: ConversationPersonaConfig;
     step_graders?: StepGraderConfig[];
 }
@@ -79,7 +79,7 @@ export interface ResolvedStepGrader {
 export interface ResolvedConversation {
     opener: string;
     completion: ConversationCompletionConfig;
-    reactions?: ResolvedConversationReaction[];  // was: replies?: ResolvedConversationReply[]
+    reactions?: ResolvedConversationReaction[];
     persona?: ConversationPersonaConfig;
     step_graders?: ResolvedStepGrader[];
 }
@@ -183,7 +183,7 @@ export type ResolvedTask = ResolvedInstructionTask | ResolvedConversationTask;
 export interface DefineEvalConversationInput {
     opener: string;
     completion: ConversationCompletionConfig;
-    reactions?: ConversationReactionConfig[];   // was: replies?: ConversationReplyConfig[]
+    reactions?: ConversationReactionConfig[];
     persona?: ConversationPersonaConfig;
     step_graders?: StepGraderConfig[];
 }

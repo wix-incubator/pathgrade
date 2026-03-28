@@ -6,8 +6,8 @@ describe('examples/ck-product-strategy eval tuning', () => {
     const scriptedTask = config.tasks.find((task) => task.name === 'scripted-smart-cart');
     const personaTask = config.tasks.find((task) => task.name === 'persona-smart-cart');
 
-    expect(scriptedTask?.conversation?.opener).toContain('artifacts/product/product-strategy-smart-cart.md');
-    expect(personaTask?.conversation?.opener).toContain('artifacts/product/product-strategy-smart-cart.md');
+    expect((scriptedTask as any)?.conversation?.opener).toContain('artifacts/product/product-strategy-smart-cart.md');
+    expect((personaTask as any)?.conversation?.opener).toContain('artifacts/product/product-strategy-smart-cart.md');
   });
 
   it('includes a scripted reply that nudges Codex to save the final strategy to the expected path', () => {
