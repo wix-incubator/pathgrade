@@ -19,6 +19,15 @@ export interface WorkspaceMapping {
     chmod?: string;     // e.g. "+x"
 }
 
+/** Workspace directory mapping: mirror an entire directory into the trial workspace */
+export interface WorkspaceDirectoryMapping {
+    dir: string;        // directory path relative to eval.ts — all files mirrored
+    chmod?: string;     // e.g. "+x", applied to all files
+}
+
+/** A single workspace entry: either a file mapping or a directory to mirror */
+export type WorkspaceEntry = WorkspaceMapping | WorkspaceDirectoryMapping;
+
 export interface ConversationReplyConfig {
     content: string;
     when?: string;
@@ -100,7 +109,7 @@ export interface EnvironmentConfig {
 /** Shared fields for all task types */
 interface EvalTaskBase {
     name: string;
-    workspace?: WorkspaceMapping[];
+    workspace?: WorkspaceEntry[];
     graders: GraderDescriptor[];
     solution?: string;
     agent?: AgentName;
@@ -180,7 +189,7 @@ export interface DefineEvalConversationInput {
 /** Shared fields for defineEval task input */
 interface DefineEvalTaskBase {
     name: string;
-    workspace?: WorkspaceMapping[];
+    workspace?: (string | WorkspaceMapping | WorkspaceDirectoryMapping)[];
     graders: GraderDescriptor[];
     solution?: string;
     agent?: AgentName;
