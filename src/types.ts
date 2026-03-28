@@ -14,7 +14,7 @@ export interface TurnCommand extends CommandResult {
     command: string;
 }
 
-export type ConversationReplySource = 'opener' | 'scripted' | 'scripted_pattern' | 'persona_llm';
+export type ConversationReplySource = 'opener' | 'reaction' | 'persona_llm';
 
 export interface ConversationTurn {
     turn_number: number;

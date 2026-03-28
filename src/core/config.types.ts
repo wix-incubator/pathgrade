@@ -28,9 +28,10 @@ export interface WorkspaceDirectoryMapping {
 /** A single workspace entry: either a file mapping or a directory to mirror */
 export type WorkspaceEntry = WorkspaceMapping | WorkspaceDirectoryMapping;
 
-export interface ConversationReplyConfig {
-    content: string;
-    when?: string;
+export interface ConversationReactionConfig {
+    when: string;           // regex pattern (compiled with 'i' flag)
+    reply: string;          // response content (inline or file path)
+    once?: boolean;         // if true, reaction is consumed after first use (default: false)
 }
 
 export interface ConversationPersonaConfig {
@@ -59,14 +60,15 @@ export interface StepGraderConfig {
 export interface ConversationConfig {
     opener: string;
     completion: ConversationCompletionConfig;
-    replies?: ConversationReplyConfig[];
+    reactions?: ConversationReactionConfig[];   // was: replies?: ConversationReplyConfig[]
     persona?: ConversationPersonaConfig;
     step_graders?: StepGraderConfig[];
 }
 
-export interface ResolvedConversationReply {
-    content: string;
-    when?: string;
+export interface ResolvedConversationReaction {
+    when: string;
+    reply: string;
+    once?: boolean;
 }
 
 export interface ResolvedStepGrader {
@@ -77,7 +79,7 @@ export interface ResolvedStepGrader {
 export interface ResolvedConversation {
     opener: string;
     completion: ConversationCompletionConfig;
-    replies?: ResolvedConversationReply[];
+    reactions?: ResolvedConversationReaction[];  // was: replies?: ResolvedConversationReply[]
     persona?: ConversationPersonaConfig;
     step_graders?: ResolvedStepGrader[];
 }
@@ -181,7 +183,7 @@ export type ResolvedTask = ResolvedInstructionTask | ResolvedConversationTask;
 export interface DefineEvalConversationInput {
     opener: string;
     completion: ConversationCompletionConfig;
-    replies?: ConversationReplyConfig[];
+    reactions?: ConversationReactionConfig[];   // was: replies?: ConversationReplyConfig[]
     persona?: ConversationPersonaConfig;
     step_graders?: StepGraderConfig[];
 }

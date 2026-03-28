@@ -15,7 +15,7 @@ export type {
     WorkspaceMapping,
     EnvironmentConfig,
     ConversationConfig,
-    ConversationReplyConfig,
+    ConversationReactionConfig,
     ConversationPersonaConfig,
     ConversationCompletionConfig,
 } from './config.types';
