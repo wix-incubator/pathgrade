@@ -39,22 +39,22 @@ export default defineEval({
       conversation: {
         opener: `I want to start a new project. I have an idea for a gift card feature.\n`,
         completion: { max_turns: 12, signal: 'artifacts/project-brief-*.md', timeout: 300 },
-        replies: [
-          { content: `It's for the Wix Stores platform. Online store owners have been\nrequesting the ability to sell digital gift cards that customers\ncan purchase and redeem at checkout.\n` },
+        reactions: [
+          { when: 'platform|tell me more|details', reply: `It's for the Wix Stores platform. Online store owners have been\nrequesting the ability to sell digital gift cards that customers\ncan purchase and redeem at checkout.\n` },
           {
-            content: "Yes, that's right. The goal is to solve a user pain point, and the target group is Self-Creator.",
+            reply: "Yes, that's right. The goal is to solve a user pain point, and the target group is Self-Creator.",
             when: "right\\?|correct\\?|confirm|sound right",
           },
-          { content: 'Solve user pain point', when: 'goal|trying to achieve|what are you trying' },
-          { content: 'Self-Creator', when: 'target|audience|who|Self-Creator|adjust if needed' },
-          { content: 'Skip', when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip' },
-          { content: 'Skip for now', when: 'gameplan|strategy doc' },
+          { when: 'goal|trying to achieve|what are you trying', reply: 'Solve user pain point' },
+          { when: 'target|audience|who|Self-Creator|adjust if needed', reply: 'Self-Creator' },
+          { when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip', reply: 'Skip' },
+          { when: 'gameplan|strategy doc', reply: 'Skip for now' },
           {
-            content: 'Looks good so far. Please write the brief now.',
             when: 'take on this so far|what.*so far|ready to write|write the brief|next step',
+            reply: 'Looks good so far. Please write the brief now.',
           },
-          { content: 'Looks good, no changes', when: "look right|approve|feedback|changes|edit|you'd change|anything.*change|move on|before moving" },
-          { content: 'No, skip repos for now', when: 'github|repo|reference' },
+          { when: "look right|approve|feedback|changes|edit|you'd change|anything.*change|move on|before moving", reply: 'Looks good, no changes' },
+          { when: 'github|repo|reference', reply: 'No, skip repos for now' },
         ],
       },
       graders: [

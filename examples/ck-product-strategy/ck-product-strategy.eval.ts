@@ -28,42 +28,25 @@ export default defineEval({
           signal: 'artifacts/product/product-strategy-*.md',
         },
 
-        replies: [
+        reactions: [
           {
-            content: `It's about adding AI-powered product recommendations to the Wix Stores
+            when: 'platform|tell me more|details|about.*feature|describe',
+            reply: `It's about adding AI-powered product recommendations to the Wix Stores
 shopping cart. Store owners want to increase average order value by suggesting
 relevant products at checkout. Let's start from scratch.\n`,
           },
-          { content: 'Skip', when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich' },
-          { content: 'Skip', when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich' },
-          { content: 'Skip', when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich' },
-          { content: 'Start strategy from scratch', when: 'start.*scratch|from scratch|continue.*left off|start.*strategy' },
-          { content: 'Proceed with assumptions', when: 'missing|proceed.*assumption|how.*proceed|critical.*missing' },
-          { content: 'No gameplan available, proceed without it', when: 'gameplan|domain.*game' },
-          { content: 'Proceed without it', when: "annual.*plan.*not found|can't find.*annual|add.*annual.*plan" },
-          { content: 'Go with your recommended direction', when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]' },
-          { content: 'Go with your recommended direction', when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]' },
+          { when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich', reply: 'Skip' },
+          { when: 'start.*scratch|from scratch|continue.*left off|start.*strategy', reply: 'Start strategy from scratch' },
+          { when: 'missing|proceed.*assumption|how.*proceed|critical.*missing', reply: 'Proceed with assumptions' },
+          { when: 'gameplan|domain.*game', reply: 'No gameplan available, proceed without it' },
+          { when: "annual.*plan.*not found|can't find.*annual|add.*annual.*plan", reply: 'Proceed without it' },
+          { when: 'direction.*[ABC]|which.*option|choose.*direction|Direction \\d|Option [ABC]', reply: 'Go with your recommended direction' },
           {
-            content: 'Looks good — save the final strategy to artifacts/product/product-strategy-smart-cart.md',
             when: 'finalized product strategy|final product strategy|execution-ready KPI spec|PRD-ready strategy doc|save.*artifacts/product|saved to|next artifact',
+            reply: 'Looks good — save the final strategy to artifacts/product/product-strategy-smart-cart.md',
           },
-          {
-            content: 'Looks good — save the final strategy to artifacts/product/product-strategy-smart-cart.md',
-            when: 'finalized product strategy|final product strategy|execution-ready KPI spec|PRD-ready strategy doc|save.*artifacts/product|saved to|next artifact',
-          },
-          { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
-          { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
-          { content: "Yes, that's correct", when: "correct\\?|right\\?|confirm|sound right|accurate\\?" },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
-          { content: 'Looks good — continue', when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think' },
+          { when: "correct\\?|right\\?|confirm|sound right|accurate\\?", reply: "Yes, that's correct" },
+          { when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think', reply: 'Looks good — continue' },
         ],
       },
 
