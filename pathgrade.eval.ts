@@ -33,7 +33,7 @@ Requirements:
 7. Save the file as eval.ts in the current directory`,
 
       workspace: [
-        { src: 'fixtures/code-formatter-skill.md', dest: 'SKILL.md' },
+        { dir: 'fixtures/create-eval-config' },
       ],
 
       graders: [
@@ -60,7 +60,7 @@ Requirements:
 7. Score should be the proportion of checks that passed`,
 
       workspace: [
-        { src: 'fixtures/sample-output.txt', dest: 'expected-output.txt' },
+        { dir: 'fixtures/write-deterministic-grader' },
       ],
 
       graders: [

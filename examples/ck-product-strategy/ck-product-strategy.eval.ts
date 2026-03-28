@@ -2,21 +2,7 @@ import { defineEval } from '../../src/core/define-eval';
 import { checkStrategy } from './graders/check-strategy';
 import { rubricStrategy } from './graders/rubric-strategy';
 
-const WORKSPACE = [
-  {
-    src: 'fixtures/artifacts/project-brief-smart-cart.md',
-    dest: 'artifacts/project-brief-smart-cart.md',
-  },
-  {
-    src: 'fixtures/artifacts/discovery/user-voice-smart-cart.md',
-    dest: 'artifacts/discovery/user-voice-smart-cart.md',
-  },
-  {
-    src: 'fixtures/artifacts/discovery/competitor-analysis-smart-cart.md',
-    dest: 'artifacts/discovery/competitor-analysis-smart-cart.md',
-  },
-  { src: 'fixtures/annual-plan.md', dest: 'annual-plan.md' },
-];
+const WORKSPACE = [{ dir: 'fixtures' }];
 
 export default defineEval({
   skillPath: 'skill',

@@ -7,7 +7,7 @@ export default defineEval({
     name: 'tool-aware-fix',
     type: 'instruction',
     instruction: 'Inspect app.js, fix the failing test, and verify it.',
-    workspace: [{ src: 'fixtures/app.js', dest: 'app.js' }],
+    workspace: [{ dir: 'fixtures' }],
     graders: [
       toolUsageFix,
       checkFix,
