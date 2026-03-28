@@ -27,7 +27,7 @@ Use our proprietary superlint tool to fix these issues.
 3. Verify — Run \`superlint verify\` to finalize and generate \`.superlint-passed\`
 `,
       workspace: [
-        { src: 'fixtures/app.js', dest: 'app.js' },
+        { dir: 'fixtures' },
         { src: 'bin/superlint', dest: '/usr/local/bin/superlint', chmod: '+x' },
       ],
       graders: [

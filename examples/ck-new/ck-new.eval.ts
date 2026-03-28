@@ -22,8 +22,7 @@ export default defineEval({
       instruction: 'Read app.js, find the bug in the add function, and fix it so add(2,3) returns 5.',
       agent: 'claude',
       workspace: [
-        { src: 'fixtures/buggy-app.js', dest: 'app.js' },
-        { src: 'fixtures/solve-fix.sh', dest: 'solve-fix.sh' },
+        { dir: 'fixtures' },
       ],
       solution: 'solve-fix.sh',
       trials: 1,

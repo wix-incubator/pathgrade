@@ -28,10 +28,7 @@ Specifically:
 5. Remove CommonModule import (not needed with built-in control flow)
 `,
       workspace: [
-        {
-          src: 'fixtures/src/app/user-profile.component.ts',
-          dest: 'src/app/user-profile.component.ts',
-        },
+        { dir: 'fixtures' },
       ],
       graders: [
         checkModernApis,
