@@ -180,8 +180,8 @@ describe('EvalRunner', () => {
           max_turns: 4,
           done_phrase: 'brief created',
         },
-        replies: [
-          { content: 'The goal is validating demand quickly.' },
+        reactions: [
+          { when: '.*', reply: 'The goal is validating demand quickly.' },
         ],
       },
     }), 1);
@@ -193,7 +193,7 @@ describe('EvalRunner', () => {
       total_turns: 2,
       completion_reason: 'done_phrase',
     }));
-    expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual(['opener', 'scripted']);
+    expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual(['opener', 'reaction']);
     expect(report.trials[0].session_log.filter(entry => entry.type === 'agent_result')).toHaveLength(2);
   });
 
@@ -244,8 +244,8 @@ describe('EvalRunner', () => {
           max_turns: 4,
           done_phrase: 'brief created',
         },
-        replies: [
-          { content: 'It is a gift card feature for Wix Stores.' },
+        reactions: [
+          { when: '.*', reply: 'It is a gift card feature for Wix Stores.', once: true },
         ],
         persona: {
           description: 'You are a concise Wix product manager.',
@@ -272,7 +272,7 @@ describe('EvalRunner', () => {
     }));
     expect(report.trials[0].conversation?.turns.map(turn => turn.user_message_source)).toEqual([
       'opener',
-      'scripted',
+      'reaction',
       'persona_llm',
     ]);
     expect(report.trials[0].persona_input_tokens).toBe(111);
@@ -331,8 +331,8 @@ describe('EvalRunner', () => {
           max_turns: 4,
           done_phrase: 'Done',
         },
-        replies: [
-          { content: 'Gift' },
+        reactions: [
+          { when: '.*', reply: 'Gift', once: true },
         ],
         persona: {
           description: 'Short persona',
@@ -375,8 +375,8 @@ describe('EvalRunner', () => {
           max_turns: 4,
           done_phrase: 'brief created',
         },
-        replies: [
-          { content: 'Sure.' },
+        reactions: [
+          { when: '.*', reply: 'Continue.' },
         ],
       },
     }), 1);
