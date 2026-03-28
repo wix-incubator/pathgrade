@@ -4,22 +4,22 @@ import config from '../examples/ck-new/ck-new.eval';
 describe('examples/ck-new scripted-gift-card eval tuning', () => {
   it('packs the scripted confirmation reply with goal and target information Codex tends to need early', () => {
     const scriptedTask = config.tasks.find((task) => task.name === 'scripted-gift-card');
-    const replies = scriptedTask?.conversation?.replies ?? [];
-    const confirmReply = replies.find((reply) => reply.when?.includes('right\\?'));
+    const reactions = (scriptedTask as any)?.conversation?.reactions ?? [];
+    const confirmReaction = reactions.find((r: any) => r.when?.includes('right\\?'));
 
-    expect(confirmReply?.content).toContain('solve a user pain point');
-    expect(confirmReply?.content).toContain('Self-Creator');
+    expect(confirmReaction?.reply).toContain('solve a user pain point');
+    expect(confirmReaction?.reply).toContain('Self-Creator');
   });
 
   it('includes a scripted reply that nudges Codex to write the brief after vague progress checks', () => {
     const scriptedTask = config.tasks.find((task) => task.name === 'scripted-gift-card');
     expect(scriptedTask?.type).toBe('conversation');
 
-    const replies = scriptedTask?.conversation?.replies ?? [];
-    expect(replies).toEqual(
+    const reactions = (scriptedTask as any)?.conversation?.reactions ?? [];
+    expect(reactions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          content: expect.stringContaining('write the brief'),
+          reply: expect.stringContaining('write the brief'),
           when: expect.stringMatching(/so far/i),
         }),
       ]),

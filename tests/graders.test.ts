@@ -455,7 +455,7 @@ describe('LLMGrader', () => {
       { type: 'agent_start', instruction: 'Help me start a project.', timestamp: '' },
       { type: 'user_reply', output: 'Help me start a project.', turn_number: 1, reply_source: 'opener', timestamp: '' },
       { type: 'agent_result', output: 'raw turn one', assistant_message: 'What is your goal?', turn_number: 1, timestamp: '' },
-      { type: 'user_reply', output: 'Validate demand quickly.', turn_number: 2, reply_source: 'scripted', timestamp: '' },
+      { type: 'user_reply', output: 'Validate demand quickly.', turn_number: 2, reply_source: 'reaction', timestamp: '' },
       { type: 'agent_result', output: 'raw turn two', assistant_message: 'Project brief created.', turn_number: 2, timestamp: '' },
     ];
 

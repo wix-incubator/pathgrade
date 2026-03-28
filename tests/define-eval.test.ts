@@ -133,7 +133,7 @@ describe('defineEval', () => {
           conversation: {
             opener: 'Hello agent',
             completion: { max_turns: 3 },
-            replies: [{ content: 'thanks' }],
+            reactions: [{ when: '.*', reply: 'thanks' }],
           },
           graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
         },
@@ -144,7 +144,7 @@ describe('defineEval', () => {
     expect(task.type).toBe('conversation');
     expect(task.conversation.opener).toBe('Hello agent');
     expect(task.conversation.completion.max_turns).toBe(3);
-    expect(task.conversation.replies).toHaveLength(1);
+    expect(task.conversation.reactions).toHaveLength(1);
   });
 
   it('supports conversation tasks with persona', () => {

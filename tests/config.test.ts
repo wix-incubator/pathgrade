@@ -82,7 +82,7 @@ describe('validateConfig', () => {
         conversation: {
           opener: 'Start here',
           completion: { max_turns: 3 },
-          replies: [{ content: 'First reply' }],
+          reactions: [{ when: '.*', reply: 'First reply' }],
         },
         graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
@@ -91,7 +91,7 @@ describe('validateConfig', () => {
     expect(task0.conversation).toEqual({
       opener: 'Start here',
       completion: { max_turns: 3 },
-      replies: [{ content: 'First reply' }],
+      reactions: [{ when: '.*', reply: 'First reply' }],
     });
   });
 
@@ -132,7 +132,7 @@ describe('validateConfig', () => {
         conversation: { opener: 'Start here', completion: { max_turns: 3 } },
         graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
-    })).toThrow('must include at least one of "replies" or "persona"');
+    })).toThrow('must include at least one of "reactions" or "persona"');
   });
 
   it('throws when task has no graders', () => {
@@ -337,7 +337,7 @@ describe('validateConfig', () => {
             max_turns: 5,
             done_when: 'The agent has delivered a complete project brief',
           },
-          replies: [{ content: 'ok' }],
+          reactions: [{ when: '.*', reply: 'ok' }],
         },
         graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
@@ -512,9 +512,9 @@ describe('resolveTask', () => {
       conversation: {
         opener: 'conversation/opener.md',
         completion: { max_turns: 4, done_phrase: 'done' },
-        replies: [
-          { content: 'conversation/reply-1.md' },
-          { content: 'Inline fallback', when: 'goal' },
+        reactions: [
+          { when: '.*', reply: 'conversation/reply-1.md' },
+          { when: 'goal', reply: 'Inline fallback' },
         ],
       },
       graders: [stubGrader],
@@ -536,9 +536,9 @@ describe('resolveTask', () => {
     expect(resolved.conversation).toEqual({
       opener: 'Opened from file',
       completion: { max_turns: 4, done_phrase: 'done' },
-      replies: [
-        { content: 'Reply from file' },
-        { content: 'Inline fallback', when: 'goal' },
+      reactions: [
+        { when: '.*', reply: 'Reply from file' },
+        { when: 'goal', reply: 'Inline fallback' },
       ],
     });
   });
@@ -585,7 +585,7 @@ describe('resolveTask', () => {
       conversation: {
         opener: 'Opened inline',
         completion: { max_turns: 4, done_when: 'Agent delivered the brief' },
-        replies: [{ content: 'ok' }],
+        reactions: [{ when: '.*', reply: 'ok' }],
       },
       graders: [stubGrader],
     };

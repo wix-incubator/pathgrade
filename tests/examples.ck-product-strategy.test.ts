@@ -12,12 +12,12 @@ describe('examples/ck-product-strategy eval tuning', () => {
 
   it('includes a scripted reply that nudges Codex to save the final strategy to the expected path', () => {
     const scriptedTask = config.tasks.find((task) => task.name === 'scripted-smart-cart');
-    const replies = scriptedTask?.conversation?.replies ?? [];
+    const reactions = (scriptedTask as any)?.conversation?.reactions ?? [];
 
-    expect(replies).toEqual(
+    expect(reactions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          content: expect.stringContaining('artifacts/product/product-strategy-smart-cart.md'),
+          reply: expect.stringContaining('artifacts/product/product-strategy-smart-cart.md'),
           when: expect.stringMatching(/final|save|artifact|kpi|prd/i),
         }),
       ]),
