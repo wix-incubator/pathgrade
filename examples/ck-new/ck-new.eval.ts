@@ -1,7 +1,9 @@
 import { defineEval } from '../../src/core/define-eval';
-import { llmRubricGrader, toolUsageGrader } from '../../src/core/grader-factories';
+import { toolUsageGrader } from '../../src/core/grader-factories';
 import { checkFix } from './graders/check-fix';
 import { checkBrief } from './graders/check-brief';
+import { rubricScripted } from './graders/rubric-scripted';
+import { rubricPersona } from './graders/rubric-persona';
 
 export default defineEval({
   skillPath: 'skill',
@@ -57,24 +59,7 @@ export default defineEval({
       },
       graders: [
         checkBrief,
-        llmRubricGrader({
-          rubric: `Evaluate the multi-turn conversation for ck-new skill compliance.
-
-Workflow (0-0.4):
-- Did the agent ask questions one at a time (not multiple in one message)?
-- Did the agent follow check→direction→goal→target flow?
-- Did it offer structured choices for Goal and Target Group?
-
-Brief Quality (0-0.4):
-- Is the brief at artifacts/project-brief-*.md?
-- Does it have all required sections (Context, Direction, Goal, Target Group)?
-- Is content refined (not just echoing user replies)?
-
-Conversation Quality (0-0.2):
-- Was the conversation efficient (no unnecessary back-and-forth)?
-- Did the agent react naturally to user responses?`,
-          weight: 0.5,
-        }),
+        rubricScripted,
       ],
     },
 
@@ -100,23 +85,7 @@ Conversation Quality (0-0.2):
       },
       graders: [
         checkBrief,
-        llmRubricGrader({
-          rubric: `Evaluate the full persona-driven conversation.
-
-Skill Discovery (0-0.2):
-- Did the agent discover and use ck-new?
-
-Conversation Flow (0-0.4):
-- One question per turn?
-- Adapted to user's communication style?
-- Handled open-ended responses well?
-
-Brief Quality (0-0.4):
-- Complete brief with all sections?
-- Content matches the facts the persona provided?
-- Project name reasonable?`,
-          weight: 0.5,
-        }),
+        rubricPersona,
       ],
     },
   ],

@@ -1,6 +1,6 @@
 import { defineEval } from '../../src/core/define-eval';
-import { llmRubricGrader } from '../../src/core/grader-factories';
 import { checkLint } from './graders/check-lint';
+import { rubricWorkflow } from './graders/rubric-workflow';
 
 export default defineEval({
   defaults: {
@@ -32,18 +32,7 @@ Use our proprietary superlint tool to fix these issues.
       ],
       graders: [
         checkLint,
-        llmRubricGrader({
-          rubric: `Evaluate the agent's approach:
-
-Workflow Compliance (0-0.5):
-- Did the agent follow check → fix → verify?
-- Did it use superlint (not eslint or manual edits)?
-
-Efficiency (0-0.5):
-- Completed in ≤5 commands?
-- No unnecessary trial-and-error?`,
-          weight: 0.3,
-        }),
+        rubricWorkflow,
       ],
     },
   ],

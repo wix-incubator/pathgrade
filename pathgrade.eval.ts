@@ -1,7 +1,8 @@
 import { defineEval } from './src/core/define-eval';
-import { llmRubricGrader } from './src/core/grader-factories';
 import { checkEvalTs } from './graders/check-eval-ts';
 import { checkGraderAuthoring } from './graders/check-grader-authoring';
+import { rubricEvalQuality } from './graders/rubric-eval-quality';
+import { rubricGraderQuality } from './graders/rubric-grader-quality';
 
 export default defineEval({
   defaults: {
@@ -37,25 +38,7 @@ Requirements:
 
       graders: [
         checkEvalTs,
-        llmRubricGrader({
-          rubric: `Evaluate the generated eval.ts quality:
-
-Structure (0-0.4):
-- Does eval.ts use defineEval() correctly?
-- Are defaults sensibly configured?
-- Does it define at least one well-structured task?
-
-Task Quality (0-0.3):
-- Is the instruction specific enough for an agent to follow?
-- Are workspace files mapped correctly?
-- Are grader weights reasonable?
-
-Grader Design (0-0.3):
-- Does it include both deterministicGrader() and llmRubricGrader()?
-- Is the deterministic grader checking concrete outcomes via execute()?
-- Is the LLM rubric focused on qualitative assessment?`,
-          weight: 0.3,
-        }),
+        rubricEvalQuality,
       ],
     },
 
@@ -82,23 +65,7 @@ Requirements:
 
       graders: [
         checkGraderAuthoring,
-        llmRubricGrader({
-          rubric: `Evaluate the grader file quality:
-
-Correctness (0-0.4):
-- Does the file use deterministicGrader() factory?
-- Does it export the grader?
-- Does execute() return { score, details, checks }?
-
-Robustness (0-0.3):
-- Does it handle the case where output.txt doesn't exist?
-- Does it use proper async/await patterns?
-
-Code Quality (0-0.3):
-- Is the code well-structured and readable?
-- Are check results descriptive?`,
-          weight: 0.3,
-        }),
+        rubricGraderQuality,
       ],
     },
   ],
