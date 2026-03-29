@@ -151,7 +151,7 @@ describe('EvalRunner', () => {
     const runner = new EvalRunner(provider);
     const report = await runner.runEval(() => agent, '/task', [], makeEvalOpts(), 1);
 
-    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function), undefined);
     expect(start).toHaveBeenCalledWith({ message: 'Do something' });
     expect(report.trials[0].session_log.some(entry => entry.output === 'Session raw output')).toBe(true);
   });
@@ -186,7 +186,7 @@ describe('EvalRunner', () => {
       },
     }), 1);
 
-    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function), undefined);
     expect(start).toHaveBeenCalledWith(expect.objectContaining({ message: 'Help me start a new project.' }));
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({ message: 'The goal is validating demand quickly.' }));
     expect(report.trials[0].conversation).toEqual(expect.objectContaining({
@@ -257,7 +257,7 @@ describe('EvalRunner', () => {
       },
     }), 1, { GEMINI_API_KEY: 'test-key' });
 
-    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function));
+    expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function), undefined);
     expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
       message: 'It is a gift card feature for Wix Stores.',
       continueSession: true,

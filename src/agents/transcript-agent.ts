@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { AgentCommandRunner, AgentSession, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
+import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
 
 /**
  * Base class for agents that manage multi-turn conversations via transcript
@@ -10,7 +10,7 @@ import { AgentCommandRunner, AgentSession, AgentTurnResult, BaseAgent, CommandRe
  * accumulation, and prompt file writing.
  */
 export abstract class TranscriptAgent extends BaseAgent {
-    async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+    async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner, _options?: AgentSessionOptions): Promise<AgentSession> {
         const transcript: string[] = [];
 
         const runTranscriptTurn = async (message: string): Promise<AgentTurnResult> => {

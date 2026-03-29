@@ -169,8 +169,12 @@ export function getRuntimeEnv(handle: EnvironmentHandle): Record<string, string>
     return typeof handle === 'string' ? {} : handle.env;
 }
 
+export interface AgentSessionOptions {
+    mcpConfigPath?: string;
+}
+
 export abstract class BaseAgent {
-    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+    async createSession(runtime: EnvironmentHandle, runCommand: AgentCommandRunner, options?: AgentSessionOptions): Promise<AgentSession> {
         // Default: wrap run() into a session for simple agents
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
             const rawOutput = await this.run(message, getWorkspacePath(runtime), runCommand);
@@ -194,9 +198,10 @@ export abstract class BaseAgent {
 export async function createAgentSession(
     agent: BaseAgent,
     runtime: EnvironmentHandle,
-    runCommand: AgentCommandRunner
+    runCommand: AgentCommandRunner,
+    options?: AgentSessionOptions
 ): Promise<AgentSession> {
-    return agent.createSession(runtime, runCommand);
+    return agent.createSession(runtime, runCommand, options);
 }
 
 /** Options passed to environment providers for setup */

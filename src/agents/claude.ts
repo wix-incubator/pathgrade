@@ -1,4 +1,4 @@
-import { AgentCommandRunner, AgentSession, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
+import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
 
 interface PermissionDenial {
     tool_name: string;
@@ -24,17 +24,18 @@ interface ClaudeEnvelope {
 const API_ERROR_PATTERN = /^API Error:\s*\d{3}\b/;
 
 export class ClaudeAgent extends BaseAgent {
-    async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner): Promise<AgentSession> {
+    async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner, options?: AgentSessionOptions): Promise<AgentSession> {
         let sessionId: string | undefined;
+        const mcpConfigPath = options?.mcpConfigPath;
 
         return {
             start: async ({ message }) => {
-                const result = await this.runTurn(message, runCommand, undefined);
+                const result = await this.runTurn(message, runCommand, undefined, mcpConfigPath);
                 sessionId = result.sessionId;
                 return result;
             },
             reply: async ({ message }) => {
-                const result = await this.runTurn(message, runCommand, sessionId);
+                const result = await this.runTurn(message, runCommand, sessionId, mcpConfigPath);
                 return result;
             },
         };
@@ -45,14 +46,15 @@ export class ClaudeAgent extends BaseAgent {
         _workspacePath: string,
         runCommand: (cmd: string) => Promise<CommandResult>
     ): Promise<string> {
-        const result = await this.runTurn(instruction, runCommand, undefined);
+        const result = await this.runTurn(instruction, runCommand, undefined, undefined);
         return result.rawOutput;
     }
 
     private async runTurn(
         instruction: string,
         runCommand: AgentCommandRunner,
-        sessionId: string | undefined
+        sessionId: string | undefined,
+        mcpConfigPath: string | undefined
     ): Promise<AgentTurnResult & { sessionId?: string }> {
         const promptPath = '"${TMPDIR:-/tmp}/.pathgrade-prompt.md"';
 
@@ -64,7 +66,8 @@ export class ClaudeAgent extends BaseAgent {
         // For continuation, use --resume to target the exact session from turn 1.
         const sanitized = sessionId ? this.sanitizeSessionId(sessionId) : undefined;
         const sessionFlag = sanitized ? ` --resume ${sanitized}` : '';
-        const command = `claude -p${sessionFlag} --output-format stream-json --verbose --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
+        const mcpFlag = mcpConfigPath ? ` --mcp-config "${mcpConfigPath}"` : '';
+        const command = `claude -p${sessionFlag}${mcpFlag} --output-format stream-json --verbose --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
         const result = await runCommand(command);
 
         // Parse the NDJSON stream to extract result text, session_id, and tool traces.
