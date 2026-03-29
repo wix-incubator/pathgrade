@@ -88,7 +88,7 @@ export default defineEval({
 });
 ```
 
-Both `mcp_config` (real) and `mcp_mock` follow the same `defaults + per-task override` pattern. They are mutually exclusive per-task after defaults are merged.
+Both `mcp_config` (real) and `mcp_mock` follow the same `defaults + per-task override` pattern. Task-level `mcp_mock` completely replaces defaults `mcp_mock` (no array merging). They are mutually exclusive per-task after defaults are merged.
 
 **Optional input schema override:**
 
@@ -218,7 +218,7 @@ Server names are sanitized to alphanumeric + hyphens.
 }
 ```
 
-The mock server script path is resolved via `path.resolve(__dirname, '../mcp-mock-server.js')`. The fixture path is relative — it resolves in the workspace because `LocalProvider.setup` copies the entire task bundle into the trial workspace.
+The mock server script path is resolved via `path.resolve(__dirname, '../mcp-mock-server.js')`. The fixture path is written as an absolute path (resolved to `tmpDir` at generation time) so that it works regardless of the MCP server subprocess's CWD.
 
 **Step 3 — Set `mcpConfigPath`.** Same as the `mcp_config` flow: `mcpConfigPath: '.pathgrade-mcp.json'` in `EvalRunOptions`. Downstream runners are reused; the agent-specific adapter decides how to consume the config.
 
@@ -279,6 +279,7 @@ If a server shape contains fields an agent adapter cannot express, PathGrade fai
 | Validation | `src/core/config.ts` | Mutual exclusion, `when` regex validation |
 | Define eval | `src/core/define-eval.ts` | Pass `mcp_mock` through |
 | Task prep | `src/commands/run.ts` | Generate fixture + MCP config in `prepareTempTaskDir` |
+| Package | `package.json` | Add `"./mcp-mock"` to exports map |
 | Tests | `tests/mcp-mock.test.ts` (new) | Helper, fixture generation, mock server protocol |
 | Tests | `tests/config.test.ts` | Mutual exclusion validation |
 
