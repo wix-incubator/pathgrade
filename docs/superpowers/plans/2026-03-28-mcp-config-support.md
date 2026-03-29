@@ -10,6 +10,12 @@
 
 **Status:** Partially implemented. The MCP mock servers plan (`2026-03-29-mcp-mock-servers.md`) already added `mcp_config` to types, threading, and resolution. What remains is the runtime wiring: copying the config file, threading `mcpConfigPath` through the agent session interface, and appending `--mcp-config` to the Claude CLI command.
 
+**Constraint — absolute paths in MCP configs:** MCP config files must use absolute paths or global commands (e.g. `npx`, HTTP URLs) for server entries. The config is copied verbatim into the trial workspace — relative paths inside it are NOT rewritten. This matches real-world MCP configs (absolute paths, `npx` commands, HTTP URLs) and avoids fragile path rewriting inside arbitrary JSON.
+
+**Constraint — no base-dir containment check:** Unlike workspace files, `mcp_config` is intentionally allowed to reference files outside the eval directory (e.g. `~/.claude.json`). The eval author explicitly opts in to this path. Workspace files are sandboxed because they're copied into a shared trial context; the MCP config is a reference chosen by the eval author.
+
+**Constraint — no fail-fast pathExists in resolveTask:** File existence is validated at copy time in `prepareTempTaskDir`, not during resolution. This avoids conflicts with mocked `pathExists` in existing tests (which mock it globally for instruction resolution) and follows the validate-at-point-of-use principle.
+
 ---
 
 ## Already Done (from mock servers plan)
@@ -26,12 +32,12 @@ These items were implemented as part of the MCP mock servers plan and should NOT
 - [x] `mcpConfigPath?: string` on `EvalRunOptions` (`evalRunner.ts:61`)
 - [x] `mcpConfigPath` set in `evalOpts` — `(resolved.mcp_config || resolved.mcp_mock) ? '.pathgrade-mcp.json' : undefined` (`run.ts:140`)
 
+Note: `RawEvalConfig.defaults` is typed as `Record<string, unknown> & {...}` (config.ts:29), so `mcp_config` already passes through the defaults spread at config.ts:149 without needing an explicit field. The existing `mcp_mock` defaults test at define-eval.test.ts:216 proves this path works. Adding `mcp_config` to the explicit type is optional (for documentation, not correctness).
+
 ## File Structure (remaining work)
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `src/core/config.ts:26-39` | Modify | Add `mcp_config?: string` to `RawEvalConfig.defaults` |
-| `src/core/config.ts:432` | Modify | Add fail-fast `pathExists` check for `mcp_config` |
 | `src/commands/run.ts:315-348` | Modify | Copy `mcp_config` file into workspace in `prepareTempTaskDir` |
 | `src/types.ts:172-200` | Modify | Add `AgentSessionOptions`, update `BaseAgent.createSession` and `createAgentSession` |
 | `src/agents/claude.ts:27-68` | Modify | Accept options, append `--mcp-config` flag |
@@ -40,18 +46,20 @@ These items were implemented as part of the MCP mock servers plan and should NOT
 | `src/conversationRunner.ts:33-42,319` | Modify | Add `mcpConfigPath` to options, pass to `createAgentSession` |
 | `tests/define-eval.test.ts` | Modify | Add `mcp_config` passthrough tests |
 | `tests/config.test.ts` | Modify | Add `mcp_config` resolution tests |
+| `tests/commands.run.test.ts` | Modify | Add `mcp_config` file staging tests |
 | `tests/agents.test.ts` | Modify | Add ClaudeAgent `--mcp-config` flag tests |
 
 ---
 
-### Task 1: Fill remaining type gaps and add tests
+### Task 1: Add tests for existing `mcp_config` support
+
+All type and resolution work is already done. This task adds test coverage to confirm it works.
 
 **Files:**
-- Modify: `src/core/config.ts:26-39` (RawEvalConfig.defaults)
 - Modify: `tests/define-eval.test.ts`
 - Modify: `tests/config.test.ts`
 
-- [ ] **Step 1: Write failing tests for `mcp_config` passthrough in `defineEval`**
+- [ ] **Step 1: Add `mcp_config` passthrough tests to `defineEval`**
 
 In `tests/define-eval.test.ts`, add after the existing `mcp_mock` tests:
 
@@ -89,31 +97,7 @@ it('passes mcp_config through on defaults', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify — first test should pass, second may fail**
-
-Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/define-eval.test.ts -t "mcp_config"`
-
-The task-level test should already pass (types already have `mcp_config`). The defaults test may fail because `RawEvalConfig.defaults` doesn't have `mcp_config` yet, so `validateConfig` strips it during the spread.
-
-- [ ] **Step 3: Add `mcp_config` to `RawEvalConfig.defaults`**
-
-In `src/core/config.ts`, add `mcp_config?: string` to the `RawEvalConfig.defaults` type (around line 37, after `environment`):
-
-```typescript
-defaults?: Record<string, unknown> & {
-    provider?: unknown;
-    docker?: unknown;
-    agent?: string;
-    trials?: number;
-    timeout?: number;
-    threshold?: number;
-    grader_model?: string;
-    environment?: Partial<EnvironmentConfig>;
-    mcp_config?: string;
-};
-```
-
-- [ ] **Step 4: Write failing tests for `mcp_config` resolution in `resolveTask`**
+- [ ] **Step 2: Add `mcp_config` resolution tests to `resolveTask`**
 
 In `tests/config.test.ts`, add to the `resolveTask` describe block (after the existing `mcp_mock` tests):
 
@@ -179,16 +163,16 @@ it('resolved mcp_config is undefined when not specified', async () => {
 });
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 3: Run all tests to verify they pass**
 
 Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/define-eval.test.ts tests/config.test.ts`
-Expected: PASS — all tests including new ones (resolution logic already exists)
+Expected: PASS — all new tests pass immediately (types and resolution already implemented)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add src/core/config.ts tests/define-eval.test.ts tests/config.test.ts
-git commit -m "feat: add mcp_config to defaults type and add resolution tests"
+git add tests/define-eval.test.ts tests/config.test.ts
+git commit -m "test: add mcp_config passthrough and resolution tests"
 ```
 
 ---
@@ -346,6 +330,7 @@ git commit -m "feat: thread mcpConfigPath through agent session interface"
 - Modify: `src/evalRunner.ts:190-250` (runSingleTrial)
 - Modify: `src/conversationRunner.ts:33-42,319` (ConversationRunOptions, createAgentSession call)
 - Modify: `src/commands/run.ts:315-348` (prepareTempTaskDir)
+- Modify: `tests/commands.run.test.ts`
 
 - [ ] **Step 1: Pass `mcpConfigPath` to conversation runner**
 
@@ -457,15 +442,107 @@ In `src/commands/run.ts`, inside `prepareTempTaskDir`, add before the `mcp_mock`
     }
 ```
 
-- [ ] **Step 5: Run full test suite**
+- [ ] **Step 5: Write tests for `mcp_config` file staging**
+
+In `tests/commands.run.test.ts`, add a new describe block:
+
+```typescript
+describe('prepareTempTaskDir mcp_config', () => {
+  it('copies mcp_config file into workspace as .pathgrade-mcp.json', async () => {
+    const baseDir = path.join(os.tmpdir(), `pathgrade-mcp-config-test-${Date.now()}`);
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-mcp-config-out-${Date.now()}`);
+    await fsExtra.ensureDir(baseDir);
+
+    // Create a mock MCP config file
+    const mcpConfigPath = path.join(baseDir, 'mcp-servers.json');
+    await fsExtra.writeJson(mcpConfigPath, {
+      mcpServers: {
+        'test-server': { command: 'node', args: ['/absolute/path/server.js'] },
+      },
+    });
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'mcp-config-test',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_config: mcpConfigPath,
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, baseDir, tmpDir);
+
+      const copiedConfig = await fsExtra.readJson(path.join(tmpDir, '.pathgrade-mcp.json'));
+      expect(copiedConfig.mcpServers['test-server']).toBeDefined();
+      expect(copiedConfig.mcpServers['test-server'].command).toBe('node');
+    } finally {
+      await fsExtra.remove(baseDir);
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('throws when mcp_config file does not exist', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-mcp-config-missing-${Date.now()}`);
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'missing-config',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_config: '/nonexistent/path/mcp.json',
+    };
+
+    try {
+      await expect(prepareTempTaskDir(resolved as any, '/base', tmpDir)).rejects.toThrow(/not found/i);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('does not create .pathgrade-mcp.json when mcp_config is absent', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-mcp-config-absent-${Date.now()}`);
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'no-config',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, '/base', tmpDir);
+      expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade-mcp.json'))).toBe(false);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+});
+```
+
+- [ ] **Step 6: Run full test suite**
 
 Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/evalRunner.ts src/conversationRunner.ts src/commands/run.ts
+git add src/evalRunner.ts src/conversationRunner.ts src/commands/run.ts tests/commands.run.test.ts
 git commit -m "feat: wire mcp_config through runner and prepare in task dir"
 ```
 
