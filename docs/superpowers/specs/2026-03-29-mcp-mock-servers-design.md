@@ -211,7 +211,7 @@ Server names are sanitized to alphanumeric + hyphens.
       "command": "node",
       "args": [
         "/absolute/path/to/pathgrade/dist/mcp-mock-server.js",
-        ".pathgrade-mcp-mock-weather-api.json"
+        "/absolute/path/to/workspace/.pathgrade-mcp-mock-weather-api.json"
       ]
     }
   }
