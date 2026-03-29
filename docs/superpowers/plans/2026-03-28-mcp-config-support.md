@@ -8,37 +8,52 @@
 
 **Tech Stack:** TypeScript, vitest
 
+**Status:** Partially implemented. The MCP mock servers plan (`2026-03-29-mcp-mock-servers.md`) already added `mcp_config` to types, threading, and resolution. What remains is the runtime wiring: copying the config file, threading `mcpConfigPath` through the agent session interface, and appending `--mcp-config` to the Claude CLI command.
+
 ---
 
-## File Structure
+## Already Done (from mock servers plan)
+
+These items were implemented as part of the MCP mock servers plan and should NOT be re-implemented:
+
+- [x] `mcp_config?: string` added to `EvalTaskBase`, `EvalDefaults`, `ResolvedTaskBase`, `DefineEvalTaskBase` in `config.types.ts`
+- [x] `mcp_config` passthrough in `defineEval` (`define-eval.ts:31`)
+- [x] `mcp_config` on `RawTask` interface in `config.ts:55`
+- [x] `mcp_config` passthrough in `validateConfig` base object (`config.ts:292`)
+- [x] `mcp_config` resolution in `resolveTask` — `path.resolve(baseDir, mcp_config_raw)` (`config.ts:432-434`)
+- [x] Mutual exclusion with `mcp_mock` in `resolveTask` (`config.ts:437-439`)
+- [x] `mcp_config` in both `resolveTask` return objects (`config.ts:465,479`)
+- [x] `mcpConfigPath?: string` on `EvalRunOptions` (`evalRunner.ts:61`)
+- [x] `mcpConfigPath` set in `evalOpts` — `(resolved.mcp_config || resolved.mcp_mock) ? '.pathgrade-mcp.json' : undefined` (`run.ts:140`)
+
+## File Structure (remaining work)
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `src/core/config.types.ts` | Modify | Add `mcp_config?: string` to 4 interfaces |
-| `src/core/define-eval.ts` | Modify | Pass `mcp_config` through task mapping |
-| `src/core/config.ts` | Modify | Pass through in validation, resolve path in `resolveTask` |
-| `src/evalRunner.ts` | Modify | Add `mcpConfigPath?: string` to `EvalRunOptions` |
-| `src/types.ts` | Modify | Add `AgentSessionOptions` interface, update `BaseAgent.createSession` and `createAgentSession` |
-| `src/agents/claude.ts` | Modify | Accept options, append `--mcp-config` flag |
-| `src/agents/transcript-agent.ts` | Modify | Accept and ignore options (forward-compat) |
-| `src/conversationRunner.ts` | Modify | Pass `mcpConfigPath` to `createAgentSession` |
-| `src/commands/run.ts` | Modify | Set `mcpConfigPath` in opts, copy file in `prepareTempTaskDir` |
-| `tests/define-eval.test.ts` | Modify | Add mcp_config test cases |
-| `tests/config.test.ts` | Modify | Add mcp_config resolution tests |
+| `src/core/config.ts:26-39` | Modify | Add `mcp_config?: string` to `RawEvalConfig.defaults` |
+| `src/core/config.ts:432` | Modify | Add fail-fast `pathExists` check for `mcp_config` |
+| `src/commands/run.ts:315-348` | Modify | Copy `mcp_config` file into workspace in `prepareTempTaskDir` |
+| `src/types.ts:172-200` | Modify | Add `AgentSessionOptions`, update `BaseAgent.createSession` and `createAgentSession` |
+| `src/agents/claude.ts:27-68` | Modify | Accept options, append `--mcp-config` flag |
+| `src/agents/transcript-agent.ts:13` | Modify | Accept and ignore options (forward-compat) |
+| `src/evalRunner.ts:190-250` | Modify | Pass `mcpConfigPath` to conversation runner and agent session |
+| `src/conversationRunner.ts:33-42,319` | Modify | Add `mcpConfigPath` to options, pass to `createAgentSession` |
+| `tests/define-eval.test.ts` | Modify | Add `mcp_config` passthrough tests |
+| `tests/config.test.ts` | Modify | Add `mcp_config` resolution tests |
+| `tests/agents.test.ts` | Modify | Add ClaudeAgent `--mcp-config` flag tests |
 
 ---
 
-### Task 1: Add `mcp_config` to config types
+### Task 1: Fill remaining type gaps and add tests
 
 **Files:**
-- Modify: `src/core/config.types.ts:110-120` (EvalTaskBase)
-- Modify: `src/core/config.types.ts:137-145` (EvalDefaults)
-- Modify: `src/core/config.types.ts:155-167` (ResolvedTaskBase)
-- Modify: `src/core/config.types.ts:189-200` (DefineEvalTaskBase)
+- Modify: `src/core/config.ts:26-39` (RawEvalConfig.defaults)
+- Modify: `tests/define-eval.test.ts`
+- Modify: `tests/config.test.ts`
 
-- [ ] **Step 1: Write failing test for mcp_config in defineEval**
+- [ ] **Step 1: Write failing tests for `mcp_config` passthrough in `defineEval`**
 
-In `tests/define-eval.test.ts`, add after the `tool_usage` test:
+In `tests/define-eval.test.ts`, add after the existing `mcp_mock` tests:
 
 ```typescript
 it('passes mcp_config through on task', () => {
@@ -74,180 +89,33 @@ it('passes mcp_config through on defaults', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify — first test should pass, second may fail**
 
-Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/define-eval.test.ts`
-Expected: FAIL — `mcp_config` doesn't exist on the types
+Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/define-eval.test.ts -t "mcp_config"`
 
-- [ ] **Step 3: Add `mcp_config` to config type interfaces**
+The task-level test should already pass (types already have `mcp_config`). The defaults test may fail because `RawEvalConfig.defaults` doesn't have `mcp_config` yet, so `validateConfig` strips it during the spread.
 
-In `src/core/config.types.ts`, add `mcp_config?: string` to these four interfaces:
+- [ ] **Step 3: Add `mcp_config` to `RawEvalConfig.defaults`**
 
-`EvalTaskBase` (after `environment` field around line 119):
-```typescript
-interface EvalTaskBase {
-    name: string;
-    workspace?: WorkspaceEntry[];
-    graders: GraderDescriptor[];
-    solution?: string;
-    agent?: AgentName;
-    trials?: number;
-    timeout?: number;
-    grader_model?: string;
-    environment?: Partial<EnvironmentConfig>;
-    mcp_config?: string;
-}
-```
-
-`EvalDefaults` (after `environment` field around line 145):
-```typescript
-export interface EvalDefaults {
-    agent: AgentName;
-    trials: number;
-    timeout: number;
-    threshold: number;
-    grader_model?: string;
-    environment: EnvironmentConfig;
-    mcp_config?: string;
-}
-```
-
-`ResolvedTaskBase` (after `environment` field around line 166):
-```typescript
-interface ResolvedTaskBase {
-    name: string;
-    workspace: WorkspaceMapping[];
-    graders: GraderDescriptor[];
-    solution?: string;
-    agent: AgentName;
-    trials: number;
-    timeout: number;
-    grader_model?: string;
-    environment: EnvironmentConfig;
-    mcp_config?: string;
-}
-```
-
-`DefineEvalTaskBase` (after `environment` field around line 199):
-```typescript
-interface DefineEvalTaskBase {
-    name: string;
-    workspace?: (string | WorkspaceMapping | WorkspaceDirectoryMapping)[];
-    graders: GraderDescriptor[];
-    solution?: string;
-    agent?: AgentName;
-    trials?: number;
-    timeout?: number;
-    grader_model?: string;
-    environment?: Partial<EnvironmentConfig>;
-    mcp_config?: string;
-}
-```
-
-- [ ] **Step 4: Pass `mcp_config` through in `defineEval`**
-
-In `src/core/define-eval.ts`, add `mcp_config: t.mcp_config` to the `base` object (around line 20):
+In `src/core/config.ts`, add `mcp_config?: string` to the `RawEvalConfig.defaults` type (around line 37, after `environment`):
 
 ```typescript
-const base = {
-    name: t.name,
-    workspace: t.workspace,
-    graders: t.graders,
-    solution: t.solution,
-    agent: t.agent,
-    trials: t.trials,
-    timeout: t.timeout,
-    grader_model: t.grader_model,
-    environment: t.environment,
-    mcp_config: t.mcp_config,
-};
-```
-
-- [ ] **Step 5: Pass `mcp_config` through in `validateConfig`**
-
-In `src/core/config.ts`, add `mcp_config: t.mcp_config` to the `base` object inside the `config.tasks.map` (around line 239):
-
-```typescript
-const base = {
-    name: t.name,
-    workspace,
-    graders: (t.graders || []).map(/* existing code */),
-    solution: t.solution,
-    agent: t.agent,
-    trials: t.trials,
-    timeout: t.timeout,
-    grader_model: t.grader_model,
-    environment: t.environment,
-    mcp_config: t.mcp_config,
-};
-```
-
-Also add `mcp_config?: string` to the `RawTask` interface (around line 41):
-
-```typescript
-interface RawTask {
-    name?: string;
-    type?: string;
-    instruction?: string;
-    conversation?: RawConversation;
-    workspace?: (string | { src?: string; dest?: string; dir?: string; chmod?: string })[];
-    graders?: any[];
-    solution?: string;
+defaults?: Record<string, unknown> & {
+    provider?: unknown;
+    docker?: unknown;
     agent?: string;
     trials?: number;
     timeout?: number;
+    threshold?: number;
     grader_model?: string;
     environment?: Partial<EnvironmentConfig>;
     mcp_config?: string;
-    provider?: unknown;
-    docker?: unknown;
-}
+};
 ```
 
-And add `mcp_config?: string` to the `RawEvalConfig.defaults` type (around line 26):
+- [ ] **Step 4: Write failing tests for `mcp_config` resolution in `resolveTask`**
 
-```typescript
-interface RawEvalConfig {
-    version?: string;
-    skillPath?: string;
-    defaults?: Record<string, unknown> & {
-        provider?: unknown;
-        docker?: unknown;
-        agent?: string;
-        trials?: number;
-        timeout?: number;
-        threshold?: number;
-        grader_model?: string;
-        environment?: Partial<EnvironmentConfig>;
-        mcp_config?: string;
-    };
-    tasks?: RawTask[];
-}
-```
-
-- [ ] **Step 6: Run tests to verify they pass**
-
-Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/define-eval.test.ts`
-Expected: PASS — all tests including the two new ones
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/core/config.types.ts src/core/define-eval.ts src/core/config.ts tests/define-eval.test.ts
-git commit -m "feat: add mcp_config field to eval config types"
-```
-
----
-
-### Task 2: Resolve `mcp_config` in `resolveTask`
-
-**Files:**
-- Modify: `src/core/config.ts:388-452` (resolveTask function)
-- Modify: `tests/config.test.ts`
-
-- [ ] **Step 1: Write failing test for mcp_config resolution**
-
-In `tests/config.test.ts`, add to the `resolveTask` describe block:
+In `tests/config.test.ts`, add to the `resolveTask` describe block (after the existing `mcp_mock` tests):
 
 ```typescript
 it('resolves mcp_config path relative to baseDir', async () => {
@@ -311,92 +179,30 @@ it('resolved mcp_config is undefined when not specified', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/config.test.ts -t "mcp_config"`
-Expected: FAIL — `mcp_config` not set on resolved task
+Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/define-eval.test.ts tests/config.test.ts`
+Expected: PASS — all tests including new ones (resolution logic already exists)
 
-- [ ] **Step 3: Add mcp_config resolution to `resolveTask`**
-
-In `src/core/config.ts`, inside `resolveTask` (around line 401, after `grader_model` resolution):
-
-```typescript
-const mcp_config_raw = task.mcp_config || defaults.mcp_config;
-const mcp_config = mcp_config_raw
-    ? path.resolve(baseDir, mcp_config_raw)
-    : undefined;
-
-// Fail fast if the file doesn't exist
-if (mcp_config && !(await fs.pathExists(mcp_config))) {
-    throw new Error(`mcp_config not found: ${mcp_config} (task "${task.name}")`);
-}
-```
-
-Then add `mcp_config` to both return objects. In the conversation return (around line 425):
-
-```typescript
-if (task.type === 'conversation') {
-    return {
-        type: 'conversation' as const,
-        name: task.name,
-        conversation: conversation!,
-        workspace,
-        graders,
-        solution,
-        agent,
-        trials,
-        timeout,
-        grader_model,
-        environment,
-        mcp_config,
-    };
-}
-```
-
-And in the instruction return (around line 439):
-
-```typescript
-return {
-    type: 'instruction' as const,
-    name: task.name,
-    instruction: instruction!,
-    workspace,
-    graders,
-    solution,
-    agent,
-    trials,
-    timeout,
-    grader_model,
-    environment,
-    mcp_config,
-};
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/config.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/core/config.ts tests/config.test.ts
-git commit -m "feat: resolve mcp_config path in resolveTask"
+git add src/core/config.ts tests/define-eval.test.ts tests/config.test.ts
+git commit -m "feat: add mcp_config to defaults type and add resolution tests"
 ```
 
 ---
 
-### Task 3: Thread MCP config through the agent interface
+### Task 2: Thread MCP config through the agent interface
 
 **Files:**
-- Modify: `src/types.ts:140-200`
-- Modify: `src/agents/claude.ts`
-- Modify: `src/agents/transcript-agent.ts`
-- Modify: `src/conversationRunner.ts:335`
+- Modify: `src/types.ts:158-200` (AgentSessionOptions, BaseAgent, createAgentSession)
+- Modify: `src/agents/claude.ts:27-68` (createSession, runTurn)
+- Modify: `src/agents/transcript-agent.ts:13` (createSession signature)
 
 - [ ] **Step 1: Add `AgentSessionOptions` to types.ts**
 
-In `src/types.ts`, add the new interface before `BaseAgent` (around line 172):
+In `src/types.ts`, add the new interface before `BaseAgent` (around line 170):
 
 ```typescript
 export interface AgentSessionOptions {
@@ -404,7 +210,7 @@ export interface AgentSessionOptions {
 }
 ```
 
-Update `BaseAgent.createSession` to accept the options parameter:
+Update `BaseAgent.createSession` to accept the options parameter (line 173):
 
 ```typescript
 export abstract class BaseAgent {
@@ -430,7 +236,7 @@ export abstract class BaseAgent {
 }
 ```
 
-Update `createAgentSession` to pass options through:
+Update `createAgentSession` to pass options through (line 194):
 
 ```typescript
 export async function createAgentSession(
@@ -445,25 +251,25 @@ export async function createAgentSession(
 
 - [ ] **Step 2: Update TranscriptAgent to accept options**
 
-In `src/agents/transcript-agent.ts`, update the `createSession` signature to accept and ignore the options:
+In `src/agents/transcript-agent.ts`, update the import and `createSession` signature (line 5, 13):
+
+```typescript
+import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
+```
 
 ```typescript
 async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner, _options?: AgentSessionOptions): Promise<AgentSession> {
 ```
 
-Add the import at the top:
-
-```typescript
-import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
-```
-
 - [ ] **Step 3: Update ClaudeAgent to use `mcpConfigPath`**
 
-In `src/agents/claude.ts`, update `createSession` to accept options and pass `mcpConfigPath` to `runTurn`:
+In `src/agents/claude.ts`, update the import (line 1):
 
 ```typescript
 import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle } from '../types';
 ```
+
+Update `createSession` to accept options and pass `mcpConfigPath` (line 27):
 
 ```typescript
 async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner, options?: AgentSessionOptions): Promise<AgentSession> {
@@ -484,7 +290,7 @@ async createSession(_runtime: EnvironmentHandle, runCommand: AgentCommandRunner,
 }
 ```
 
-Update `run` method to accept optional mcpConfigPath:
+Update `run` method (line 43):
 
 ```typescript
 async run(
@@ -497,7 +303,7 @@ async run(
 }
 ```
 
-Update `runTurn` to accept and use `mcpConfigPath`:
+Update `runTurn` to accept and use `mcpConfigPath` (line 52):
 
 ```typescript
 private async runTurn(
@@ -517,12 +323,73 @@ private async runTurn(
     const command = `claude -p${sessionFlag}${mcpFlag} --output-format stream-json --verbose --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
     const result = await runCommand(command);
 
-    // ... rest unchanged
+    // ... rest of method unchanged
 ```
 
-- [ ] **Step 4: Update conversationRunner to pass options**
+- [ ] **Step 4: Run full test suite**
 
-In `src/conversationRunner.ts`, update the `createAgentSession` call (around line 335) to pass options:
+Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run`
+Expected: PASS — all existing tests still pass (the new parameter is optional everywhere)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/types.ts src/agents/claude.ts src/agents/transcript-agent.ts
+git commit -m "feat: thread mcpConfigPath through agent session interface"
+```
+
+---
+
+### Task 3: Wire MCP config through runner and prepareTempTaskDir
+
+**Files:**
+- Modify: `src/evalRunner.ts:190-250` (runSingleTrial)
+- Modify: `src/conversationRunner.ts:33-42,319` (ConversationRunOptions, createAgentSession call)
+- Modify: `src/commands/run.ts:315-348` (prepareTempTaskDir)
+
+- [ ] **Step 1: Pass `mcpConfigPath` to conversation runner**
+
+In `src/evalRunner.ts`, update the `runConversationTrial` call (around line 194) to pass `mcpConfigPath`:
+
+```typescript
+const conversationResult = await runConversationTrial({
+    agent,
+    conversation: opts.conversation,
+    env,
+    graderModel: opts.graderModel,
+    mcpConfigPath: opts.mcpConfigPath,
+    provider: this.provider,
+    runtime,
+    taskPath,
+    timeoutSec: opts.timeoutSec,
+    timestamp: () => this.timestamp(),
+    agentName: opts.agentName,
+});
+```
+
+- [ ] **Step 2: Pass `mcpConfigPath` to agent session in instruction path**
+
+In `src/evalRunner.ts`, update the `createAgentSession` call (around line 246) to pass options:
+
+```typescript
+import {
+    AgentCommandRunner,
+    AgentSessionOptions,
+    BaseAgent,
+    // ... existing imports
+} from './types';
+```
+
+```typescript
+const sessionOptions: AgentSessionOptions | undefined = opts.mcpConfigPath
+    ? { mcpConfigPath: opts.mcpConfigPath }
+    : undefined;
+const session = await createAgentSession(agent, runtime, loggedRunCommand, sessionOptions);
+```
+
+- [ ] **Step 3: Update conversationRunner to accept and pass `mcpConfigPath`**
+
+In `src/conversationRunner.ts`, update imports (line 9-21):
 
 ```typescript
 import {
@@ -541,7 +408,7 @@ import {
 } from './types';
 ```
 
-Add `mcpConfigPath` to `ConversationRunOptions`:
+Add `mcpConfigPath` to `ConversationRunOptions` (line 33):
 
 ```typescript
 interface ConversationRunOptions {
@@ -554,12 +421,10 @@ interface ConversationRunOptions {
     runtime: EnvironmentHandle;
     taskPath: string;
     timeoutSec: number;
-    timestamp: () => string;
-    agentName?: import('./core/config.types').AgentName;
-}
+    // ... rest unchanged
 ```
 
-Update the `createAgentSession` call:
+Update the `createAgentSession` call (around line 319):
 
 ```typescript
 const sessionOptions: AgentSessionOptions | undefined = opts.mcpConfigPath
@@ -576,105 +441,9 @@ const session = await createAgentSession(
 );
 ```
 
-- [ ] **Step 5: Run full test suite**
-
-Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run`
-Expected: PASS — all existing tests still pass (the new parameter is optional everywhere)
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/types.ts src/agents/claude.ts src/agents/transcript-agent.ts src/conversationRunner.ts
-git commit -m "feat: thread mcpConfigPath through agent session interface"
-```
-
----
-
-### Task 4: Wire MCP config in the run command
-
-**Files:**
-- Modify: `src/evalRunner.ts:46-60`
-- Modify: `src/evalRunner.ts:165-270` (runSingleTrial)
-- Modify: `src/commands/run.ts:115-155` (evalOpts construction)
-- Modify: `src/commands/run.ts:248-297` (prepareTempTaskDir)
-
-- [ ] **Step 1: Add `mcpConfigPath` to `EvalRunOptions`**
-
-In `src/evalRunner.ts`, add to the `EvalRunOptions` interface (around line 58):
-
-```typescript
-export interface EvalRunOptions {
-    instruction?: string;
-    conversation?: ResolvedConversation;
-    graders: GraderDescriptor[];
-    timeoutSec: number;
-    graderModel?: string;
-    graderTimeoutSec?: number;
-    environment: {
-        cpus: number;
-        memory_mb: number;
-    };
-    authMode?: 'host' | 'isolated';
-    agentName?: import('./core/config.types').AgentName;
-    mcpConfigPath?: string;
-}
-```
-
-- [ ] **Step 2: Pass `mcpConfigPath` to agent session in `runSingleTrial`**
-
-In `src/evalRunner.ts`, inside `runSingleTrial`, update the `createAgentSession` call (around line 245). Add the import:
-
-```typescript
-import {
-    AgentCommandRunner,
-    AgentSessionOptions,
-    BaseAgent,
-    // ... existing imports
-} from './types';
-```
-
-Update the call:
-
-```typescript
-const sessionOptions: AgentSessionOptions | undefined = opts.mcpConfigPath
-    ? { mcpConfigPath: opts.mcpConfigPath }
-    : undefined;
-const session = await createAgentSession(agent, runtime, loggedRunCommand, sessionOptions);
-```
-
-- [ ] **Step 3: Pass `mcpConfigPath` to conversation runner**
-
-In `src/evalRunner.ts`, inside `runSingleTrial`, update the `runConversationTrial` call (around line 193) to pass `mcpConfigPath`:
-
-```typescript
-const conversationResult = await runConversationTrial({
-    agent,
-    conversation: opts.conversation,
-    env,
-    graderModel: opts.graderModel,
-    mcpConfigPath: opts.mcpConfigPath,
-    provider: this.provider,
-    runtime,
-    taskPath,
-    timeoutSec: opts.timeoutSec,
-    timestamp: () => this.timestamp(),
-    agentName: opts.agentName,
-});
-```
-
 - [ ] **Step 4: Copy MCP config in `prepareTempTaskDir`**
 
-In `src/commands/run.ts`, update `prepareTempTaskDir` to accept and copy the MCP config. Update the function signature:
-
-```typescript
-export async function prepareTempTaskDir(
-    resolved: ResolvedTask,
-    baseDir: string,
-    tmpDir: string
-) {
-```
-
-Add at the end of the function, before the closing brace (after the workspace file copy loop):
+In `src/commands/run.ts`, inside `prepareTempTaskDir`, add before the `mcp_mock` block (around line 315, after workspace copy loop):
 
 ```typescript
     // Copy MCP config into the task bundle if specified
@@ -688,75 +457,34 @@ Add at the end of the function, before the closing brace (after the workspace fi
     }
 ```
 
-- [ ] **Step 5: Set `mcpConfigPath` in EvalRunOptions**
-
-In `src/commands/run.ts`, inside `runEvals`, when building `evalOpts` (around line 128-154), add `mcpConfigPath` to both the conversation and instruction branches:
-
-For the conversation branch:
-```typescript
-if (resolved.type === 'conversation') {
-    evalOpts = {
-        instruction: undefined,
-        conversation: resolved.conversation,
-        graders: filteredGraders,
-        timeoutSec: resolved.conversation.completion.timeout ?? resolved.timeout,
-        graderModel: resolved.grader_model,
-        environment: resolved.environment,
-        authMode: useHostAuth ? 'host' : undefined,
-        agentName,
-        mcpConfigPath: resolved.mcp_config ? '.pathgrade-mcp.json' : undefined,
-    };
-}
-```
-
-For the instruction branch:
-```typescript
-else {
-    evalOpts = {
-        instruction: resolved.instruction,
-        graders: filteredGraders,
-        timeoutSec: resolved.timeout,
-        graderModel: resolved.grader_model,
-        environment: resolved.environment,
-        authMode: useHostAuth ? 'host' : undefined,
-        agentName,
-        mcpConfigPath: resolved.mcp_config ? '.pathgrade-mcp.json' : undefined,
-    };
-}
-```
-
-- [ ] **Step 6: Run full test suite**
+- [ ] **Step 5: Run full test suite**
 
 Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/evalRunner.ts src/commands/run.ts
+git add src/evalRunner.ts src/conversationRunner.ts src/commands/run.ts
 git commit -m "feat: wire mcp_config through runner and prepare in task dir"
 ```
 
 ---
 
-### Task 5: Add agent-level tests
+### Task 4: Add agent-level tests
 
 **Files:**
 - Modify: `tests/agents.test.ts`
 
-- [ ] **Step 1: Read existing agent tests**
+- [ ] **Step 1: Write tests for ClaudeAgent with `mcpConfigPath`**
 
-Read `tests/agents.test.ts` to understand the test patterns used.
-
-- [ ] **Step 2: Write test for ClaudeAgent with mcpConfigPath**
-
-Add a test that verifies the Claude agent includes `--mcp-config` in the command when `mcpConfigPath` is provided. The test should use the existing mock pattern from the file:
+In `tests/agents.test.ts`, add to the `ClaudeAgent` describe block:
 
 ```typescript
 it('includes --mcp-config flag when mcpConfigPath is provided', async () => {
   const agent = new ClaudeAgent();
   const commands: string[] = [];
-  const mockRunCommand: AgentCommandRunner = async (cmd) => {
+  const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
     commands.push(cmd);
     if (cmd.includes('base64')) {
       return { stdout: '', stderr: '', exitCode: 0 };
@@ -766,19 +494,20 @@ it('includes --mcp-config flag when mcpConfigPath is provided', async () => {
       stderr: '',
       exitCode: 0,
     };
-  };
+  });
 
   const session = await agent.createSession('workspace', mockRunCommand, { mcpConfigPath: '.pathgrade-mcp.json' });
   await session.start({ message: 'test' });
 
   const claudeCmd = commands.find(c => c.includes('claude -p'));
-  expect(claudeCmd).toContain('--mcp-config .pathgrade-mcp.json');
+  expect(claudeCmd).toContain('--mcp-config');
+  expect(claudeCmd).toContain('.pathgrade-mcp.json');
 });
 
 it('omits --mcp-config flag when mcpConfigPath is not provided', async () => {
   const agent = new ClaudeAgent();
   const commands: string[] = [];
-  const mockRunCommand: AgentCommandRunner = async (cmd) => {
+  const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
     commands.push(cmd);
     if (cmd.includes('base64')) {
       return { stdout: '', stderr: '', exitCode: 0 };
@@ -788,7 +517,7 @@ it('omits --mcp-config flag when mcpConfigPath is not provided', async () => {
       stderr: '',
       exitCode: 0,
     };
-  };
+  });
 
   const session = await agent.createSession('workspace', mockRunCommand);
   await session.start({ message: 'test' });
@@ -798,12 +527,12 @@ it('omits --mcp-config flag when mcpConfigPath is not provided', async () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [ ] **Step 2: Run tests**
 
 Run: `cd /Users/nadavlac/projects/pathgrade && npx vitest run tests/agents.test.ts`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add tests/agents.test.ts
@@ -812,7 +541,7 @@ git commit -m "test: add ClaudeAgent mcp_config flag tests"
 
 ---
 
-### Task 6: Run full test suite and verify
+### Task 5: Full verification
 
 **Files:** None (verification only)
 
@@ -823,34 +552,10 @@ Expected: All tests PASS
 
 - [ ] **Step 2: Run TypeScript compiler check**
 
-Run: `cd /Users/nadavlac/projects/pathgrade && npx tsc --noEmit`
+Run: `cd /Users/nadavlac/projects/pathgrade && npx tsc -p tsconfig.build.json --noEmit`
 Expected: No type errors
 
-- [ ] **Step 3: Verify with a dry-run example**
-
-Create a temporary test to verify the full pipeline compiles correctly:
-
-```typescript
-// Quick manual verification — not committed
-import { defineEval } from './src/core/define-eval';
-import { deterministicGrader } from './src/core/grader-factories';
-
-const config = defineEval({
-  defaults: { mcp_config: './mcp-servers.json' },
-  tasks: [{
-    name: 'mcp-test',
-    type: 'instruction',
-    instruction: 'Use MCP tools to check the weather',
-    mcp_config: './task-mcp.json',
-    graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
-  }],
-});
-
-console.log('mcp_config on defaults:', config.defaults.mcp_config);
-console.log('mcp_config on task:', config.tasks[0].mcp_config);
-```
-
-- [ ] **Step 4: Final commit if any cleanup needed**
+- [ ] **Step 3: Commit if any cleanup needed**
 
 ```bash
 git add -A
