@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { defineEval } from '../src/core/define-eval';
 import { deterministicGrader } from '../src/core/grader-factories';
+import { mockMcpServer } from '../src/core/mcp-mock';
 
 describe('defineEval', () => {
   it('returns a valid EvalConfig with minimal input', () => {
@@ -192,5 +193,41 @@ describe('defineEval', () => {
 
     expect(config.tasks[0].graders[0].type).toBe('tool_usage');
     expect(config.tasks[0].graders[0].expectations).toHaveLength(2);
+  });
+
+  it('passes mcp_mock through on task', () => {
+    const mock = mockMcpServer({
+      name: 'weather',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+    const config = defineEval({
+      tasks: [{
+        name: 'mcp-task',
+        type: 'instruction',
+        instruction: 'use mcp',
+        mcp_mock: mock,
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      }],
+    });
+
+    expect((config.tasks[0] as any).mcp_mock).toBe(mock);
+  });
+
+  it('passes mcp_mock through on defaults', () => {
+    const mock = mockMcpServer({
+      name: 'weather',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+    const config = defineEval({
+      defaults: { mcp_mock: mock },
+      tasks: [{
+        name: 'mcp-task',
+        type: 'instruction',
+        instruction: 'use mcp',
+        graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+      }],
+    });
+
+    expect((config.defaults as any).mcp_mock).toBe(mock);
   });
 });

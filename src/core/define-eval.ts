@@ -27,6 +27,8 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
                 timeout: t.timeout,
                 grader_model: t.grader_model,
                 environment: t.environment,
+                mcp_config: t.mcp_config,
+                mcp_mock: t.mcp_mock,
             };
             if (t.type === 'conversation') {
                 return { ...base, type: 'conversation' as const, conversation: t.conversation };

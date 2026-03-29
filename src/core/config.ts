@@ -53,6 +53,8 @@ interface RawTask {
     environment?: Partial<EnvironmentConfig>;
     provider?: unknown;
     docker?: unknown;
+    mcp_config?: string;
+    mcp_mock?: unknown;
 }
 
 interface RawConversation {
@@ -285,6 +287,8 @@ export function validateConfig(raw: unknown): EvalConfig {
             timeout: t.timeout,
             grader_model: t.grader_model,
             environment: t.environment,
+            mcp_config: t.mcp_config,
+            mcp_mock: t.mcp_mock,
         };
 
         if (t.type === 'conversation') {

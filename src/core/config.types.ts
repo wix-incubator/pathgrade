@@ -4,6 +4,7 @@
  * These types define the schema for the eval.ts config that developers
  * create to define evaluation tasks for their skills.
  */
+import type { MockMcpServerDescriptor } from './mcp-mock.types';
 
 /** Supported agent names — single source of truth for both type and runtime validation */
 export const VALID_AGENTS = ['claude', 'gemini', 'codex'] as const;
@@ -119,6 +120,8 @@ interface EvalTaskBase {
     timeout?: number;
     grader_model?: string;
     environment?: Partial<EnvironmentConfig>;
+    mcp_config?: string;
+    mcp_mock?: MockMcpServerDescriptor | MockMcpServerDescriptor[];
 }
 
 /** Instruction task — agent receives a one-shot instruction */
@@ -144,6 +147,8 @@ export interface EvalDefaults {
     threshold: number;  // for --ci mode
     grader_model?: string;  // default LLM grader model
     environment: EnvironmentConfig;
+    mcp_config?: string;
+    mcp_mock?: MockMcpServerDescriptor | MockMcpServerDescriptor[];
 }
 
 /** Top-level eval config */
@@ -165,6 +170,8 @@ interface ResolvedTaskBase {
     timeout: number;
     grader_model?: string;
     environment: EnvironmentConfig;
+    mcp_config?: string;
+    mcp_mock?: MockMcpServerDescriptor | MockMcpServerDescriptor[];
 }
 
 export interface ResolvedInstructionTask extends ResolvedTaskBase {
@@ -199,6 +206,8 @@ interface DefineEvalTaskBase {
     timeout?: number;
     grader_model?: string;
     environment?: Partial<EnvironmentConfig>;
+    mcp_config?: string;
+    mcp_mock?: MockMcpServerDescriptor | MockMcpServerDescriptor[];
 }
 
 export interface DefineEvalInstructionTaskInput extends DefineEvalTaskBase {
