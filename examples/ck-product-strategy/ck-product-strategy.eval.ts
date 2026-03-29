@@ -29,12 +29,6 @@ export default defineEval({
         },
 
         reactions: [
-          {
-            when: 'platform|tell me more|details|about.*feature|describe',
-            reply: `It's about adding AI-powered product recommendations to the Wix Stores
-shopping cart. Store owners want to increase average order value by suggesting
-relevant products at checkout. Let's start from scratch.\n`,
-          },
           { when: 'knowledge base|KB|kb-retrieval|MCP|npx|paste.*doc.*skip|enrich', reply: 'Skip' },
           { when: 'start.*scratch|from scratch|continue.*left off|start.*strategy', reply: 'Start strategy from scratch' },
           { when: 'missing|proceed.*assumption|how.*proceed|critical.*missing', reply: 'Proceed with assumptions' },
@@ -47,6 +41,12 @@ relevant products at checkout. Let's start from scratch.\n`,
           },
           { when: "correct\\?|right\\?|confirm|sound right|accurate\\?", reply: "Yes, that's correct" },
           { when: 'Looks good|I have feedback|approve|how does.*look|section look|what do you think', reply: 'Looks good — continue' },
+          {
+            when: '.*', once: true,
+            reply: `It's about adding AI-powered product recommendations to the Wix Stores
+shopping cart. Store owners want to increase average order value by suggesting
+relevant products at checkout. Let's start from scratch.\n`,
+          },
         ],
       },
 

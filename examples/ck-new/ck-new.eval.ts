@@ -40,7 +40,6 @@ export default defineEval({
         opener: `I want to start a new project. I have an idea for a gift card feature.\n`,
         completion: { max_turns: 12, signal: 'artifacts/project-brief-*.md', timeout: 300 },
         reactions: [
-          { when: 'platform|tell me more|details', reply: `It's for the Wix Stores platform. Online store owners have been\nrequesting the ability to sell digital gift cards that customers\ncan purchase and redeem at checkout.\n` },
           {
             reply: "Yes, that's right. The goal is to solve a user pain point, and the target group is Self-Creator.",
             when: "right\\?|correct\\?|confirm|sound right",
@@ -55,6 +54,13 @@ export default defineEval({
           },
           { when: "look right|approve|feedback|changes|edit|you'd change|anything.*change|move on|before moving", reply: 'Looks good, no changes' },
           { when: 'github|repo|reference', reply: 'No, skip repos for now' },
+          {
+            when: '.*', once: true,
+            reply: `It's for the Wix Stores platform. Online store owners have been
+requesting the ability to sell digital gift cards that customers
+can purchase and redeem at checkout.
+No MCP tools or KB enrichment available — skip KB enrichment, gameplan lookup, and repository references entirely. Go straight through the intake and write the brief.\n`,
+          },
         ],
       },
       graders: [
