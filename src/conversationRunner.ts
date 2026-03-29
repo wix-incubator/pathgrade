@@ -7,6 +7,7 @@ import { ToolUsageGrader } from './graders/tool-usage';
 import { stepLlmRubricPath } from './graders/paths';
 import { generatePersonaReply } from './persona';
 import {
+    AgentSessionOptions,
     BaseAgent,
     CommandExecutionOptions,
     ConversationReplySource,
@@ -35,6 +36,7 @@ interface ConversationRunOptions {
     conversation: ResolvedConversation;
     env?: Record<string, string>;
     graderModel?: string;
+    mcpConfigPath?: string;
     provider: EnvironmentProvider;
     runtime: EnvironmentHandle;
     taskPath: string;
@@ -316,6 +318,10 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
     let currentTurnCommands: TurnCommand[] = [];
     let currentSignal: AbortSignal | undefined;
 
+    const sessionOptions: AgentSessionOptions | undefined = opts.mcpConfigPath
+        ? { mcpConfigPath: opts.mcpConfigPath }
+        : undefined;
+
     const session = await createAgentSession(
         opts.agent,
         opts.runtime,
@@ -343,7 +349,8 @@ export async function runConversationTrial(opts: ConversationRunOptions): Promis
                 turn_number: currentTurnNumber,
             });
             return result;
-        }
+        },
+        sessionOptions
     );
 
     let nextReply = {

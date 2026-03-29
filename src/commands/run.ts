@@ -316,6 +316,16 @@ export async function prepareTempTaskDir(
         }
     }
 
+    // Copy MCP config into the task bundle if specified
+    if (resolved.mcp_config) {
+        const mcpSrc = resolved.mcp_config; // already absolute from resolveTask
+        if (await fs.pathExists(mcpSrc)) {
+            await fs.copy(mcpSrc, path.join(tmpDir, '.pathgrade-mcp.json'));
+        } else {
+            throw new Error(`mcp_config not found: ${mcpSrc}`);
+        }
+    }
+
     // Generate mock MCP server fixtures and config
     const mcp_mock = (resolved as any).mcp_mock as MockMcpServerDescriptor | MockMcpServerDescriptor[] | undefined;
     if (mcp_mock) {

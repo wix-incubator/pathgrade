@@ -211,6 +211,92 @@ describe('prepareTempTaskDir', () => {
   });
 });
 
+describe('prepareTempTaskDir mcp_config', () => {
+  it('copies mcp_config file into workspace as .pathgrade-mcp.json', async () => {
+    const baseDir = path.join(os.tmpdir(), `pathgrade-mcp-config-test-${Date.now()}`);
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-mcp-config-out-${Date.now()}`);
+    await fsExtra.ensureDir(baseDir);
+
+    // Create a mock MCP config file
+    const mcpConfigPath = path.join(baseDir, 'mcp-servers.json');
+    await fsExtra.writeJson(mcpConfigPath, {
+      mcpServers: {
+        'test-server': { command: 'node', args: ['/absolute/path/server.js'] },
+      },
+    });
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'mcp-config-test',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_config: mcpConfigPath,
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, baseDir, tmpDir);
+
+      const copiedConfig = await fsExtra.readJson(path.join(tmpDir, '.pathgrade-mcp.json'));
+      expect(copiedConfig.mcpServers['test-server']).toBeDefined();
+      expect(copiedConfig.mcpServers['test-server'].command).toBe('node');
+    } finally {
+      await fsExtra.remove(baseDir);
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('throws when mcp_config file does not exist', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-mcp-config-missing-${Date.now()}`);
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'missing-config',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_config: '/nonexistent/path/mcp.json',
+    };
+
+    try {
+      await expect(prepareTempTaskDir(resolved as any, '/base', tmpDir)).rejects.toThrow(/not found/i);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('does not create .pathgrade-mcp.json when mcp_config is absent', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-mcp-config-absent-${Date.now()}`);
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'no-config',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, '/base', tmpDir);
+      expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade-mcp.json'))).toBe(false);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+});
+
 describe('prepareTempTaskDir mcp_mock', () => {
   it('generates fixture and MCP config for mcp_mock', async () => {
     const tmpDir = path.join(os.tmpdir(), `pathgrade-run-test-${Date.now()}`);

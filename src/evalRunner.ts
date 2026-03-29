@@ -3,6 +3,7 @@ import * as path from 'path';
 import { shutdown } from './utils/shutdown';
 import {
     AgentCommandRunner,
+    AgentSessionOptions,
     BaseAgent,
     CommandExecutionOptions,
     EnvironmentHandle,
@@ -196,6 +197,7 @@ export class EvalRunner {
                     conversation: opts.conversation,
                     env,
                     graderModel: opts.graderModel,
+                    mcpConfigPath: opts.mcpConfigPath,
                     provider: this.provider,
                     runtime,
                     taskPath,
@@ -243,7 +245,10 @@ export class EvalRunner {
                             return result;
                         };
 
-                        const session = await createAgentSession(agent, runtime, loggedRunCommand);
+                        const sessionOptions: AgentSessionOptions | undefined = opts.mcpConfigPath
+                            ? { mcpConfigPath: opts.mcpConfigPath }
+                            : undefined;
+                        const session = await createAgentSession(agent, runtime, loggedRunCommand, sessionOptions);
                         return await session.start({ message: instruction });
                     },
                     agentTimeoutMs,
