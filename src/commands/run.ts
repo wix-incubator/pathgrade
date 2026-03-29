@@ -13,6 +13,7 @@ import { EvalRunner, EvalRunOptions } from '../evalRunner';
 import { createAgent } from '../agents/registry';
 import { AgentCommandRunner, BaseAgent, EvalReport } from '../types';
 import { ResolvedTask, AgentName } from '../core/config.types';
+import type { MockMcpServerDescriptor } from '../core/mcp-mock.types';
 import { parseEnvFile } from '../utils/env';
 import {
     PROMPTS_DIR,
@@ -310,5 +311,36 @@ export async function prepareTempTaskDir(
                 await applyWorkspaceChmod(destInTmp, w.chmod);
             }
         }
+    }
+
+    // Generate mock MCP server fixtures and config
+    const mcp_mock = (resolved as any).mcp_mock as MockMcpServerDescriptor | MockMcpServerDescriptor[] | undefined;
+    if (mcp_mock) {
+        const mocks = Array.isArray(mcp_mock) ? mcp_mock : [mcp_mock];
+
+        // Validate server name uniqueness
+        const seen = new Set<string>();
+        for (const mock of mocks) {
+            if (seen.has(mock.config.name)) {
+                throw new Error(`Duplicate mock MCP server name: "${mock.config.name}" in task "${resolved.name}"`);
+            }
+            seen.add(mock.config.name);
+        }
+
+        const mcpServers: Record<string, { command: string; args: string[] }> = {};
+
+        for (const mock of mocks) {
+            const sanitizedName = mock.config.name.replace(/[^a-zA-Z0-9-]/g, '-');
+            const fixturePath = path.join(tmpDir, `.pathgrade-mcp-mock-${sanitizedName}.json`);
+            await fs.writeJson(fixturePath, mock.config, { spaces: 2 });
+
+            const mockServerScript = path.resolve(__dirname, '../mcp-mock-server.js');
+            mcpServers[mock.config.name] = {
+                command: 'node',
+                args: [mockServerScript, fixturePath],
+            };
+        }
+
+        await fs.writeJson(path.join(tmpDir, '.pathgrade-mcp.json'), { mcpServers }, { spaces: 2 });
     }
 }

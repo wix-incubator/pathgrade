@@ -5,6 +5,8 @@ import * as fsExtra from 'fs-extra';
 import { prepareTempTaskDir } from '../src/commands/run';
 import { ResolvedTask } from '../src/core/config.types';
 import { deterministicGrader, llmRubricGrader } from '../src/core/grader-factories';
+import { mockMcpServer } from '../src/core/mcp-mock';
+import { MockMcpServerDescriptor } from '../src/core/mcp-mock.types';
 
 describe('prepareTempTaskDir path traversal', () => {
   it('rejects workspace src that escapes project directory', async () => {
@@ -206,5 +208,130 @@ describe('prepareTempTaskDir', () => {
       path.join(tmpDir, '.pathgrade', 'prompts', 'steps', 'turn_1_1.md'), 'utf-8'
     );
     expect(stepRubric).toBe('Turn 1 rubric');
+  });
+});
+
+describe('prepareTempTaskDir mcp_mock', () => {
+  it('generates fixture and MCP config for mcp_mock', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-run-test-${Date.now()}`);
+    const mock = mockMcpServer({
+      name: 'weather-api',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'mock-test',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_mock: mock,
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, '/base', tmpDir);
+
+      // Check fixture file
+      const fixturePath = path.join(tmpDir, '.pathgrade-mcp-mock-weather-api.json');
+      expect(await fsExtra.pathExists(fixturePath)).toBe(true);
+      const fixture = await fsExtra.readJson(fixturePath);
+      expect(fixture.name).toBe('weather-api');
+      expect(fixture.tools[0].name).toBe('get_weather');
+
+      // Check MCP config
+      const mcpConfig = await fsExtra.readJson(path.join(tmpDir, '.pathgrade-mcp.json'));
+      expect(mcpConfig.mcpServers['weather-api']).toBeDefined();
+      expect(mcpConfig.mcpServers['weather-api'].command).toBe('node');
+      expect(mcpConfig.mcpServers['weather-api'].args).toHaveLength(2);
+      // First arg: absolute path to mock server script
+      expect(path.isAbsolute(mcpConfig.mcpServers['weather-api'].args[0])).toBe(true);
+      // Second arg: absolute path to fixture
+      expect(path.isAbsolute(mcpConfig.mcpServers['weather-api'].args[1])).toBe(true);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('generates multiple fixtures for array mcp_mock', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-run-test-${Date.now()}`);
+    const mocks: MockMcpServerDescriptor[] = [
+      mockMcpServer({ name: 'weather', tools: [{ name: 'get_weather', response: 72 }] }),
+      mockMcpServer({ name: 'user-db', tools: [{ name: 'get_user', response: { id: 1 } }] }),
+    ];
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'multi-mock',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_mock: mocks,
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, '/base', tmpDir);
+
+      const mcpConfig = await fsExtra.readJson(path.join(tmpDir, '.pathgrade-mcp.json'));
+      expect(Object.keys(mcpConfig.mcpServers)).toEqual(['weather', 'user-db']);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('does not generate MCP config when mcp_mock is absent', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-run-test-${Date.now()}`);
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'no-mock',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+    };
+
+    try {
+      await prepareTempTaskDir(resolved as any, '/base', tmpDir);
+      expect(await fsExtra.pathExists(path.join(tmpDir, '.pathgrade-mcp.json'))).toBe(false);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
+  });
+
+  it('throws on duplicate server names', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-run-test-${Date.now()}`);
+    const mocks: MockMcpServerDescriptor[] = [
+      mockMcpServer({ name: 'weather', tools: [{ name: 'a', response: 1 }] }),
+      mockMcpServer({ name: 'weather', tools: [{ name: 'b', response: 2 }] }),
+    ];
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'dup-mock',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_mock: mocks,
+    };
+
+    try {
+      await expect(prepareTempTaskDir(resolved as any, '/base', tmpDir)).rejects.toThrow(/duplicate/i);
+    } finally {
+      await fsExtra.remove(tmpDir);
+    }
   });
 });
