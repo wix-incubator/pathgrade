@@ -230,4 +230,36 @@ describe('defineEval', () => {
 
     expect((config.defaults as any).mcp_mock).toBe(mock);
   });
+
+  it('passes mcp_config through on task', () => {
+    const config = defineEval({
+      tasks: [
+        {
+          name: 'mcp-task',
+          type: 'instruction',
+          instruction: 'use mcp',
+          mcp_config: './mcp-servers.json',
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+        },
+      ],
+    });
+
+    expect(config.tasks[0].mcp_config).toBe('./mcp-servers.json');
+  });
+
+  it('passes mcp_config through on defaults', () => {
+    const config = defineEval({
+      defaults: { mcp_config: './default-mcp.json' },
+      tasks: [
+        {
+          name: 'mcp-task',
+          type: 'instruction',
+          instruction: 'use mcp',
+          graders: [deterministicGrader({ execute: async () => ({ score: 1 }) })],
+        },
+      ],
+    });
+
+    expect(config.defaults.mcp_config).toBe('./default-mcp.json');
+  });
 });

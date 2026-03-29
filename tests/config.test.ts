@@ -830,6 +830,66 @@ describe('resolveTask', () => {
     expect(resolved.workspace).toEqual([]);
   });
 
+  it('resolves mcp_config path relative to baseDir', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'mcp-test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+      mcp_config: './mcp-servers.json',
+    };
+
+    const resolved = await resolveTask(task, defaults, '/base/dir');
+    expect(resolved.mcp_config).toBe(path.resolve('/base/dir', './mcp-servers.json'));
+  });
+
+  it('resolves mcp_config from defaults when task omits it', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'mcp-test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+    };
+
+    const defaultsWithMcp = { ...defaults, mcp_config: './default-mcp.json' };
+    const resolved = await resolveTask(task, defaultsWithMcp, '/base/dir');
+    expect(resolved.mcp_config).toBe(path.resolve('/base/dir', './default-mcp.json'));
+  });
+
+  it('task mcp_config overrides defaults mcp_config', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'mcp-test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+      mcp_config: './task-mcp.json',
+    };
+
+    const defaultsWithMcp = { ...defaults, mcp_config: './default-mcp.json' };
+    const resolved = await resolveTask(task, defaultsWithMcp, '/base/dir');
+    expect(resolved.mcp_config).toBe(path.resolve('/base/dir', './task-mcp.json'));
+  });
+
+  it('resolved mcp_config is undefined when not specified', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+    };
+
+    const resolved = await resolveTask(task, defaults, '/base/dir');
+    expect(resolved.mcp_config).toBeUndefined();
+  });
+
   it('mixes directory and file mappings in workspace', async () => {
     const baseDir = path.join(os.tmpdir(), `pathgrade-resolve-mix-${Date.now()}`);
     await nativeFs.mkdir(path.join(baseDir, 'fixtures'), { recursive: true });
