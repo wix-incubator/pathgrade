@@ -325,6 +325,11 @@ const mcp_config_raw = task.mcp_config || defaults.mcp_config;
 const mcp_config = mcp_config_raw
     ? path.resolve(baseDir, mcp_config_raw)
     : undefined;
+
+// Fail fast if the file doesn't exist
+if (mcp_config && !(await fs.pathExists(mcp_config))) {
+    throw new Error(`mcp_config not found: ${mcp_config} (task "${task.name}")`);
+}
 ```
 
 Then add `mcp_config` to both return objects. In the conversation return (around line 425):
@@ -508,7 +513,7 @@ private async runTurn(
 
     const sanitized = sessionId ? this.sanitizeSessionId(sessionId) : undefined;
     const sessionFlag = sanitized ? ` --resume ${sanitized}` : '';
-    const mcpFlag = mcpConfigPath ? ` --mcp-config ${mcpConfigPath}` : '';
+    const mcpFlag = mcpConfigPath ? ` --mcp-config "${mcpConfigPath}"` : '';
     const command = `claude -p${sessionFlag}${mcpFlag} --output-format stream-json --verbose --dangerously-skip-permissions "$(cat ${promptPath})" < /dev/null`;
     const result = await runCommand(command);
 
