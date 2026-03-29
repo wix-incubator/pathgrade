@@ -138,6 +138,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                 ? resolved.graders.filter(g => g.type === opts.grader)
                 : resolved.graders;
             let evalOpts: EvalRunOptions;
+            const mcpConfigPath = (resolved.mcp_config || resolved.mcp_mock) ? '.pathgrade-mcp.json' : undefined;
             if (resolved.type === 'conversation') {
                 evalOpts = {
                     instruction: undefined,
@@ -148,6 +149,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                     environment: resolved.environment,
                     authMode: useHostAuth ? 'host' : undefined,
                     agentName,
+                    mcpConfigPath,
                 };
             } else {
                 evalOpts = {
@@ -158,6 +160,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
                     environment: resolved.environment,
                     authMode: useHostAuth ? 'host' : undefined,
                     agentName,
+                    mcpConfigPath,
                 };
             }
 

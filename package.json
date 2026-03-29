@@ -12,6 +12,10 @@
     "./config": {
       "types": "./dist/core/define-eval.d.ts",
       "default": "./dist/core/define-eval.js"
+    },
+    "./mcp-mock": {
+      "types": "./dist/core/mcp-mock.d.ts",
+      "default": "./dist/core/mcp-mock.js"
     }
   },
   "bin": {
