@@ -434,6 +434,51 @@ describe('ClaudeAgent', () => {
     expect(commands[3]).toContain('--resume test-session-123');
     expect(commands[3]).toContain('--dangerously-skip-permissions');
   });
+
+  it('includes --mcp-config flag when mcpConfigPath is provided', async () => {
+    const agent = new ClaudeAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      if (cmd.includes('base64')) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      return {
+        stdout: JSON.stringify({ type: 'result', result: 'done', session_id: 'test-session' }),
+        stderr: '',
+        exitCode: 0,
+      };
+    });
+
+    const session = await agent.createSession('workspace', mockRunCommand, { mcpConfigPath: '.pathgrade-mcp.json' });
+    await session.start({ message: 'test' });
+
+    const claudeCmd = commands.find(c => c.includes('claude -p'));
+    expect(claudeCmd).toContain('--mcp-config');
+    expect(claudeCmd).toContain('.pathgrade-mcp.json');
+  });
+
+  it('omits --mcp-config flag when mcpConfigPath is not provided', async () => {
+    const agent = new ClaudeAgent();
+    const commands: string[] = [];
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      if (cmd.includes('base64')) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      return {
+        stdout: JSON.stringify({ type: 'result', result: 'done', session_id: 'test-session' }),
+        stderr: '',
+        exitCode: 0,
+      };
+    });
+
+    const session = await agent.createSession('workspace', mockRunCommand);
+    await session.start({ message: 'test' });
+
+    const claudeCmd = commands.find(c => c.includes('claude -p'));
+    expect(claudeCmd).not.toContain('--mcp-config');
+  });
 });
 
 describe('traceOutput', () => {
