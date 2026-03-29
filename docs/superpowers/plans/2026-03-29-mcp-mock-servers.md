@@ -538,7 +538,7 @@ async function readResponse(proc: ChildProcess, timeoutMs = 3000): Promise<any> 
 
 function spawnMockServer(fixturePath: string): ChildProcess {
   const serverPath = path.resolve(__dirname, '../src/mcp-mock-server.ts');
-  const proc = spawn('npx', ['tsx', serverPath, fixturePath], {
+  const proc = spawn('npx', ['ts-node', '--transpile-only', serverPath, fixturePath], {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   procs.push(proc);
@@ -644,7 +644,9 @@ describe('mcp-mock-server', () => {
     sendJsonRpc(proc, 'tools/call', { name: 'nonexistent', arguments: {} }, 2);
     const response = await readResponse(proc);
 
-    expect(response.result.isError).toBe(true);
+    expect(response.error).toBeDefined();
+    expect(response.error.code).toBe(-32602);
+    expect(response.error.message).toContain('nonexistent');
   });
 });
 ```
@@ -782,10 +784,7 @@ function main() {
                         content: [{ type: 'text', text: formatResponse(match.response) }],
                     });
                 } else {
-                    sendResponse(msg.id, {
-                        content: [{ type: 'text', text: `Unknown tool: ${toolName}` }],
-                        isError: true,
-                    });
+                    sendError(msg.id, -32602, `Unknown tool: ${toolName}`);
                 }
                 break;
             }
@@ -930,6 +929,33 @@ describe('prepareTempTaskDir mcp_mock', () => {
       await fs.remove(tmpDir);
     }
   });
+
+  it('throws on duplicate server names', async () => {
+    const tmpDir = path.join(os.tmpdir(), `pathgrade-run-test-${Date.now()}`);
+    const mocks: MockMcpServerDescriptor[] = [
+      mockMcpServer({ name: 'weather', tools: [{ name: 'a', response: 1 }] }),
+      mockMcpServer({ name: 'weather', tools: [{ name: 'b', response: 2 }] }),
+    ];
+
+    const resolved = {
+      type: 'instruction' as const,
+      name: 'dup-mock',
+      instruction: 'test',
+      workspace: [],
+      graders: [],
+      agent: 'claude' as const,
+      trials: 1,
+      timeout: 60,
+      environment: { cpus: 2, memory_mb: 2048 },
+      mcp_mock: mocks,
+    };
+
+    try {
+      await expect(prepareTempTaskDir(resolved as any, '/base', tmpDir)).rejects.toThrow(/duplicate/i);
+    } finally {
+      await fs.remove(tmpDir);
+    }
+  });
 });
 ```
 
@@ -953,6 +979,16 @@ At the end of `prepareTempTaskDir`, before the closing brace (after the workspac
     const mcp_mock = (resolved as any).mcp_mock as MockMcpServerDescriptor | MockMcpServerDescriptor[] | undefined;
     if (mcp_mock) {
         const mocks = Array.isArray(mcp_mock) ? mcp_mock : [mcp_mock];
+
+        // Validate server name uniqueness
+        const seen = new Set<string>();
+        for (const mock of mocks) {
+            if (seen.has(mock.config.name)) {
+                throw new Error(`Duplicate mock MCP server name: "${mock.config.name}" in task "${resolved.name}"`);
+            }
+            seen.add(mock.config.name);
+        }
+
         const mcpServers: Record<string, { command: string; args: string[] }> = {};
 
         for (const mock of mocks) {
