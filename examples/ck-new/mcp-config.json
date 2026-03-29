@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "internal-docs-mcp": {
+      "command": "node",
+      "args": [
+        "/Users/nadavlac/projects/mcp-servers/packages/internal-docs-mcp/dist/src/index.js"
+      ]
+    },
+    "WixInternalDocs": {
+      "command": "npx",
+      "args": [
+        "@wix/internal-docs-mcp"
+      ]
+    },
+    "octocode": {
+      "command": "npx",
+      "args": [
+        "octocode-mcp@latest"
+      ]
+    },
+    "google-workspace": {
+      "type": "http",
+      "url": "https://mcp-s.wewix.net/mcp?mcp=google-workspace"
+    },
+    "docs-schema": {
+      "type": "http",
+      "url": "https://mcp-s.wewix.net/mcp?mcp=docs-schema"
+    }
+  }
+}

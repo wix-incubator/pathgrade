@@ -4,6 +4,7 @@ import { checkBrief } from './graders/check-brief';
 import { toolUsageFix } from './graders/tool-usage-fix';
 import { rubricScripted } from './graders/rubric-scripted';
 import { rubricPersona } from './graders/rubric-persona';
+import { kbRetrievalMock } from './mcp-mock-kb';
 
 export default defineEval({
   skillPath: 'skill',
@@ -36,6 +37,7 @@ export default defineEval({
     {
       name: 'scripted-gift-card',
       type: 'conversation',
+      mcp_config: './mcp-config.json',
       conversation: {
         opener: `I want to start a new project. I have an idea for a gift card feature.\n`,
         completion: { max_turns: 12, signal: 'artifacts/project-brief-*.md', timeout: 300 },
@@ -46,7 +48,7 @@ export default defineEval({
           },
           { when: 'goal|trying to achieve|what are you trying', reply: 'Solve user pain point' },
           { when: 'target|audience|who|Self-Creator|adjust if needed', reply: 'Self-Creator' },
-          { when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip', reply: 'Skip' },
+          { when: 'knowledge base|KB.*MCP|enrich.*brief|paste.*doc.*skip', reply: 'Yes, enrich the brief with available knowledge base resources' },
           { when: 'gameplan|strategy doc', reply: 'Skip for now' },
           {
             when: 'take on this so far|what.*so far|ready to write|write the brief|next step',
@@ -58,8 +60,7 @@ export default defineEval({
             when: '.*', once: true,
             reply: `It's for the Wix Stores platform. Online store owners have been
 requesting the ability to sell digital gift cards that customers
-can purchase and redeem at checkout.
-No MCP tools or KB enrichment available — skip KB enrichment, gameplan lookup, and repository references entirely. Go straight through the intake and write the brief.\n`,
+can purchase and redeem at checkout.\n`,
           },
         ],
       },
@@ -72,6 +73,7 @@ No MCP tools or KB enrichment available — skip KB enrichment, gameplan lookup,
     {
       name: 'persona-gift-card',
       type: 'conversation',
+      mcp_mock: kbRetrievalMock,
       conversation: {
         opener: `I want to start a new project. I have an idea for a feature\nrelated to gift cards for online stores.\n`,
         completion: { max_turns: 15, signal: 'artifacts/project-brief-*.md', timeout: 300 },

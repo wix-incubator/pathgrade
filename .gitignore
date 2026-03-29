@@ -15,6 +15,7 @@ dist/
 *.json
 !package.json
 !tsconfig.json
+!examples/**/mcp-config.json
 logs/
 coverage/
 
