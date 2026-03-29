@@ -19,6 +19,7 @@ import {
     VALID_AGENTS,
 } from './config.types';
 import type { GraderDescriptor } from './grader-factories';
+import type { MockMcpServerDescriptor } from './mcp-mock.types';
 import { DEFAULT_CONFIG } from './defaults';
 
 /** Raw (unvalidated) input shape for validateConfig. */
@@ -428,6 +429,19 @@ export async function resolveTask(
     };
     const grader_model = task.grader_model || defaults.grader_model;
 
+    // Resolve mcp_mock: task overrides defaults (no merging)
+    const mcp_mock: MockMcpServerDescriptor | MockMcpServerDescriptor[] | undefined =
+        task.mcp_mock !== undefined ? task.mcp_mock : defaults.mcp_mock;
+
+    // Resolve mcp_config
+    const mcp_config_raw = task.mcp_config || defaults.mcp_config;
+    const mcp_config = mcp_config_raw ? path.resolve(baseDir, mcp_config_raw) : undefined;
+
+    // Mutual exclusion
+    if (mcp_config && mcp_mock) {
+        throw new Error(`Task "${task.name}": mcp_config and mcp_mock are mutually exclusive`);
+    }
+
     // Resolve instruction or conversation based on task type
     const instruction = task.type === 'instruction'
         ? await resolveFileOrInline(task.instruction, baseDir)
@@ -462,6 +476,8 @@ export async function resolveTask(
             timeout,
             grader_model,
             environment,
+            mcp_config,
+            mcp_mock,
         };
     }
     return {
@@ -476,6 +492,8 @@ export async function resolveTask(
         timeout,
         grader_model,
         environment,
+        mcp_config,
+        mcp_mock,
     };
 }
 

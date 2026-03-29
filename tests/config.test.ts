@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateConfig, resolveTask } from '../src/core/config';
 import { EvalTaskConfig, EvalDefaults, ConversationTaskConfig, ResolvedInstructionTask, ResolvedConversationTask, InstructionTaskConfig } from '../src/core/config.types';
 import { deterministicGrader } from '../src/core/grader-factories';
+import { mockMcpServer } from '../src/core/mcp-mock';
 import * as os from 'os';
 import * as path from 'path';
 import { promises as nativeFs } from 'fs';
@@ -714,6 +715,106 @@ describe('resolveTask', () => {
     } finally {
       await nativeFs.rm(baseDir, { recursive: true, force: true });
     }
+  });
+
+  it('rejects task with both mcp_config and mcp_mock', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+    const mock = mockMcpServer({
+      name: 'weather',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'both-mcp',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+      mcp_config: './servers.json',
+      mcp_mock: mock,
+    };
+
+    await expect(resolveTask(task, defaults, '/base/dir')).rejects.toThrow(/mutually exclusive/i);
+  });
+
+  it('rejects mcp_mock inherited from defaults when task has mcp_config', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+    const mock = mockMcpServer({
+      name: 'weather',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'conflict',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+      mcp_config: './servers.json',
+    };
+
+    const defaultsWithMock = { ...defaults, mcp_mock: mock };
+    await expect(resolveTask(task, defaultsWithMock, '/base/dir')).rejects.toThrow(/mutually exclusive/i);
+  });
+
+  it('passes mcp_mock through resolveTask', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+    const mock = mockMcpServer({
+      name: 'weather',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'mock-test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+      mcp_mock: mock,
+    };
+
+    const resolved = await resolveTask(task, defaults, '/base/dir');
+    expect((resolved as any).mcp_mock).toBe(mock);
+  });
+
+  it('inherits mcp_mock from defaults', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+    const mock = mockMcpServer({
+      name: 'weather',
+      tools: [{ name: 'get_weather', response: { temp: 72 } }],
+    });
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'inherit-test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+    };
+
+    const defaultsWithMock = { ...defaults, mcp_mock: mock };
+    const resolved = await resolveTask(task, defaultsWithMock, '/base/dir');
+    expect((resolved as any).mcp_mock).toBe(mock);
+  });
+
+  it('task mcp_mock replaces defaults mcp_mock (no merging)', async () => {
+    mockPathExists.mockResolvedValue(false as any);
+    const defaultMock = mockMcpServer({
+      name: 'default-server',
+      tools: [{ name: 'default_tool', response: 'default' }],
+    });
+    const taskMock = mockMcpServer({
+      name: 'task-server',
+      tools: [{ name: 'task_tool', response: 'task' }],
+    });
+
+    const task: InstructionTaskConfig = {
+      type: 'instruction',
+      name: 'override-test',
+      instruction: 'inline instruction',
+      graders: [stubGrader],
+      mcp_mock: taskMock,
+    };
+
+    const defaultsWithMock = { ...defaults, mcp_mock: defaultMock };
+    const resolved = await resolveTask(task, defaultsWithMock, '/base/dir');
+    expect((resolved as any).mcp_mock).toBe(taskMock);
   });
 
   it('returns empty workspace for nonexistent directory', async () => {
