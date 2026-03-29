@@ -23,27 +23,27 @@
 These items were implemented as part of the MCP mock servers plan and should NOT be re-implemented:
 
 - [x] `mcp_config?: string` added to `EvalTaskBase`, `EvalDefaults`, `ResolvedTaskBase`, `DefineEvalTaskBase` in `config.types.ts`
-- [x] `mcp_config` passthrough in `defineEval` (`define-eval.ts:31`)
-- [x] `mcp_config` on `RawTask` interface in `config.ts:55`
-- [x] `mcp_config` passthrough in `validateConfig` base object (`config.ts:292`)
-- [x] `mcp_config` resolution in `resolveTask` — `path.resolve(baseDir, mcp_config_raw)` (`config.ts:432-434`)
-- [x] Mutual exclusion with `mcp_mock` in `resolveTask` (`config.ts:437-439`)
-- [x] `mcp_config` in both `resolveTask` return objects (`config.ts:465,479`)
-- [x] `mcpConfigPath?: string` on `EvalRunOptions` (`evalRunner.ts:61`)
-- [x] `mcpConfigPath` set in `evalOpts` — `(resolved.mcp_config || resolved.mcp_mock) ? '.pathgrade-mcp.json' : undefined` (`run.ts:140`)
+- [x] `mcp_config` passthrough in `defineEval` (`define-eval.ts:30`)
+- [x] `mcp_config` on `RawTask` interface in `config.ts:57`
+- [x] `mcp_config` passthrough in `validateConfig` base object (`config.ts:291`)
+- [x] `mcp_config` resolution in `resolveTask` — `path.resolve(baseDir, mcp_config_raw)` (`config.ts:436-438`)
+- [x] Mutual exclusion with `mcp_mock` in `resolveTask` (`config.ts:441-442`)
+- [x] `mcp_config` in both `resolveTask` return objects (`config.ts:479,495`)
+- [x] `mcpConfigPath?: string` on `EvalRunOptions` (`evalRunner.ts:60`)
+- [x] `mcpConfigPath` set in `evalOpts` — `(resolved.mcp_config || resolved.mcp_mock) ? '.pathgrade-mcp.json' : undefined` (`run.ts:141`)
 
-Note: `RawEvalConfig.defaults` is typed as `Record<string, unknown> & {...}` (config.ts:29), so `mcp_config` already passes through the defaults spread at config.ts:149 without needing an explicit field. The existing `mcp_mock` defaults test at define-eval.test.ts:216 proves this path works. Adding `mcp_config` to the explicit type is optional (for documentation, not correctness).
+Note: `RawEvalConfig.defaults` is typed as `Record<string, unknown> & {...}` (config.ts:28), so `mcp_config` already passes through the defaults spread at config.ts:150 without needing an explicit field. The existing `mcp_mock` defaults test at define-eval.test.ts:224 proves this path works. Adding `mcp_config` to the explicit type is optional (for documentation, not correctness).
 
 ## File Structure (remaining work)
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `src/commands/run.ts:315-348` | Modify | Copy `mcp_config` file into workspace in `prepareTempTaskDir` |
-| `src/types.ts:172-200` | Modify | Add `AgentSessionOptions`, update `BaseAgent.createSession` and `createAgentSession` |
-| `src/agents/claude.ts:27-68` | Modify | Accept options, append `--mcp-config` flag |
+| `src/commands/run.ts:318-349` | Modify | Copy `mcp_config` file into workspace in `prepareTempTaskDir` |
+| `src/types.ts:172-199` | Modify | Add `AgentSessionOptions`, update `BaseAgent.createSession` and `createAgentSession` |
+| `src/agents/claude.ts:27-88` | Modify | Accept options, append `--mcp-config` flag |
 | `src/agents/transcript-agent.ts:13` | Modify | Accept and ignore options (forward-compat) |
-| `src/evalRunner.ts:190-250` | Modify | Pass `mcpConfigPath` to conversation runner and agent session |
-| `src/conversationRunner.ts:33-42,319` | Modify | Add `mcpConfigPath` to options, pass to `createAgentSession` |
+| `src/evalRunner.ts:194-246` | Modify | Pass `mcpConfigPath` to conversation runner and agent session |
+| `src/conversationRunner.ts:33-41,319` | Modify | Add `mcpConfigPath` to options, pass to `createAgentSession` |
 | `tests/define-eval.test.ts` | Modify | Add `mcp_config` passthrough tests |
 | `tests/config.test.ts` | Modify | Add `mcp_config` resolution tests |
 | `tests/commands.run.test.ts` | Modify | Add `mcp_config` file staging tests |
@@ -180,8 +180,8 @@ git commit -m "test: add mcp_config passthrough and resolution tests"
 ### Task 2: Thread MCP config through the agent interface
 
 **Files:**
-- Modify: `src/types.ts:158-200` (AgentSessionOptions, BaseAgent, createAgentSession)
-- Modify: `src/agents/claude.ts:27-68` (createSession, runTurn)
+- Modify: `src/types.ts:170-199` (AgentSessionOptions, BaseAgent, createAgentSession)
+- Modify: `src/agents/claude.ts:27-88` (createSession, run, runTurn)
 - Modify: `src/agents/transcript-agent.ts:13` (createSession signature)
 
 - [ ] **Step 1: Add `AgentSessionOptions` to types.ts**
@@ -327,9 +327,9 @@ git commit -m "feat: thread mcpConfigPath through agent session interface"
 ### Task 3: Wire MCP config through runner and prepareTempTaskDir
 
 **Files:**
-- Modify: `src/evalRunner.ts:190-250` (runSingleTrial)
-- Modify: `src/conversationRunner.ts:33-42,319` (ConversationRunOptions, createAgentSession call)
-- Modify: `src/commands/run.ts:315-348` (prepareTempTaskDir)
+- Modify: `src/evalRunner.ts:194-246` (runSingleTrial)
+- Modify: `src/conversationRunner.ts:33-41,319` (ConversationRunOptions, createAgentSession call)
+- Modify: `src/commands/run.ts:318-349` (prepareTempTaskDir)
 - Modify: `tests/commands.run.test.ts`
 
 - [ ] **Step 1: Pass `mcpConfigPath` to conversation runner**
@@ -428,7 +428,7 @@ const session = await createAgentSession(
 
 - [ ] **Step 4: Copy MCP config in `prepareTempTaskDir`**
 
-In `src/commands/run.ts`, inside `prepareTempTaskDir`, add before the `mcp_mock` block (around line 315, after workspace copy loop):
+In `src/commands/run.ts`, inside `prepareTempTaskDir`, add before the `mcp_mock` block (around line 318, after workspace copy loop):
 
 ```typescript
     // Copy MCP config into the task bundle if specified
