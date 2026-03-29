@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-29
 **Status:** Draft
-**Depends on:** [MCP Config Support Plan](../plans/2026-03-28-mcp-config-support.md)
+**Depends on:** [MCP Config Support Plan](../plans/2026-03-28-mcp-config-support.md), [Codex MCP Support Patch](../plans/2026-03-29-codex-mcp-support-patch.md)
 
 ## Problem
 
@@ -14,7 +14,7 @@ Evals that test MCP tool usage require real MCP servers to be running. This crea
 
 ## Design
 
-PathGrade ships a built-in mock MCP server and helper functions. Eval authors declare tool mocks in their eval config. PathGrade generates the MCP config and fixture files automatically. Claude CLI spawns the mock server via stdio — no ports, no process management, no cleanup.
+PathGrade ships a built-in mock MCP server and helper functions. Eval authors declare tool mocks in their eval config. PathGrade generates the MCP config and fixture files automatically. The normalized `.pathgrade-mcp.json` artifact is consumed by agent-specific adapters — Claude via `--mcp-config`, Codex via `codex mcp add` bootstrap. No ports, no process management, no cleanup.
 
 ### Eval Author API
 
@@ -220,9 +220,9 @@ Server names are sanitized to alphanumeric + hyphens.
 
 The mock server script path is resolved via `path.resolve(__dirname, '../mcp-mock-server.js')`. The fixture path is relative — it resolves in the workspace because `LocalProvider.setup` copies the entire task bundle into the trial workspace.
 
-**Step 3 — Set `mcpConfigPath`.** Same as the `mcp_config` flow: `mcpConfigPath: '.pathgrade-mcp.json'` in `EvalRunOptions`. All downstream plumbing is reused.
+**Step 3 — Set `mcpConfigPath`.** Same as the `mcp_config` flow: `mcpConfigPath: '.pathgrade-mcp.json'` in `EvalRunOptions`. Downstream runners are reused; the agent-specific adapter decides how to consume the config.
 
-**No explicit process management.** Claude CLI spawns and kills MCP server subprocesses via stdio transport. PathGrade only provides the config file.
+**No explicit process management.** The agent runtime spawns and kills MCP server subprocesses. Claude does this natively via `--mcp-config`; Codex registers servers with `codex mcp add` and its runtime manages the lifecycle. PathGrade only provides the config file.
 
 ### End-to-End Flow
 
@@ -233,8 +233,8 @@ User authors mcp-servers.json
   → resolveTask() resolves to absolute path
   → prepareTempTaskDir() copies file as .pathgrade-mcp.json
   → LocalProvider.setup() copies task bundle to workspace
-  → claude --mcp-config ".pathgrade-mcp.json"
-  → Claude CLI spawns real MCP servers
+  → Claude: claude --mcp-config ".pathgrade-mcp.json"
+  → Codex: bootstrap adapter reads .pathgrade-mcp.json, runs codex mcp add per server
 ```
 
 **Mock MCP (`mcp_mock`):**
@@ -244,12 +244,29 @@ User writes mockMcpServer({ name, tools })
   → resolveTask() passes MockMcpServerDescriptor through
   → prepareTempTaskDir() generates fixture JSON + .pathgrade-mcp.json
   → LocalProvider.setup() copies task bundle to workspace
-  → claude --mcp-config ".pathgrade-mcp.json"
-  → Claude CLI spawns node mcp-mock-server.js
+  → Claude: claude --mcp-config ".pathgrade-mcp.json"
+  → Codex: bootstrap adapter registers node mcp-mock-server.js via codex mcp add
   → Mock server reads fixture, returns canned responses
 ```
 
-Both paths converge at `.pathgrade-mcp.json`. Everything downstream is identical.
+Both paths converge at `.pathgrade-mcp.json`. The agent-specific adapter decides how to consume it. Adding a new agent requires only a new adapter — the eval config, fixture generation, and mock server are unchanged.
+
+### Agent Adapter Pattern
+
+The normalized `.pathgrade-mcp.json` is the abstraction boundary. Each agent consumes it differently:
+
+| Agent | Mechanism | Adapter Location |
+|-------|-----------|-----------------|
+| Claude | `--mcp-config` flag (native) | `src/agents/claude.ts` |
+| Codex | `codex mcp add` bootstrap commands | `src/agents/codex-mcp.ts` |
+| Gemini | Not supported (ignores) | `src/agents/gemini.ts` |
+| Future | New adapter reads `.pathgrade-mcp.json` | New agent file |
+
+Supported normalized server shapes (per Codex adapter):
+- **stdio:** `{ command, args?, env? }`
+- **HTTP:** `{ url, bearerTokenEnvVar? }`
+
+If a server shape contains fields an agent adapter cannot express, PathGrade fails fast with a validation error rather than silently dropping behavior.
 
 ## Scope
 
@@ -265,4 +282,4 @@ Both paths converge at `.pathgrade-mcp.json`. Everything downstream is identical
 | Tests | `tests/mcp-mock.test.ts` (new) | Helper, fixture generation, mock server protocol |
 | Tests | `tests/config.test.ts` | Mutual exclusion validation |
 
-No changes to: `evalRunner.ts`, `conversationRunner.ts`, `claude.ts`, `types.ts`. The mock flow produces the same `.pathgrade-mcp.json` — all downstream plumbing from the `mcp_config` plan is reused.
+No changes to: `evalRunner.ts`, `conversationRunner.ts`, `claude.ts`, `codex.ts`, `types.ts`. The mock flow produces the same `.pathgrade-mcp.json` — all downstream plumbing from the `mcp_config` and Codex MCP support plans is reused. Agent adapters are already in place.
