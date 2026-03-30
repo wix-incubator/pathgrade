@@ -25,7 +25,7 @@ export default defineEval({
       workspace: [
         { dir: 'fixtures' },
       ],
-      solution: 'solve-fix.sh',
+      validation_script: 'solve-fix.sh',
       trials: 1,
       timeout: 120,
       graders: [

@@ -46,7 +46,7 @@ interface RawTask {
     conversation?: RawConversation;
     workspace?: (string | { src?: string; dest?: string; dir?: string; chmod?: string })[];
     graders?: any[];
-    solution?: string;
+    validation_script?: string;
     agent?: string;
     trials?: number;
     timeout?: number;
@@ -173,6 +173,9 @@ export function validateConfig(raw: unknown): EvalConfig {
         if (t.type === 'instruction' && !t.instruction) {
             throw new Error(`Task "${t.name}" has type "instruction" but is missing an "instruction" field`);
         }
+        if ('solution' in (t as Record<string, unknown>)) {
+            throw new Error(`Task "${t.name}" field "solution" is no longer supported; use "validation_script"`);
+        }
         if (t.type === 'conversation' && !t.conversation) {
             throw new Error(`Task "${t.name}" has type "conversation" but is missing a "conversation" block`);
         }
@@ -285,7 +288,7 @@ export function validateConfig(raw: unknown): EvalConfig {
                 // (reconstructing would strip the execute function)
                 return g as GraderDescriptor;
             }),
-            solution: t.solution,
+            validation_script: t.validation_script,
             agent: t.agent,
             trials: t.trials,
             timeout: t.timeout,
@@ -466,9 +469,9 @@ export async function resolveTask(
         task.graders.map(g => resolveGrader(g, baseDir))
     );
 
-    // Resolve solution path
-    const solution = task.solution
-        ? path.resolve(baseDir, task.solution)
+    // Resolve validation script path
+    const validation_script = task.validation_script
+        ? path.resolve(baseDir, task.validation_script)
         : undefined;
 
     // Expand workspace: { dir } entries become individual file mappings
@@ -481,7 +484,7 @@ export async function resolveTask(
             conversation: conversation!,
             workspace,
             graders,
-            solution,
+            validation_script,
             agent,
             trials,
             timeout,
@@ -497,7 +500,7 @@ export async function resolveTask(
         instruction: instruction!,
         workspace,
         graders,
-        solution,
+        validation_script,
         agent,
         trials,
         timeout,

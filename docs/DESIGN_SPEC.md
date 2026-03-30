@@ -952,7 +952,7 @@ The main entry point (`core/index.ts`) re-exports:
 - `ck-new/`: Complex multi-task eval with conversations, reactions, personas, mock MCP
 - `angular-modern/`, `typescript-example/`, `ck-product-strategy/`, `tool-usage/`: Additional examples
 
-**Validation mode**: `--validate` runs graders against a reference solution to catch broken graders before eval execution.
+**Validation mode**: `--validate` runs graders against a validation script to catch broken graders before eval execution.
 
 ## 19. Known Limitations and Future Work
 

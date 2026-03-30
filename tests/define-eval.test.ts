@@ -48,7 +48,7 @@ describe('defineEval', () => {
             deterministicGrader({ weight: 0.7, execute: async () => ({ score: 1 }) }),
             { type: 'llm_rubric', rubric: 'check quality', weight: 0.3 },
           ],
-          solution: 'solutions/solve.sh',
+          validation_script: 'solutions/solve.sh',
           agent: 'codex',
           trials: 20,
         },
@@ -64,7 +64,7 @@ describe('defineEval', () => {
     expect(config.tasks[0].graders[0].weight).toBe(0.7);
     expect(config.tasks[0].graders[1].type).toBe('llm_rubric');
     expect(config.tasks[0].workspace).toHaveLength(1);
-    expect(config.tasks[0].solution).toBe('solutions/solve.sh');
+    expect(config.tasks[0].validation_script).toBe('solutions/solve.sh');
   });
 
   it('throws when tasks array is empty', () => {

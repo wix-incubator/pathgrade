@@ -262,8 +262,8 @@ export default defineEval({
         }),
       ],
 
-      // Optional: reference solution for --validate
-      // solution: 'solutions/solve.sh',
+      // Optional: validation script for --validate
+      // validation_script: 'solutions/solve.sh',
     },
   ],
 });

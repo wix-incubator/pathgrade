@@ -21,7 +21,7 @@ export function defineEval(input: DefineEvalInput): EvalConfig {
                 workspace: t.workspace,
                 // Pass grader descriptors through untouched
                 graders: t.graders,
-                solution: t.solution,
+                validation_script: t.validation_script,
                 agent: t.agent,
                 trials: t.trials,
                 timeout: t.timeout,

@@ -169,8 +169,8 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
             if (opts.validate) {
                 // Validation mode
-                if (!resolved.solution) {
-                    console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no solution defined`);
+                if (!resolved.validation_script) {
+                    console.error(`  ${fmt.red('error')}  task "${resolved.name}" has no validation_script defined`);
                     continue;
                 }
                 if (resolved.type === 'conversation') {
@@ -183,7 +183,7 @@ export async function runEvals(dir: string, opts: RunOptions) {
 
                 const solveAgent = new class extends BaseAgent {
                     async run(_instruction: string, _workspace: string, runCommand: AgentCommandRunner) {
-                        const result = await runCommand(`bash ${path.basename(resolved.solution!)}`);
+                        const result = await runCommand(`bash ${path.basename(resolved.validation_script!)}`);
                         return result.stdout;
                     }
                 }();

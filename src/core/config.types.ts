@@ -114,7 +114,7 @@ interface EvalTaskBase {
     name: string;
     workspace?: WorkspaceEntry[];
     graders: GraderDescriptor[];
-    solution?: string;
+    validation_script?: string;
     agent?: AgentName;
     trials?: number;
     timeout?: number;
@@ -164,7 +164,7 @@ interface ResolvedTaskBase {
     name: string;
     workspace: WorkspaceMapping[];
     graders: GraderDescriptor[];
-    solution?: string;
+    validation_script?: string;
     agent: AgentName;
     trials: number;
     timeout: number;
@@ -200,7 +200,7 @@ interface DefineEvalTaskBase {
     name: string;
     workspace?: (string | WorkspaceMapping | WorkspaceDirectoryMapping)[];
     graders: GraderDescriptor[];
-    solution?: string;
+    validation_script?: string;
     agent?: AgentName;
     trials?: number;
     timeout?: number;

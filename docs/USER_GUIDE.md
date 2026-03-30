@@ -535,7 +535,7 @@ pathgrade preview browser    # Open results in a browser
 | `--parallel=N` | Run trials concurrently |
 | `--agent=gemini\|claude\|codex` | Override agent selection |
 | `--output=DIR` | Output directory for reports |
-| `--validate` | Verify graders with a reference solution |
+| `--validate` | Verify graders with a validation script |
 | `--ci` | Exit non-zero if pass rate below threshold |
 | `--threshold=0.8` | Pass rate threshold for `--ci` |
 | `--preview` | Show CLI preview after run |
@@ -650,19 +650,19 @@ Before trusting eval results, verify your graders work correctly:
 pathgrade --validate
 ```
 
-This requires a `solution` field on your task pointing to a script that produces the correct output:
+This requires a `validation_script` field on your task pointing to a script that produces the correct output:
 
 ```typescript
 {
   name: 'fix-the-bug',
   type: 'instruction',
   instruction: '...',
-  solution: 'solve-fix.sh',    // Script that creates correct workspace state
+  validation_script: 'solve-fix.sh',    // Script that creates correct workspace state
   graders: [ /* ... */ ],
 }
 ```
 
-Pathgrade runs the solution script, then runs your graders against the resulting workspace. If graders don't pass on correct output, something is wrong with the graders.
+Pathgrade runs the validation script, then runs your graders against the resulting workspace. If graders don't pass on correct output, something is wrong with the graders.
 
 ## Best Practices
 
@@ -682,7 +682,7 @@ Pathgrade runs the solution script, then runs your graders against the resulting
 - Claude: Install Claude Code per Anthropic's documentation
 - Codex: Install the Codex CLI per OpenAI's documentation
 
-**Low pass rates**: Run `--validate` to check your graders first. If graders pass on the solution but fail on agent output, the agent is genuinely failing. If graders also fail on the solution, fix the graders.
+**Low pass rates**: Run `--validate` to check your graders first. If graders pass when run with the validation script but fail on agent output, the agent is genuinely failing. If graders also fail when run with the validation script, fix the graders.
 
 **Timeouts**: Increase `timeout` in your eval config. Complex conversation tasks may need 600+ seconds.
 

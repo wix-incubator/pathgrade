@@ -162,6 +162,19 @@ describe('validateConfig', () => {
     })).toThrow('completion.signal');
   });
 
+  it('rejects legacy task solution field', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'instruction',
+        instruction: 'do it',
+        solution: 'solutions/solve.sh',
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    })).toThrow('validation_script');
+  });
+
   it('rejects conversation tasks with neither scripted replies nor persona', () => {
     expect(() => validateConfig({
       version: '1',
@@ -519,17 +532,17 @@ describe('resolveTask', () => {
     expect(resolved.graders[0].rubric).toBe('Evaluate quality...');
   });
 
-  it('resolves solution path', async () => {
+  it('resolves validation_script path', async () => {
     const task: EvalTaskConfig = {
       type: 'instruction' as const,
       name: 'test-task',
       instruction: 'multi\nline',
-      solution: 'solutions/solve.sh',
+      validation_script: 'solutions/solve.sh',
       graders: [stubGrader],
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
-    expect(resolved.solution).toContain('solutions/solve.sh');
+    expect(resolved.validation_script).toContain('solutions/solve.sh');
   });
 
   it('sets empty workspace when not provided', async () => {

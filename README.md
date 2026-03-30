@@ -63,7 +63,7 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/` by default. Overr
 | `--parallel=N` | Run trials concurrently |
 | `--agent=gemini\|claude\|codex` | Override agent selection |
 | `--output=DIR` | Output directory for reports and temp files |
-| `--validate` | Verify graders with a reference solution |
+| `--validate` | Verify graders with a validation script |
 | `--ci` | Exit non-zero if pass rate falls below threshold |
 | `--threshold=0.8` | Pass rate threshold for `--ci` |
 | `--preview` | Show the CLI preview after the run |

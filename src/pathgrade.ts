@@ -12,7 +12,7 @@
  * Options:
  *   --trials=N         Override trial count
  *   --parallel=N       Run trials concurrently
- *   --validate         Run reference solutions to verify graders
+ *   --validate         Run validation scripts to verify graders
  *   --ci               CI mode: exit non-zero if below threshold
  *   --threshold=0.8    Pass rate threshold for --ci
  *   --preview          Open results after running
@@ -152,7 +152,7 @@ function printHelp() {
     --agent=NAME       Override agent: claude|codex (default: claude)
     --output=DIR       Output directory for reports and temp files
                        Default: $TMPDIR/pathgrade
-    --validate         Verify graders using reference solutions
+    --validate         Verify graders using validation scripts
     --ci               CI mode: exit non-zero if below threshold
     --threshold=0.8    Pass rate threshold for CI mode
     --preview          Open CLI results after running
