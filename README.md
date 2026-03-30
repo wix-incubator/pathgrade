@@ -18,14 +18,14 @@ Initialize from a skill directory:
 
 ```bash
 cd my-skill/
-GEMINI_API_KEY=your-key pathgrade init
+ANTHROPIC_API_KEY=your-key pathgrade init
 # Use --force to overwrite an existing eval.ts
 ```
 
 Run your evals:
 
 ```bash
-GEMINI_API_KEY=your-key pathgrade --smoke
+ANTHROPIC_API_KEY=your-key pathgrade --smoke
 ```
 
 The agent is auto-detected from your API key:
@@ -78,11 +78,11 @@ export default defineEval({
   // skill: 'path/to/my-skill',
 
   defaults: {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
-    grader_model: 'gemini-3-flash-preview',
+    grader_model: 'claude-sonnet-4-20250514',
     environment: { cpus: 2, memory_mb: 2048 },
   },
 
@@ -105,7 +105,7 @@ export default defineEval({
         {
           type: 'llm_rubric',
           rubric: `Did the agent follow the expected workflow and solve the task cleanly?`,
-          model: 'gemini-2.0-flash',
+          model: 'claude-sonnet-4-20250514',
           weight: 0.3,
         },
       ],
@@ -191,7 +191,7 @@ Pathgrade is local-first in CI too:
 - run: |
     npm i -g pathgrade
     cd skills/superlint
-    GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci
+    ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} pathgrade --regression --ci
 ```
 
 ## Environment Variables
