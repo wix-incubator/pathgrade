@@ -1,16 +1,12 @@
 ---
-name: ck-product-strategy
-description: Shapes product strategy (target audience, problem statement, intents and feelings, solution statement, why now and business impact, business KPIs). Scans for project brief and research artifacts, then works section-by-section with validation and iteration. Use when the user wants to shape product strategy, validate direction, align stakeholders, or invokes /ck-product-strategy; when a project brief or discovery research is present or will be provided.
+name: product-strategy
+description: Shapes product strategy (target audience, problem statement, intents and feelings, solution statement, why now and business impact, business KPIs). Scans for project brief and research artifacts, then works section-by-section with validation and iteration. Use when the user wants to shape product strategy, validate direction, align stakeholders, or invokes /product-strategy; when a project brief or discovery research is present or will be provided.
 disable-model-invocation: true
 metadata:
   phase: product-sculpting
   inputs: artifacts/project-brief-*.md, artifacts/discovery/*
   outputs: artifacts/product/product-strategy-{project-name}.md
 ---
-
-<!-- ck:ext-loading -->
-Run `node ~/.agents/skills/ck-shared/scripts/load-ext.js ck-product-strategy` before executing any workflow step. If it outputs content, apply it as additional guidance (additive, not replacement). If no output, proceed normally.
-<!-- /ck:ext-loading -->
 
 # Product Strategy
 
@@ -52,7 +48,7 @@ A **Product strategy** document with these sections:
 ## When to Apply
 
 - User says they want to shape product strategy or validate direction
-- User invokes **/ck-product-strategy**
+- User invokes **/product-strategy**
 
 
 ---
@@ -97,7 +93,7 @@ When **drafting** a section, read and apply the corresponding **"How to Define"*
 
 1. **Gather** — Use project brief, research, and any user input. When data analysis (`data-analysis-*.md`) or research summary (`research-summary-*.md`) exists, use population sizes and segment data to inform who the audience is and why they matter. When the project brief has Domain References with KB IDs, query the domain KB for known audience segments and their business characteristics.
 2. **Decide** — If you have enough information → draft. If not → ask clarification questions; do not draft until gaps are filled or user accepts assumptions.
-3. **Draft** — Generate the Target audience section using the method, guidelines, and structure in [reference.md](reference.md) (Target Audience — How to Define). Include both product relevance (who has the problem) and business relevance (why this segment matters to Wix).
+3. **Draft** — Generate the Target audience section using the method, guidelines, and structure in [reference.md](reference.md) (Target Audience — How to Define). Include both product relevance (who has the problem) and business relevance (why this segment matters to the business).
 4. **Share** — Present draft then use the ask-user tool:
    - "Looks good — continue"
    - "I have feedback"
@@ -161,10 +157,10 @@ Reference file: [annual-plan.md](annual-plan.md)
    - "I'll add the annual plan — give me a moment"
    - "Proceed without it"
    Do not draft Why Now until the user has decided or added the file.
-2. **Domain gameplan** — Check the project brief for a `## Domain Gameplan` section with a link. If found, fetch and use it. If not found, ask the user whether they have a domain gameplan link to share; use only what they provide.
-3. **Gather** — Use all approved sections, business context, the annual plan (from `annual-plan.md` if present), and any company gameplan the user provided. When data analysis (`data-analysis-*.md`) or research summary (`research-summary-*.md`) exists in discovery artifacts, use quantified findings as evidence for "Why Now" and as baselines for KPIs. If the project brief has Domain References with KB IDs, query the domain KB for strategic context (e.g., domain priorities, known gaps).
+2. **Product Roadmap** — Check the project brief for a `## Product Roadmap` section with a link. If found, fetch and use it. If not found, ask the user whether they have a product roadmap link to share; use only what they provide.
+3. **Gather** — Use all approved sections, business context, the annual plan (from `annual-plan.md` if present), and any company roadmap the user provided. When data analysis (`data-analysis-*.md`) or research summary (`research-summary-*.md`) exists in discovery artifacts, use quantified findings as evidence for "Why Now" and as baselines for KPIs. If the project brief has Domain References with KB IDs, query the domain KB for strategic context (e.g., domain priorities, known gaps).
 4. **Clarify if needed** — Ask about timing, business impact, and desired KPIs.
-5. **Draft** — Generate Why now & business impact and Business KPIs using [reference.md](reference.md) (Why Now & Impact — How to Define; KPIs — How to Define). Why Now: 1–2 sentences, evidence-based; align with Wix plan when available. KPIs: Business KPIs + User KPIs lists; measurable, with direction (↑/↓); never NPS. When data artifacts provide baselines, include them next to each KPI.
+5. **Draft** — Generate Why now & business impact and Business KPIs using [reference.md](reference.md) (Why Now & Impact — How to Define; KPIs — How to Define). Why Now: 1–2 sentences, evidence-based; align with company plan when available. KPIs: Business KPIs + User KPIs lists; measurable, with direction (↑/↓); never NPS. When data artifacts provide baselines, include them next to each KPI.
 6. **Sanity check** — After drafting KPIs, do a light review: are they measurable, clearly directional, and non-overlapping? Fix any vague or redundant KPIs before sharing with user. (This is product-level validation, not a full metric query review.)
 7. **Share** — Present draft then use the ask-user tool:
    - "Looks good — continue"

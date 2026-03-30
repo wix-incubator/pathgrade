@@ -13,25 +13,25 @@ Define who this product primarily serves and how other user types are affected, 
 ### Method
 
 - Determine whether the audience should be defined using:
-  - **Wix user taxonomy**, and/or
+  - **platform user taxonomy**, and/or
   - **A custom segment** (e.g., geography, plan tier, behavior, industry)
 - Identify a **single Primary User:** the group most directly served by the product
 - Identify **relevant Secondary Users:** users indirectly affected by the product
 - Prefer **role-based and context-based** definitions over personas
-- **Use `kb-retrieval` to enrich:** Query `npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s kb-retrieval kb-retrieval__retrieve_relevant_documents_from_kb` with the product domain to surface known audience definitions, segment characteristics, or domain-specific user context. If the project brief has Domain References with KB IDs, use those directly instead of re-navigating. Research leads — kb-retrieval adds depth and validates, never overrides.
-- **Assess business relevance:** For each user type, evaluate why this segment matters to Wix — not just that they have a pain point. Consider: segment size (how many?), revenue contribution or potential, growth trajectory, strategic alignment with Wix priorities. When data analysis or research summary artifacts exist, use actual numbers for sizing and revenue. When they don't, state the business rationale qualitatively and flag sizing as "TBD — pending data."
+- **Use `kb-retrieval` to enrich:** Query the kb-retrieval MCP tool with the product domain to surface known audience definitions, segment characteristics, or domain-specific user context. If the project brief has Domain References with KB IDs, use those directly instead of re-navigating. Research leads — kb-retrieval adds depth and validates, never overrides.
+- **Assess business relevance:** For each user type, evaluate why this segment matters to the business — not just that they have a pain point. Consider: segment size (how many?), revenue contribution or potential, growth trajectory, strategic alignment with company priorities. When data analysis or research summary artifacts exist, use actual numbers for sizing and revenue. When they don't, state the business rationale qualitatively and flag sizing as "TBD — pending data."
 
-### Wix User Taxonomy Reference (Use Only If Relevant)
+### Platform User Taxonomy Reference (Use Only If Relevant)
 
 Use these categories only when they accurately represent the audience. If research suggests a different segmentation, define a custom segment instead.
 
 | Category | Description |
 |----------|-------------|
-| **Self-Creator** | Builds and manages their own Wix site or business |
-| **Partner** | Agency or freelancer managing sites for clients |
-| **UoU (User of User)** | End user of a Wix site (visitor, buyer) |
+| **Store Owner** | Builds and manages their own site or business |
+| **Agency** | Agency or freelancer managing sites for clients |
+| **Shopper (User of User)** | End user of a site (visitor, buyer) |
 | **Developer** | Uses APIs, Velo, or MCP to build logic |
-| **Studio User** | Professional using Wix Studio for advanced sites |
+| **Power User** | Professional using the platform studio for advanced sites |
 
 ### Guidelines
 
@@ -40,7 +40,7 @@ Use these categories only when they accurately represent the audience. If resear
 - Focus on impact and need, not solution
 - Avoid listing features, tools, or UI
 - Keep descriptions short and concrete
-- Include why each audience segment is meaningful to Wix (business impact, not just intent fit)
+- Include why each audience segment is meaningful to the business (business impact, not just intent fit)
 
 ### Structure
 
@@ -50,13 +50,13 @@ Format: Structured bullets per user type.
 
 - **User Type:** \<role / audience\>
 - **User Impact:** \<how this product affects their work or outcome\>
-- **Business Impact:** \<expected effect on Wix business — e.g., revenue growth, retention, competitive positioning, market expansion. Quantified when data exists, qualitative otherwise\>
+- **Business Impact:** \<expected effect on the business — e.g., revenue growth, retention, competitive positioning, market expansion. Quantified when data exists, qualitative otherwise\>
 
 **Secondary Users** (Repeat per User Type)
 
 - **User Type:** \<role / audience\>
 - **User Impact:** \<how this product affects them\>
-- **Business Impact:** \<expected effect on Wix business\>
+- **Business Impact:** \<expected effect on the business\>
 
 ---
 
@@ -204,12 +204,12 @@ Before generating options, collect what is known. Each dimension has a defined s
 | **User problem fit** | Derived from approved Problem Statement + Intents | Always available — never a gap |
 | **Current state & integration** | Current state research file | Ask one focused question; if still unknown → state assumption and flag |
 | **Competitive positioning** | Competitor research file | Use if exists; if not → note as "not validated" and proceed |
-| **Reusability / cross-Wix** | Internal research file | Ask one focused question; if still unknown → note as TBD |
+| **Reusability / cross-platform** | Internal research file | Ask one focused question; if still unknown → note as TBD |
 | **Scope / time horizon** | Derived from direction evaluation | Surfaces as a tradeoff in each direction — never pre-ask |
 
 **2. Generate 2–3 solution directions**
 
-Based on gathered inputs, generate 2–3 distinct directions that naturally span different strategic approaches. Each direction should embody a different stance — for example: a quick patch, a full native solution, or leveraging an existing Wix product. Do not ask the creator to pre-select a scope; let the directions themselves surface the options. Each direction should:
+Based on gathered inputs, generate 2–3 distinct directions that naturally span different strategic approaches. Each direction should embody a different stance — for example: a quick patch, a full native solution, or leveraging an existing platform product. Do not ask the creator to pre-select a scope; let the directions themselves surface the options. Each direction should:
 - Directly address the root cause from the Problem Statement
 - Be described in plain language — no features, no UI, no technical detail
 
@@ -219,7 +219,7 @@ For each direction, evaluate against the dimensions:
 - Does it solve the root user problem?
 - How does it integrate with the current product state?
 - Does it create a competitive advantage, match parity, or close a gap?
-- Is there reuse potential — from other Wix products, or for others to reuse what we build?
+- Is there reuse potential — from other platform products, or for others to reuse what we build?
 - What scope does this require — quick patch, phased, or full solution?
 - What are the key tradeoffs?
 
@@ -314,17 +314,17 @@ Crystallize the product solution into a concrete, plain-language summary that br
 
 ### Purpose
 
-Explain why solving this problem is urgent now, using evidence and alignment with Wix strategy. Check that the feature impact is aligned with Wix annual plan or company gameplan.
+Explain why solving this problem is urgent now, using evidence and alignment with company strategy. Check that the feature impact is aligned with the company annual plan or company roadmap.
 
 ### Method
 
-- **Search for strategy documents first:** Check the project brief for a `## Domain Gameplan` link. Also scan the workspace for `annual-plan.md`. Use these to validate alignment when drafting the Why Now statement.
-- **If documents are not found:** Tell the user that no annual plan or domain gameplan was found. Ask how to proceed: does the user want to **add** these documents (path or link), or **proceed without** them? Do not draft the Why Now statement until the user has chosen (or has added the documents).
-- **Use `kb-retrieval` for additional context:** Query `npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s kb-retrieval kb-retrieval__retrieve_relevant_documents_from_kb` with the product domain to surface strategic context, known business goals, or timing signals from the Wix knowledge base. Research and strategy documents lead — kb-retrieval adds supporting context only.
+- **Search for strategy documents first:** Check the project brief for a `## Product Roadmap` link. Also scan the workspace for `annual-plan.md`. Use these to validate alignment when drafting the Why Now statement.
+- **If documents are not found:** Tell the user that no annual plan or product roadmap was found. Ask how to proceed: does the user want to **add** these documents (path or link), or **proceed without** them? Do not draft the Why Now statement until the user has chosen (or has added the documents).
+- **Use `kb-retrieval` for additional context:** Query the kb-retrieval MCP tool with the product domain to surface strategic context, known business goals, or timing signals from the knowledge base. Research and strategy documents lead — kb-retrieval adds supporting context only.
 - **Use data artifacts when available:** When `data-analysis-*.md` or `research-summary-*.md` exist in discovery, extract quantified evidence — population sizes, conversion rates, revenue impact, trend data — and weave them into the Why Now and Business Impact statements. Cite specific numbers rather than vague claims.
 - Base the rationale on validated inputs only:
   - Validated user pain or data trend (quantified from data analysis when available)
-  - Alignment with Wix gameplan or annual plan (when available)
+  - Alignment with company roadmap or annual plan (when available)
   - Competitive, retention, or strategic timing factors
   - Context from `kb-retrieval` (supporting, not primary)
 - Ensure every statement is grounded in research or known business context
@@ -345,7 +345,7 @@ Explain why solving this problem is urgent now, using evidence and alignment wit
 
 **Business Impact**
 
-\<1–2 sentences describing the expected business outcome if this is solved — tied to Wix goals or gameplan when available. When data analysis provides baselines (e.g., current conversion rate, segment size, revenue figures), reference them to ground the impact claim.\>
+\<1–2 sentences describing the expected business outcome if this is solved — tied to company goals or roadmap when available. When data analysis provides baselines (e.g., current conversion rate, segment size, revenue figures), reference them to ground the impact claim.\>
 
 ---
 
@@ -353,32 +353,32 @@ Explain why solving this problem is urgent now, using evidence and alignment wit
 
 ### Purpose
 
-Define measurable indicators that show whether the product delivers real impact to Wix and to users, aligned with company goals.
+Define measurable indicators that show whether the product delivers real impact to the business and to users, aligned with company goals.
 
 ### Method
 
-- Derive KPIs from: the validated problem, main user intents, solution direction, Wix gameplan and annual plan
+- Derive KPIs from: the validated problem, main user intents, solution direction, company roadmap and annual plan
 - Use comparable KPIs from: related products, similar business contexts
-- **Use `kb-retrieval` for additional context:** Query `npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s kb-retrieval kb-retrieval__retrieve_relevant_documents_from_kb` with the product domain to surface known KPIs, benchmark metrics, or standard measurements used for similar features in the Wix knowledge base. If the project brief has Domain References with KB IDs, use those directly. Research and approved strategy sections lead — kb-retrieval adds supporting context only.
+- **Use `kb-retrieval` for additional context:** Query the kb-retrieval MCP tool with the product domain to surface known KPIs, benchmark metrics, or standard measurements used for similar features in the knowledge base. If the project brief has Domain References with KB IDs, use those directly. Research and approved strategy sections lead — kb-retrieval adds supporting context only.
 - **Cross-reference with data artifacts:** When `data-analysis-*.md` exists, check whether each proposed KPI has a measurable baseline. Include the current baseline value next to the KPI when available (e.g., "↑ Premium conversion rate (current: 3.2%, 30d)"). When a KPI has no baseline, note "baseline TBD — requires instrumentation."
-- Define KPIs across relevant categories: **Wix Impact**, **User Impact**, **Monitoring**
+- Define KPIs across relevant categories: **Platform Impact**, **User Impact**, **Monitoring**
 - Consider risks and trade-offs: cannibalization, negative impact on existing products
 
 ### KPI Categories
 
 Select only categories that are relevant to the feature.
 
-**1. Wix Impact KPIs** — Direct business and strategic impact
+**1. Platform Impact KPIs** — Direct business and strategic impact
 
-Examples: ↑ Premium upgrades, ↑ Revenue / ARPU, ↑ Retention, ↓ Churn, ↑ Market penetration
+Examples: ↑ Subscription upgrades, ↑ Revenue / ARPU, ↑ Retention, ↓ Churn, ↑ Market penetration
 
 **2. User Impact KPIs** — User success and outcomes
 
-Examples: ↑ GPV per Self-Creator, ↑ % of active merchants, ↓ Time to complete key flows, ↑ Task completion rate
+Examples: ↑ GMV per Store Owner, ↑ % of active merchants, ↓ Time to complete key flows, ↑ Task completion rate
 
 **3. Monitoring KPIs** — Experience, quality, adoption post-launch
 
-Examples: ↑ Feature adoption, ↓ Error rate, ↑ Happy-flow completion, ↑ Session success rate, ↑ PREX score
+Examples: ↑ Feature adoption, ↓ Error rate, ↑ Happy-flow completion, ↑ Session success rate
 
 ### Guidelines
 
@@ -395,7 +395,7 @@ Examples: ↑ Feature adoption, ↓ Error rate, ↑ Happy-flow completion, ↑ S
 
 Format: Up to three lists — include only categories relevant to the feature.
 
-**Wix Impact KPIs** *(business and strategic impact)*
+**Platform Impact KPIs** *(business and strategic impact)*
 
 - \<KPI with direction ↑/↓ and timeframe\> *(baseline: X if known)*
 - \<KPI with direction ↑/↓ and timeframe\> *(baseline: X if known)*

@@ -1,7 +1,7 @@
 import { llmRubricGrader } from '../../../src/core/grader-factories';
 
 export const rubricStrategy = llmRubricGrader({
-    rubric: `Evaluate the agent's execution of the ck-product-strategy skill across a multi-turn conversation.
+    rubric: `Evaluate the agent's execution of the product-strategy skill across a multi-turn conversation.
 
 Workflow Compliance (0-0.4):
 - Did the agent follow the section-by-section workflow in order (Target Audience → Problem Statement → Intents & Feelings → Solution Statement → Product Solution Summary → Why Now & KPIs)?

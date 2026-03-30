@@ -9,12 +9,12 @@ Analysis of 340+ support tickets, forum posts, and feature requests related to c
 ### Pain Point 1: Low Average Order Value
 
 - 67% of store owners surveyed report AOV below their target
-- "I wish Wix would suggest related products in the cart like Amazon does" — recurring theme (45 mentions)
+- "I wish Acme would suggest related products in the cart like MegaMart does" — recurring theme (45 mentions)
 - Store owners manually create discount bundles as a workaround, spending ~2 hrs/week on curation
 
 ### Pain Point 2: No Cart-Level Recommendations
 
-- Wix offers a "Related Products" widget for product pages, but nothing in the cart
+- Acme offers a "Related Products" widget for product pages, but nothing in the cart
 - 23% of stores using third-party recommendation apps report integration issues (broken layouts, slow load times)
 - "By the time customers are in the cart, they've already decided. I need to catch them earlier OR make the cart smarter" — store owner forum post
 
@@ -36,4 +36,4 @@ Analysis of 340+ support tickets, forum posts, and feature requests related to c
 
 - Stores using third-party recommendation apps see 8–15% AOV lift on average
 - Estimated revenue opportunity: if 50K stores adopt and see 10% AOV lift on a $50 average → ~$25M incremental GMV annually
-- Current cart abandonment rate across Wix Stores: 68% (industry benchmark: 70%)
+- Current cart abandonment rate across Acme Storefront: 68% (industry benchmark: 70%)
