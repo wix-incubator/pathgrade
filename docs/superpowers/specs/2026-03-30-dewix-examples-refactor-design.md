@@ -84,7 +84,15 @@ Task name changes:
 
 ### `mcp-config.json`
 
-Replace `@wix/internal-docs-mcp` with `acme-docs-mcp`. Remove Wix npm registry URL and `@wix/creator-kit` reference.
+The file has 5 MCP server entries. Each must be addressed:
+
+| Entry | Current | Action |
+|-------|---------|--------|
+| `internal-docs-mcp` | Hardcoded local path `/Users/nadavlac/projects/mcp-servers/...` | Replace with `npx acme-docs-mcp` (fictional, same pattern as other entries) |
+| `WixInternalDocs` | `npx @wix/internal-docs-mcp` | Remove entirely (redundant with above after refactor) |
+| `octocode` | `npx octocode-mcp@latest` | Keep as-is (not Wix-specific) |
+| `google-workspace` | `https://mcp-s.wewix.net/mcp?mcp=google-workspace` | Replace with fictional `https://mcp.acme-commerce.dev/google-workspace` |
+| `docs-schema` | `https://mcp-s.wewix.net/mcp?mcp=docs-schema` | Replace with fictional `https://mcp.acme-commerce.dev/docs-schema` |
 
 ### `mcp-mock-kb.ts`
 
@@ -107,6 +115,7 @@ Same multi-layer structure, all IDs and content replaced:
 ### `project-intake` SKILL.md
 
 - Name: `project-intake`
+- Replace "CreatorKit" with generic terms (e.g., "downstream skills" or just name them directly) — appears in lines 16 and 185
 - Downstream skills: `research`, `competitor-analysis`, `ux-concepts`, `product-strategy`
 - User type options: Store Owner, Agency, Developer, Power User, Shopper, Not sure yet
 - Product domain examples: "Acme Storefront", "Acme App Market"
@@ -116,6 +125,8 @@ Same multi-layer structure, all IDs and content replaced:
 
 - Name: `product-strategy`
 - Remove all `ck-` prefixed references
+- Replace bare "Wix" references with "Acme Commerce" — appears at line 100 ("matters to Wix") and line 167 ("Wix plan")
+- Replace "CreatorKit" if present
 - Input/output artifact paths unchanged
 
 ### `product-strategy` reference.md
@@ -209,8 +220,8 @@ No grader logic, scoring algorithms, or weight distributions change.
 | `project-intake.eval.ts` | Rename + edit (tasks, opener, persona, reactions) |
 | `mcp-config.json` | Edit (remove Wix packages) |
 | `mcp-mock-kb.ts` | Edit (all KB IDs, domains, content) |
-| `skill/SKILL.md` | Edit (name, taxonomy, domains, remove Wix integrations) |
-| `skill/.claude-plugin/plugin.json` | Edit (name field) |
+| `skill/SKILL.md` | Edit (name, taxonomy, domains, remove Wix integrations, replace "CreatorKit" with "project-intake" in prose at lines 16 and 185) |
+| `skill/.claude-plugin/plugin.json` | Edit (description field: "ck-new" → "project-intake") |
 | `skill/agents/openai.yaml` | Verify (likely no changes) |
 | `graders/check-brief.ts` | No change |
 | `graders/check-fix.ts` | No change |
@@ -226,10 +237,10 @@ No grader logic, scoring algorithms, or weight distributions change.
 | File | Change |
 |------|--------|
 | `product-strategy.eval.ts` | Rename + edit (tasks, opener, persona, reactions) |
-| `skill/SKILL.md` | Edit (name, remove ck- refs) |
+| `skill/SKILL.md` | Edit (name, remove ck- refs, replace bare "Wix" refs at lines 100 and 167 with "Acme Commerce", replace "CreatorKit" with generic terms) |
 | `skill/reference.md` | Edit (taxonomy, KPIs, roadmap) |
 | `skill/annual-plan.md` | Rewrite (full-length Acme Commerce 2026 narrative) |
-| `skill/.claude-plugin/plugin.json` | Edit (name field) |
+| `skill/.claude-plugin/plugin.json` | Edit (description field: "ck-product-strategy" → "product-strategy") |
 | `skill/agents/openai.yaml` | Verify (likely no changes) |
 | `graders/check-strategy.ts` | No change |
 | `graders/rubric-strategy.ts` | Minor edit (rubric text) |
@@ -239,6 +250,14 @@ No grader logic, scoring algorithms, or weight distributions change.
 | `fixtures/artifacts/discovery/competitor-analysis-smart-cart.md` | Edit (fictional competitors) |
 | `README.md` | Edit (name/description) |
 
+### Test files
+
+| File | Change |
+|------|--------|
+| `tests/examples.ck-new.test.ts` | Rename to `tests/examples.project-intake.test.ts`, update import path (`../examples/project-intake/project-intake.eval`) and describe string |
+| `tests/examples.ck-product-strategy.test.ts` | Rename to `tests/examples.product-strategy.test.ts`, update import path and describe string |
+| `tests/config-ts-loading.test.ts` | Update path string at line 141 (`'ck-product-strategy'` → `'product-strategy'`) |
+
 ### Outside examples
 
 - `pathgrade.eval.ts` — check for example path references
@@ -246,6 +265,6 @@ No grader logic, scoring algorithms, or weight distributions change.
 
 ### Totals
 
-- ~30 files touched
+- ~33 files touched (includes 3 test files)
 - 0 new files created
-- 0 files deleted (directories renamed)
+- 0 files deleted (directories and test files renamed)
