@@ -2,9 +2,7 @@
 
 Pathgrade evaluates whether AI agents correctly discover and use your skills.
 
-See [examples/](examples/) for working evals, including [superlint](examples/superlint/) and [angular-modern](examples/angular-modern/).
-
-![Browser Preview](assets/browser-preview.png)
+See [examples/](examples/) for working evals, including [superlint](examples/superlint/), [angular-modern](examples/angular-modern/), [project-intake](examples/project-intake/), [product-strategy](examples/product-strategy/), and [tool-usage](examples/tool-usage/).
 
 ## Quick Start
 
