@@ -1305,7 +1305,7 @@ export default defineEval({
 Create a valid eval.ts that evaluates this skill using defineEval().
 
 Requirements:
-1. The eval.ts must import defineEval from '@wix/pathgrade'
+1. The eval.ts must import defineEval from 'pathgrade'
 2. It must define at least one task under tasks
 3. Each task must have: name, instruction, workspace, and graders
 4. Include at least one deterministicGrader() and one llmRubricGrader()
@@ -1351,7 +1351,7 @@ and contains the text "Hello, World!".
 
 Requirements:
 1. Create a TypeScript file at graders/check-output.ts
-2. Import deterministicGrader from '@wix/pathgrade'
+2. Import deterministicGrader from 'pathgrade'
 3. Export a grader using deterministicGrader({ execute: ... })
 4. The execute function should return { score, details, checks }
 5. Check 1: verify output.txt exists
@@ -1771,7 +1771,7 @@ Replace `{ type: 'deterministic', run: '...', weight: N }` with imported descrip
 Replace `{ type: 'llm_rubric', rubric: '...', weight: N }` with `llmRubricGrader({ ... })`.
 Replace `{ type: 'tool_usage', expectations: [...], weight: N }` with `toolUsageGrader({ ... })`.
 
-**Important:** `tool-usage.eval.ts` and `ck-product-strategy.eval.ts` currently import from `'@wix/pathgrade'` (package name). Switch these to relative imports like the other examples — e.g., `import { defineEval } from '../../src/core/define-eval'` and `import { llmRubricGrader } from '../../src/core/grader-factories'`. This avoids requiring a package build during development.
+**Important:** `tool-usage.eval.ts` and `ck-product-strategy.eval.ts` currently import from `'pathgrade'` (package name). Switch these to relative imports like the other examples — e.g., `import { defineEval } from '../../src/core/define-eval'` and `import { llmRubricGrader } from '../../src/core/grader-factories'`. This avoids requiring a package build during development.
 
 - [x] **Step 3: Delete old .js grader files**
 
@@ -1829,7 +1829,7 @@ IMPORTANT GRADING RULES:
 
 Replace the example template at the end of the prompt from old format:
 ```ts
-import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
+import { defineEval, deterministicGrader, llmRubricGrader } from 'pathgrade';
 
 export default defineEval({
   defaults: { agent: 'gemini', trials: 5, timeout: 300, threshold: 0.8 },

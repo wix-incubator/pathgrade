@@ -3,7 +3,7 @@
 ## Top-Level Keys
 
 ```typescript
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from 'pathgrade';
 
 export default defineEval({
   // skill: 'path/to/my-skill',  // Optional, defaults to auto-detecting SKILL.md

@@ -827,7 +827,7 @@ Update `src/pathgrade.ts` help text:
 Create `examples/tool-usage/eval.ts` with a minimal expectation-based example:
 
 ```typescript
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from 'pathgrade';
 
 export default defineEval({
   tasks: [{

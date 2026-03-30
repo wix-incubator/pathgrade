@@ -108,7 +108,7 @@ Short description.`;
 describe('getInlineTemplate', () => {
   // Replicate the function since it's not exported
   function getInlineTemplate(): string {
-    return `import { defineEval } from '@wix/pathgrade';
+    return `import { defineEval } from 'pathgrade';
 
 export default defineEval({
   defaults: {
@@ -210,7 +210,7 @@ describe('runInit LLM selection', () => {
     vi.stubGlobal('fetch', fetchMock);
     process.env.OPENAI_API_KEY = 'sk-test';
     mockCallLLM.mockResolvedValue({
-      text: "import { defineEval } from '@wix/pathgrade';\nexport default defineEval({ tasks: [] });\n",
+      text: "import { defineEval } from 'pathgrade';\nexport default defineEval({ tasks: [] });\n",
       provider: 'cli',
       model: 'claude-cli',
     });

@@ -48,7 +48,7 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. It
 **Prerequisites**: Node.js 20+
 
 ```bash
-npm i -g @wix/pathgrade
+npm i -g pathgrade
 ```
 
 Verify installation:
@@ -109,7 +109,7 @@ Eval configs are TypeScript files that export a `defineEval()` call. The file mu
 ### defineEval
 
 ```typescript
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from 'pathgrade';
 
 export default defineEval({
   // Optional: explicit path to the skill directory
@@ -239,7 +239,7 @@ Every task must have at least one grader. Graders are weighted and their scores 
 Run custom logic against the trial workspace. Use the factory function for TypeScript graders:
 
 ```typescript
-import { deterministicGrader } from '@wix/pathgrade';
+import { deterministicGrader } from 'pathgrade';
 
 const checkOutput = deterministicGrader({
   weight: 0.7,
@@ -289,7 +289,7 @@ const checkOutput = deterministicGrader({
 Send the full session transcript to an LLM for qualitative evaluation:
 
 ```typescript
-import { llmRubricGrader } from '@wix/pathgrade';
+import { llmRubricGrader } from 'pathgrade';
 
 const rubricWorkflow = llmRubricGrader({
   weight: 0.3,
@@ -316,7 +316,7 @@ rubric: 'rubrics/workflow-quality.md',  // reads the file
 Validate normalized agent tool events against declarative expectations:
 
 ```typescript
-import { toolUsageGrader } from '@wix/pathgrade';
+import { toolUsageGrader } from 'pathgrade';
 
 const checkToolUsage = toolUsageGrader({
   weight: 0.4,
@@ -459,7 +459,7 @@ The config file is staged into the trial workspace and passed to the Claude CLI 
 Create fake MCP servers with predefined responses (works with all agents):
 
 ```typescript
-import { mockMcpServer } from '@wix/pathgrade/mcp-mock';
+import { mockMcpServer } from 'pathgrade/mcp-mock';
 
 const kbMock = mockMcpServer({
   name: 'kb-retrieval',
@@ -633,7 +633,7 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/` as JSON files:
 # GitHub Actions example
 - name: Run pathgrade
   run: |
-    npm i -g @wix/pathgrade
+    npm i -g pathgrade
     cd skills/superlint
     GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci
 ```

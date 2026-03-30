@@ -1,7 +1,7 @@
 # Pathgrade Design Specification
 
 **Version**: 0.1.3
-**Package**: `@wix/pathgrade`
+**Package**: `pathgrade`
 **Runtime**: Node.js 20+, CommonJS
 **Dependencies**: `fs-extra`, `jiti`
 
@@ -932,7 +932,7 @@ The main entry point (`core/index.ts`) re-exports:
 - Config types (`AgentName`, `DefineEvalInput`, `GraderDescriptor`, `GraderContext`, etc.)
 - `GraderOutput`, `GraderCheck` from `types.ts`
 
-`mockMcpServer` is available separately via `@wix/pathgrade/mcp-mock`.
+`mockMcpServer` is available separately via `pathgrade/mcp-mock`.
 
 ## 18. Testing Strategy
 

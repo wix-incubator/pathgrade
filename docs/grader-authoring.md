@@ -49,7 +49,7 @@ Each check object:
 For TypeScript graders, import the type for compile-time checking:
 
 ```ts
-import type { GraderOutput } from '@wix/pathgrade';
+import type { GraderOutput } from 'pathgrade';
 
 const result: GraderOutput = {
   score: 1.0,

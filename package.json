@@ -1,5 +1,5 @@
 {
-  "name": "@wix/pathgrade",
+  "name": "pathgrade",
   "version": "0.1.3",
   "description": "Evaluate whether AI agents discover and use your skills correctly",
   "main": "dist/core/index.js",

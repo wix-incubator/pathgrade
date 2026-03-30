@@ -124,7 +124,7 @@ Important boundary:
 The eval config format is `eval.ts` using `defineEval()`.
 
 ```typescript
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from 'pathgrade';
 
 export default defineEval({
   defaults: {

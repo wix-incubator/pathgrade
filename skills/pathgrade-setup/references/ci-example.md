@@ -20,7 +20,7 @@ jobs:
           node-version: '20'
 
       - name: Install Pathgrade
-        run: npm i -g @wix/pathgrade
+        run: npm i -g pathgrade
 
       - name: Run evaluations
         env:

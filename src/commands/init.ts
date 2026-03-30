@@ -181,7 +181,7 @@ ${skillSummaries}
 
 Respond with ONLY the eval.ts file content. Start with the import statement. Use this format:
 
-import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
+import { defineEval, deterministicGrader, llmRubricGrader } from 'pathgrade';
 
 export default defineEval({
   defaults: { agent: 'claude', trials: 5, timeout: 300, threshold: 0.8 },
@@ -227,7 +227,7 @@ async function generateWithLLM(
 }
 
 function getInlineTemplate(): string {
-  return `import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
+  return `import { defineEval, deterministicGrader, llmRubricGrader } from 'pathgrade';
 
 export default defineEval({
   defaults: {

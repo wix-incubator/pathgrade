@@ -16,10 +16,10 @@ Replace raw grader config objects with first-class **grader descriptor objects**
 
 ### Factory Functions
 
-Three factory functions exported from `@wix/pathgrade`:
+Three factory functions exported from `pathgrade`:
 
 ```ts
-import { defineEval, deterministicGrader, llmRubricGrader, toolUsageGrader } from '@wix/pathgrade';
+import { defineEval, deterministicGrader, llmRubricGrader, toolUsageGrader } from 'pathgrade';
 ```
 
 #### `deterministicGrader(opts)`
@@ -111,7 +111,7 @@ Grader logic lives in TypeScript files under `graders/`, exported as descriptors
 
 ```ts
 // graders/check-fix.ts
-import { deterministicGrader } from '@wix/pathgrade';
+import { deterministicGrader } from 'pathgrade';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 
@@ -132,7 +132,7 @@ Eval files import and compose graders:
 
 ```ts
 // ck-new.eval.ts
-import { defineEval, llmRubricGrader } from '@wix/pathgrade';
+import { defineEval, llmRubricGrader } from 'pathgrade';
 import { checkFix } from './graders/check-fix';
 import { checkBrief } from './graders/check-brief';
 

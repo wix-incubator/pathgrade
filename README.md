@@ -13,7 +13,7 @@ See [examples/](examples/) for working evals, including [superlint](examples/sup
 Pathgrade runs locally. Each trial gets its own isolated workspace, home, XDG, and temp directories.
 
 ```bash
-npm i -g @wix/pathgrade
+npm i -g pathgrade
 ```
 
 Initialize from a skill directory:
@@ -73,7 +73,7 @@ Reports are saved to `$TMPDIR/pathgrade/<skill-name>/results/` by default. Overr
 ## `eval.ts` Reference
 
 ```typescript
-import { defineEval } from '@wix/pathgrade';
+import { defineEval } from 'pathgrade';
 
 export default defineEval({
   // Optional: explicit path to the skill directory
@@ -191,7 +191,7 @@ Pathgrade is local-first in CI too:
 
 ```yaml
 - run: |
-    npm i -g @wix/pathgrade
+    npm i -g pathgrade
     cd skills/superlint
     GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} pathgrade --regression --ci
 ```

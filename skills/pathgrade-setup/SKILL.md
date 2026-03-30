@@ -10,7 +10,7 @@ description: Sets up and runs Pathgrade evaluation pipelines for Agent Skills. U
 ### Step 1: Install Pathgrade
 
 1. Verify Node.js 20+ is available.
-2. Run `npm i -g @wix/pathgrade`.
+2. Run `npm i -g pathgrade`.
 
 ### Step 2: Initialize an Eval Configuration
 

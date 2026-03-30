@@ -24,7 +24,7 @@ export default defineEval({
 Create a valid eval.ts that evaluates this skill using defineEval().
 
 Requirements:
-1. The eval.ts must import defineEval from '@wix/pathgrade'
+1. The eval.ts must import defineEval from 'pathgrade'
 2. It must define at least one task under tasks
 3. Each task must have: name, instruction, workspace, and graders
 4. Include at least one deterministicGrader() and one llmRubricGrader()
@@ -52,7 +52,7 @@ and contains the text "Hello, World!".
 
 Requirements:
 1. Create a TypeScript file at graders/check-output.ts
-2. Import deterministicGrader from '@wix/pathgrade'
+2. Import deterministicGrader from 'pathgrade'
 3. Export a grader using deterministicGrader({ execute: ... })
 4. The execute function should return { score, details, checks }
 5. Check 1: verify output.txt exists
