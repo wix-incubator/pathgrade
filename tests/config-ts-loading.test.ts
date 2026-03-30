@@ -138,7 +138,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
     const repoDir = path.resolve(__dirname, '..');
 
     const toolUsageConfig = await loadEvalConfig(path.join(repoDir, 'examples', 'tool-usage'));
-    const strategyConfig = await loadEvalConfig(path.join(repoDir, 'examples', 'ck-product-strategy'));
+    const strategyConfig = await loadEvalConfig(path.join(repoDir, 'examples', 'product-strategy'));
 
     expect(toolUsageConfig.tasks.map(task => task.name)).toEqual(['tool-aware-fix']);
     expect(strategyConfig.tasks.map(task => task.name)).toEqual([

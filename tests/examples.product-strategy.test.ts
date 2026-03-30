@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import config from '../examples/ck-product-strategy/ck-product-strategy.eval';
+import config from '../examples/product-strategy/product-strategy.eval';
 
-describe('examples/ck-product-strategy eval tuning', () => {
+describe('examples/product-strategy eval tuning', () => {
   it('tells both conversation tasks where the final strategy file must be saved', () => {
     const scriptedTask = config.tasks.find((task) => task.name === 'scripted-smart-cart');
     const personaTask = config.tasks.find((task) => task.name === 'persona-smart-cart');
