@@ -1,14 +1,14 @@
-# ck-new Example (Conversation Eval)
+# project-intake Example (Conversation Eval)
 
 A conversation eval example showing how to test a multi-turn skill that requires back-and-forth dialogue.
 
 ## Structure
 
 ```
-ck-new/
+project-intake/
 ├── eval.ts                          # TypeScript eval config (defineEval)
 ├── skill/
-│   ├── SKILL.md                     # The ck-new skill being tested
+│   ├── SKILL.md                     # The project-intake skill being tested
 │   ├── .claude-plugin/plugin.json   # Plugin metadata
 │   └── agents/openai.yaml           # Agent config
 └── graders/
@@ -17,12 +17,12 @@ ck-new/
 
 ## What's tested
 
-The agent must run the ck-new conversational intake to produce a project brief. Two tasks exercise different reply strategies:
+The agent must run the project-intake conversational intake to produce a project brief. Two tasks exercise different reply strategies:
 
 | Task | Reply Strategy | Description |
 |------|---------------|-------------|
-| `scripted-gift-card` | Scripted replies | Pre-defined answers with pattern matching |
-| `persona-gift-card` | LLM persona (gpt-4o) | Simulated PM provides contextual answers |
+| `scripted-loyalty-program` | Scripted replies | Pre-defined answers with pattern matching |
+| `persona-loyalty-program` | LLM persona (gpt-4o) | Simulated PM provides contextual answers |
 
 Both tasks check that the agent:
 1. Conducts a multi-turn conversation (not a monologue)
@@ -36,8 +36,8 @@ Both tasks check that the agent:
 
 ## Prerequisites
 
-- `scripted-gift-card`: No extra keys needed (uses the configured agent)
-- `persona-gift-card`: Requires `OPENAI_API_KEY` (persona uses gpt-4o)
+- `scripted-loyalty-program`: No extra keys needed (uses the configured agent)
+- `persona-loyalty-program`: Requires `OPENAI_API_KEY` (persona uses gpt-4o)
 
 ## Run
 

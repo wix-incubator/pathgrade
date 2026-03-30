@@ -1,5 +1,5 @@
 ---
-name: ck-new
+name: project-intake
 description: Entry point for any creation work. Runs a lightweight conversational intake to capture what's already known, then produces a brief markdown document. Use when anyone says "new project," "start a feature," "project brief," "I have an idea," or when a creator is beginning any kind of product work.
 disable-model-invocation: true
 metadata:
@@ -7,13 +7,9 @@ metadata:
   outputs: artifacts/project-brief-{project-name}.md
 ---
 
-<!-- ck:ext-loading -->
-Run `node ~/.agents/skills/ck-shared/scripts/load-ext.js ck-new` before executing any workflow step. If it outputs content, apply it as additional guidance (additive, not replacement). If no output, proceed normally.
-<!-- /ck:ext-loading -->
+# project-intake — Project Brief
 
-# ck-new — Project Brief
-
-Fast conversational intake to capture initial context. Produces a structured Project Brief that all downstream CreatorKit skills (research, competitor analysis, UX concepts, product strategy) use as their starting point.
+Fast conversational intake to capture initial context. Produces a structured Project Brief that all downstream skills (research, competitor analysis, UX concepts, product strategy) use as their starting point.
 
 **The whole experience should feel like under 3 minutes.**
 
@@ -39,9 +35,7 @@ These apply throughout the entire intake:
 
 ## MCP Auth Preflight (silent)
 
-For `mcp-s`-backed MCPs in this skill, follow `~/.agents/skills/ck-shared/references/mcp-s-cli-docs.md`.
-
-If Jira still needs its own sign-in, pause and let the creator complete that one-time Jira auth before retrying. If Jira still isn't available, fall back to asking the creator to paste the ticket content.
+For MCP-backed tools in this skill, ensure the relevant MCP servers are configured and accessible.
 
 ---
 
@@ -51,7 +45,7 @@ Start with a short one-liner explaining what this is, followed by the opening qu
 
 > "Let's put together a quick project brief — it'll be the starting point for everything you do next (user voice, competitor analysis, data, product strategy, UX concepts etc.).
 >
-> Tell me what you're working on — could be a new feature, a problem you're investigating, a decision you need to make, or just an idea you're exploring. If you have a Jira ticket, doc, or screenshot, feel free to drop that in too."
+> Tell me what you're working on — could be a new feature, a problem you're investigating, a decision you need to make, or just an idea you're exploring. If you have a ticket, doc, or screenshot, feel free to drop that in too."
 
 After the creator responds:
 1. Extract whatever maps to the 4 topics (Context, Direction, Goal, Target Group)
@@ -60,13 +54,9 @@ After the creator responds:
 
 **Handling shared material:**
 - **Pasted text or uploaded file:** read and extract directly
-- **Jira URLs or ticket keys:** after the MCP auth preflight passes, fetch the ticket with `npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s`. Extract the issue key from the URL (e.g. `PROJ-123` from `https://wix.atlassian.net/browse/PROJ-123`), derive the project key (`PROJ`), then run:
+- **Task tracker URLs or ticket keys:** If a project management tool is available via MCP, fetch the issue details. If unavailable, ask the creator to paste the content.
 
-```bash
-npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s jira jira__get-issues '{"projectKey":"PROJ","jql":"key = PROJ-123","fields":["summary","description","status","issuetype","priority"],"maxResults":1}'
-```
-
-If the fetch fails or Jira auth is still missing, fall back to asking the creator to paste the content.
+If the fetch fails or auth is still missing, fall back to asking the creator to paste the content.
 - **Other auth-gated URLs:** ask the creator to paste the content or share a screenshot.
 - **Screenshots or images:** describe what you see, extract what you can, and confirm your reading with the creator before using it
 - If material covers multiple topics, acknowledge what you pulled ("Got context from your ticket — just need a couple more things") and skip to whatever's still missing
@@ -117,9 +107,9 @@ Infer the most likely target group from context, then ask the user (allow multip
 Use the ask-user tool.
 > "Sounds like this is for [inferred group] — adjust if needed."
 
-Use a structured question tool. Options: **Self-Creator** / **Partner (agency/freelancer)** / **Developer** / **Studio User** / **Not sure yet**
+Use a structured question tool. Options: **Store Owner** / **Agency** / **Developer** / **Power User** / **Not sure yet**
 
-*(Self-Creator = Wix user managing their own site; Partner = building for others)*
+*(Store Owner = merchant managing their own store; Agency = building for others)*
 
 If not sure → TBD, move on.
 
@@ -131,19 +121,19 @@ After collecting all intake answers, silently query the KB to enrich your unders
 
 Before starting KB enrichment, make sure the MCP auth preflight above has already passed.
 
-**Navigator KB id:** `10333242-6161-475f-a6b9-1156eda72886`
+**Navigator KB id:** `20444353-7272-586g-b7ca-2267feb94d97`
 
-1. Use `npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s` to query the Navigator KB:
+1. Use the kb-retrieval MCP tool to query the Navigator KB:
 
 ```bash
-npx -y --registry "https://npm.dev.wixpress.com" @wix/creator-kit@latest mcp-s kb-retrieval kb-retrieval__retrieve_relevant_documents_from_kb '{"knowledge_base_id":"10333242-6161-475f-a6b9-1156eda72886","query":"<product area + problem/feature keywords>","limit":5}'
+kb-retrieval kb-retrieval__retrieve_relevant_documents_from_kb '{"knowledge_base_id":"20444353-7272-586g-b7ca-2267feb94d97","query":"<product area + problem/feature keywords>","limit":5}'
 ```
 
 2. Parse each result's `content` as JSON. Read the `kb_id` field.
    - Use the first (highest-ranked) result whose `kb_id` is a UUID → make one additional call to that domain KB for business goals, audience segments, strategic priorities, known pain points.
    - If no result has a UUID `kb_id` → use only the `description` fields from the Navigator results. Do not make a second call.
 3. Record each relevant domain's name and KB ID for the brief's Domain References section. Downstream skills (data, research, product) use these IDs to query domain knowledge without re-navigating.
-4. Also look for a `gameplan_link` field in each Navigator result's content. If found, record it for the brief's Domain Gameplan section.
+4. Also look for a `roadmap_link` field in each Navigator result's content. If found, record it for the brief's Domain Product Roadmap section.
 
 **Maximum calls: 2** (Navigator lookup + one domain KB lookup). Never chain more than one domain KB call.
 
@@ -158,31 +148,31 @@ If the KB call fails, say:
 
 > "I can enrich the brief with domain context from the knowledge base, but the KB MCP isn't reachable right now.
 >
-> You can paste a strategy or gameplan doc directly, or just say 'skip' to continue without it."
+> You can paste a strategy or roadmap doc directly, or just say 'skip' to continue without it."
 
 Then wait for the user's response:
-- **Pastes a doc** → use it as domain context in place of KB enrichment; skip Domain Gameplan Link
-- **Skip** → skip enrichment and Domain Gameplan Link entirely
+- **Pastes a doc** → use it as domain context in place of KB enrichment; skip Domain Product Roadmap Link
+- **Skip** → skip enrichment and Domain Product Roadmap Link entirely
 
 ---
 
-## Domain Gameplan Link
+## Domain Product Roadmap Link
 
-**Only run this step if KB enrichment ran successfully and did not find a `gameplan_link`.** Skip if KB was unavailable, skipped, or already returned a gameplan link.
+**Only run this step if KB enrichment ran successfully and did not find a `roadmap_link`.** Skip if KB was unavailable, skipped, or already returned a roadmap link.
 
 Use the ask-user tool. Ask the user:
-> "Do you have a link to the domain gameplan or strategy doc? This helps align the product strategy later."
+> "Do you have a link to the domain roadmap or strategy doc? This helps align the product strategy later."
 
 Use a structured question tool. Options: **Yes, I'll share it** / **Skip for now**
 
-- If yes → ask the creator to paste the URL, then include it in the brief's `## Domain Gameplan` section.
+- If yes → ask the creator to paste the URL, then include it in the brief's `## Domain Product Roadmap` section.
 - If skip → omit the section from the brief.
 
 ---
 
 ## Resolve Project Directory
 
-The project directory is the current working directory (CWD) — wherever the creator opened their editor or terminal. CreatorKit does not assume any particular repository structure.
+The project directory is the current working directory (CWD) — wherever the creator opened their editor or terminal. This skill does not assume any particular repository structure.
 
 ### Rules
 
@@ -246,10 +236,10 @@ Generate the output to `artifacts/project-brief-{project-name}.md`, creating the
 |--------|-------|
 | [Domain name] | [kb_id UUID] |
 
-## Domain Gameplan
-[Omit this section entirely if no gameplan link was found (neither from KB nor from the creator).]
+## Domain Product Roadmap
+[Omit this section entirely if no roadmap link was found (neither from KB nor from the creator).]
 
-[Link to domain gameplan / strategy document]
+[Link to domain roadmap / strategy document]
 ```
 
 Rules for the brief:
@@ -294,8 +284,7 @@ Use a structured question tool. Options: **Yes, I have repos to add** / **Skip f
 **If yes:**
 Ask the user to share the URL(s) — one or more, one per line or comma-separated. Both HTTPS and SSH formats work.
 
-For each URL provided, follow the `ck-utility-references` skill (`~/.agents/skills/ck-utility-references/SKILL.md`) to add the reference.
-**Target directory:** use CWD (where the brief was just saved) — skip the directory discovery step in `~/.agents/skills/ck-utility-references/SKILL.md`.
+For each URL provided, add the repository reference to the project.
 
 After adding, let the user know which repos were linked.
 

@@ -1,7 +1,7 @@
 import { llmRubricGrader } from '../../../src/core/grader-factories';
 
 export const rubricScripted = llmRubricGrader({
-    rubric: `Evaluate the multi-turn conversation for ck-new skill compliance.
+    rubric: `Evaluate the multi-turn conversation for project-intake skill compliance.
 
 Workflow (0-0.4):
 - Did the agent ask questions one at a time (not multiple in one message)?
