@@ -71,9 +71,9 @@ function normalizeAssistantMessage(rawOutput: string, assistantMessage?: string)
     return rawOutput.trim();
 }
 
-async function workspaceHasSignal(workspacePath: string, signal: string): Promise<boolean> {
-    if (!signal.includes('*')) {
-        return await fs.pathExists(path.join(workspacePath, signal));
+async function workspaceHasOutputPath(workspacePath: string, outputPath: string): Promise<boolean> {
+    if (!outputPath.includes('*')) {
+        return await fs.pathExists(path.join(workspacePath, outputPath));
     }
 
     async function walk(dir: string): Promise<boolean> {
@@ -88,7 +88,7 @@ async function workspaceHasSignal(workspacePath: string, signal: string): Promis
             }
 
             const relativePath = path.relative(workspacePath, absolutePath).split(path.sep).join('/');
-            if (path.matchesGlob(relativePath, signal)) {
+            if (path.matchesGlob(relativePath, outputPath)) {
                 return true;
             }
         }
@@ -107,9 +107,9 @@ async function checkCompletion(
     env?: Record<string, string>,
     graderModel?: string
 ): Promise<{ done: true; reason: NonNullable<TrialResult['conversation']>['completion_reason'] } | { done: false }> {
-    if (conversation.completion.signal) {
+    if (conversation.completion.output_path) {
         const workspacePath = getWorkspacePath(runtime);
-        if (await workspaceHasSignal(workspacePath, conversation.completion.signal)) {
+        if (await workspaceHasOutputPath(workspacePath, conversation.completion.output_path)) {
             return { done: true, reason: 'signal' };
         }
     }

@@ -566,7 +566,7 @@ Priority order:
 **Location**: `checkCompletion()` in `src/conversationRunner.ts`
 
 Check order (stops at first match):
-1. **Signal**: Glob pattern checked against workspace files via recursive directory walk
+1. **Output path**: Exact path or glob pattern checked against workspace files via recursive directory walk
 2. **Done phrase**: Regex tested against assistant's latest message
 3. **Max turns**: Hard limit — checked before `done_when` to avoid wasteful LLM call on the last turn
 4. **Done when**: LLM-judged semantic condition. Sends full transcript to LLM, asks for `{"done": true/false}`. Includes prompt injection guard: transcript is wrapped in data tags with explicit instructions not to follow content within.

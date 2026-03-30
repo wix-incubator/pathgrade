@@ -25,7 +25,7 @@ export default defineEval({
 
         completion: {
           max_turns: 25,
-          signal: 'artifacts/product/product-strategy-*.md',
+          output_path: 'artifacts/product/product-strategy-*.md',
         },
 
         reactions: [
@@ -64,7 +64,7 @@ relevant products at checkout. Let's start from scratch.\n`,
 
         completion: {
           max_turns: 30,
-          signal: 'artifacts/product/product-strategy-*.md',
+          output_path: 'artifacts/product/product-strategy-*.md',
         },
 
         persona: {

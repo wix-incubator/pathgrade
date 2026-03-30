@@ -124,6 +124,44 @@ describe('validateConfig', () => {
     });
   });
 
+  it('accepts conversation completion.output_path', () => {
+    const config = validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'conversation',
+        conversation: {
+          opener: 'Start here',
+          completion: { max_turns: 3, output_path: 'artifacts/output.md' },
+          reactions: [{ when: '.*', reply: 'First reply' }],
+        },
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    });
+
+    const task0 = config.tasks[0] as ConversationTaskConfig;
+    expect(task0.conversation.completion).toEqual({
+      max_turns: 3,
+      output_path: 'artifacts/output.md',
+    });
+  });
+
+  it('rejects legacy conversation completion.signal', () => {
+    expect(() => validateConfig({
+      version: '1',
+      tasks: [{
+        name: 'test-task',
+        type: 'conversation',
+        conversation: {
+          opener: 'Start here',
+          completion: { max_turns: 3, signal: 'artifacts/output.md' },
+          reactions: [{ when: '.*', reply: 'First reply' }],
+        },
+        graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
+      }],
+    })).toThrow('completion.signal');
+  });
+
   it('rejects conversation tasks with neither scripted replies nor persona', () => {
     expect(() => validateConfig({
       version: '1',

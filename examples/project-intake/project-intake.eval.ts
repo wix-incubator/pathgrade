@@ -40,7 +40,7 @@ export default defineEval({
       mcp_config: './mcp-config.json',
       conversation: {
         opener: `I want to start a new project. I have an idea for a loyalty program feature.\n`,
-        completion: { max_turns: 12, signal: 'artifacts/project-brief-*.md', timeout: 300 },
+        completion: { max_turns: 12, output_path: 'artifacts/project-brief-*.md', timeout: 300 },
         reactions: [
           {
             reply: "Yes, that's right. The goal is to solve a user pain point, and the target group is Store Owner.",
@@ -76,7 +76,7 @@ customers can earn and redeem at checkout.\n`,
       mcp_mock: kbRetrievalMock,
       conversation: {
         opener: `I want to start a new project. I have an idea for a feature\nrelated to loyalty programs for online stores.\n`,
-        completion: { max_turns: 15, signal: 'artifacts/project-brief-*.md', timeout: 300 },
+        completion: { max_turns: 15, output_path: 'artifacts/project-brief-*.md', timeout: 300 },
         persona: {
           description: `You are a product manager at Acme Commerce who has worked on the Storefront\nplatform for 2 years. You communicate directly and concisely.\nWhen asked a multiple-choice question, pick the most appropriate\noption. When asked for confirmation, confirm if correct. You're\ncollaborative but don't volunteer extra information unless asked.\n`,
           facts: [

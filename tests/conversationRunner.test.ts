@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as os from 'os';
+import * as path from 'path';
+import { promises as nativeFs } from 'fs';
 import { runConversationTrial } from '../src/conversationRunner';
 import { BaseAgent, EnvironmentProvider, AgentCommandRunner, EnvironmentHandle } from '../src/types';
 import { ResolvedConversation } from '../src/core/config.types';
@@ -201,6 +204,44 @@ describe('runConversationTrial', () => {
 
       expect(result.conversation.turns[0].user_message_source).toBe('opener');
       expect(result.conversation.turns[0].user_message).toBe('Hello agent, start the task.');
+    });
+  });
+
+  describe('completes on output_path', () => {
+    it('stops when the configured output_path already exists in the workspace', async () => {
+      const workspacePath = await nativeFs.mkdtemp(path.join(os.tmpdir(), 'pathgrade-output-path-'));
+      try {
+        await nativeFs.mkdir(path.join(workspacePath, 'artifacts'), { recursive: true });
+        await nativeFs.writeFile(path.join(workspacePath, 'artifacts/output.md'), 'done');
+
+        const runtime: EnvironmentHandle = {
+          ...mockRuntime,
+          workspacePath,
+        };
+        const responses = [
+          { rawOutput: 'Created the output.', assistantMessage: 'Created the output.', exitCode: 0 },
+        ];
+        const { agent } = makeSessionAgent(responses);
+        const provider = makeProvider();
+        const conversation = makeConversation({
+          completion: { max_turns: 5, output_path: 'artifacts/output.md' },
+        });
+
+        const result = await runConversationTrial({
+          agent,
+          conversation,
+          provider,
+          runtime,
+          taskPath: '/task',
+          timeoutSec: 30,
+          timestamp,
+        });
+
+        expect(result.conversation.completion_reason).toBe('signal');
+        expect(result.conversation.total_turns).toBe(1);
+      } finally {
+        await nativeFs.rm(workspacePath, { recursive: true, force: true });
+      }
     });
   });
 

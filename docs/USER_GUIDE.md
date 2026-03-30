@@ -190,7 +190,7 @@ Multi-turn tasks where the agent engages in dialogue:
     opener: 'I want to start a new project. I have an idea for a feature.',
     completion: {
       max_turns: 12,
-      signal: 'artifacts/project-brief-*.md',
+      output_path: 'artifacts/project-brief-*.md',
     },
     reactions: [
       { when: 'goal|trying to achieve', reply: 'Solve a user pain point' },
@@ -381,14 +381,14 @@ A conversation ends when any completion condition is met:
 ```typescript
 completion: {
   max_turns: 12,           // Hard limit on turns (required)
-  signal: 'artifacts/project-brief-*.md',  // Glob: ends when file appears in workspace
+  output_path: 'artifacts/project-brief-*.md',  // Glob: ends when file appears in workspace
   done_phrase: 'COMPLETE|FINISHED',        // Regex: ends when agent says this
   done_when: 'The agent has written and saved the project brief',  // LLM judges semantically
   timeout: 300,            // Conversation-level timeout in seconds
 }
 ```
 
-Conditions are checked in order: `signal` > `done_phrase` > `max_turns` > `done_when`. The `done_when` condition uses an LLM call and only runs if cheaper checks don't trigger first.
+Conditions are checked in order: `output_path` > `done_phrase` > `max_turns` > `done_when`. The `done_when` condition uses an LLM call and only runs if cheaper checks don't trigger first.
 
 Completion reasons in reports: `signal`, `done_phrase`, `max_turns`, `done_when`, `timeout`, `no_replies`, `error`.
 

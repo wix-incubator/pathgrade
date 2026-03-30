@@ -62,7 +62,7 @@ interface RawConversation {
     opener?: string;
     completion?: {
         max_turns?: number;
-        signal?: string;
+        output_path?: string;
         done_phrase?: string;
         done_when?: string;
         timeout?: number;
@@ -195,6 +195,9 @@ export function validateConfig(raw: unknown): EvalConfig {
             if (typeof t.conversation.completion.max_turns !== 'number' || t.conversation.completion.max_turns < 1) {
                 throw new Error(`Task "${t.name}" conversation completion must include a positive "max_turns"`);
             }
+            if ('signal' in (t.conversation.completion as Record<string, unknown>)) {
+                throw new Error(`Task "${t.name}" conversation completion.signal is no longer supported; use completion.output_path`);
+            }
             if (t.conversation.step_graders !== undefined) {
                 if (!Array.isArray(t.conversation.step_graders)) {
                     throw new Error(`Task "${t.name}" conversation.step_graders must be an array`);
@@ -293,13 +296,21 @@ export function validateConfig(raw: unknown): EvalConfig {
         };
 
         if (t.type === 'conversation') {
+            const conversationConfig = t.conversation!;
+            const completionConfig = conversationConfig.completion!;
             return {
                 ...base,
                 type: 'conversation' as const,
                 conversation: {
-                    opener: t.conversation!.opener,
-                    completion: { ...t.conversation!.completion },
-                    reactions: t.conversation!.reactions?.map((reaction: RawReaction) => {
+                    opener: conversationConfig.opener,
+                    completion: {
+                        max_turns: completionConfig.max_turns!,
+                        output_path: completionConfig.output_path,
+                        done_phrase: completionConfig.done_phrase,
+                        done_when: completionConfig.done_when,
+                        timeout: completionConfig.timeout,
+                    },
+                    reactions: conversationConfig.reactions?.map((reaction: RawReaction) => {
                         if (!reaction?.when) {
                             throw new Error(`Task "${t.name}" conversation reactions must include "when"`);
                         }
@@ -312,12 +323,12 @@ export function validateConfig(raw: unknown): EvalConfig {
                             once: reaction.once,
                         };
                     }),
-                    persona: t.conversation!.persona ? {
-                        description: t.conversation!.persona.description,
-                        facts: t.conversation!.persona.facts,
-                        model: t.conversation!.persona.model,
+                    persona: conversationConfig.persona ? {
+                        description: conversationConfig.persona.description,
+                        facts: conversationConfig.persona.facts,
+                        model: conversationConfig.persona.model,
                     } : undefined,
-                    step_graders: t.conversation!.step_graders?.map((sg: RawStepGrader, sgIdx: number) => ({
+                    step_graders: conversationConfig.step_graders?.map((sg: RawStepGrader, sgIdx: number) => ({
                         after_turn: sg.after_turn,
                         graders: (sg.graders || []).map((g: any, gIdx: number) => {
                             if (!g || typeof g !== 'object') {
