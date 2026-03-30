@@ -65,10 +65,9 @@ export async function runInit(dir: string, opts: { force?: boolean } = {}) {
   }
 
   // Try LLM-powered scaffold — auto-detect from available API key or CLI
-  const geminiKey = process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
-  const hasApiKey = !!(geminiKey || anthropicKey || openaiKey);
+  const hasApiKey = !!(anthropicKey || openaiKey);
   const cliAvailable = await isClaudeCliAvailable();
 
   const evalName = skills.length === 1 ? skills[0].name : dirName;
@@ -185,7 +184,7 @@ Respond with ONLY the eval.ts file content. Start with the import statement. Use
 import { defineEval, deterministicGrader, llmRubricGrader } from '@wix/pathgrade';
 
 export default defineEval({
-  defaults: { agent: 'gemini', trials: 5, timeout: 300, threshold: 0.8 },
+  defaults: { agent: 'claude', trials: 5, timeout: 300, threshold: 0.8 },
   tasks: [
     {
       name: '<descriptive-task-name>',
@@ -232,7 +231,7 @@ function getInlineTemplate(): string {
 
 export default defineEval({
   defaults: {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 300,
     threshold: 0.8,

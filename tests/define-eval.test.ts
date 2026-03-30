@@ -17,7 +17,7 @@ describe('defineEval', () => {
     });
 
     expect(config.version).toBe('1');
-    expect(config.defaults.agent).toBe('gemini');
+    expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.trials).toBe(5);
     expect(config.defaults.timeout).toBe(300);
     expect(config.defaults.threshold).toBe(0.8);

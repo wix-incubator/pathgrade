@@ -1,10 +1,5 @@
 import { isClaudeCliAvailable, callClaudeCli } from './cli-llm';
 
-interface GeminiResponse {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
-}
-
 interface AnthropicResponse {
     content?: { text?: string }[];
     usage?: { input_tokens?: number; output_tokens?: number };
@@ -27,16 +22,15 @@ export interface LLMCallResult {
     text: string;
     inputTokens?: number;
     outputTokens?: number;
-    provider: 'gemini' | 'anthropic' | 'openai' | 'cli';
+    provider: 'anthropic' | 'openai' | 'cli';
     model: string;
 }
 
 /** Providers that use API keys (excludes 'cli' which uses OAuth). */
-type ApiKeyProvider = 'gemini' | 'anthropic' | 'openai';
+type ApiKeyProvider = 'anthropic' | 'openai';
 
 function getApiKeys(env?: Record<string, string>): Record<ApiKeyProvider, string | undefined> {
     return {
-        gemini: env?.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
         anthropic: env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
         openai: env?.OPENAI_API_KEY || process.env.OPENAI_API_KEY,
     };
@@ -46,9 +40,6 @@ function inferProviderFromModel(model?: string): ApiKeyProvider | undefined {
     const normalized = model?.trim().toLowerCase();
     if (!normalized) {
         return undefined;
-    }
-    if (normalized.startsWith('gemini')) {
-        return 'gemini';
     }
     if (normalized.startsWith('claude')) {
         return 'anthropic';
@@ -67,8 +58,6 @@ function inferProviderFromModel(model?: string): ApiKeyProvider | undefined {
 
 function getDefaultModel(provider: ApiKeyProvider): string {
     switch (provider) {
-        case 'gemini':
-            return 'gemini-3-flash-preview';
         case 'anthropic':
             return 'claude-sonnet-4-20250514';
         case 'openai':
@@ -86,48 +75,12 @@ function getProviderSequence(model: string | undefined, env?: Record<string, str
         return [requestedProvider];
     }
 
-    const fallbackOrder: ApiKeyProvider[] = ['gemini', 'anthropic', 'openai'];
+    const fallbackOrder: ApiKeyProvider[] = ['anthropic', 'openai'];
     const availableProviders = fallbackOrder.filter((provider) => !!keys[provider]);
     if (availableProviders.length === 0) {
-        throw new Error('No LLM backend available. Install Claude CLI (claude.ai) or set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY.');
+        throw new Error('No LLM backend available. Install Claude CLI (claude.ai) or set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
     }
     return availableProviders;
-}
-
-async function callGemini(
-    prompt: string,
-    apiKey: string,
-    model: string,
-    temperature: number
-): Promise<LLMCallResult> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature },
-            }),
-        });
-
-        if (!response.ok) {
-            const errBody = await response.text().catch(() => '');
-            throw new Error(`Gemini API error (${response.status}): ${errBody.slice(0, 300)}`);
-        }
-
-        const data = await response.json() as GeminiResponse;
-        return {
-            text: data?.candidates?.[0]?.content?.parts?.[0]?.text || '',
-            inputTokens: data?.usageMetadata?.promptTokenCount,
-            outputTokens: data?.usageMetadata?.candidatesTokenCount,
-            provider: 'gemini',
-            model,
-        };
-    } catch (error) {
-        throw new Error(`Gemini API error: ${error}`);
-    }
 }
 
 async function callAnthropic(
@@ -255,9 +208,6 @@ export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promis
 
         const model = opts.model || getDefaultModel(provider);
 
-        if (provider === 'gemini') {
-            return await callGemini(prompt, apiKey, model, temperature);
-        }
         if (provider === 'anthropic') {
             return await callAnthropic(prompt, apiKey, model, temperature);
         }
@@ -265,6 +215,6 @@ export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promis
     }
 
     throw new Error(
-        'No LLM backend available. Install Claude CLI (claude.ai) or set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY.'
+        'No LLM backend available. Install Claude CLI (claude.ai) or set ANTHROPIC_API_KEY or OPENAI_API_KEY.'
     );
 }

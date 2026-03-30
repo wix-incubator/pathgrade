@@ -11,7 +11,7 @@ export type ToolAction =
 
 export interface ToolEvent {
   action: ToolAction;
-  provider: 'claude' | 'codex' | 'gemini';
+  provider: 'claude' | 'codex';
   providerToolName: string;
   turnNumber?: number;
   arguments?: Record<string, unknown>;

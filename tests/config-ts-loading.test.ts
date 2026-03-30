@@ -40,7 +40,7 @@ describe('loadEvalConfig with *.eval.ts', () => {
     const config = await loadEvalConfig(tmpDir);
     expect(config.tasks[0].name).toBe('ts-task');
     expect((config.tasks[0] as any).instruction).toBe('from typescript');
-    expect(config.defaults.agent).toBe('gemini');
+    expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.trials).toBe(5);
   });
 

@@ -7,7 +7,7 @@
 import type { MockMcpServerDescriptor } from './mcp-mock.types';
 
 /** Supported agent names — single source of truth for both type and runtime validation */
-export const VALID_AGENTS = ['claude', 'gemini', 'codex'] as const;
+export const VALID_AGENTS = ['claude', 'codex'] as const;
 export type AgentName = typeof VALID_AGENTS[number];
 
 /** Task execution mode */

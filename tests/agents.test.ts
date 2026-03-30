@@ -2,7 +2,6 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GeminiAgent } from '../src/agents/gemini';
 import { ClaudeAgent } from '../src/agents/claude';
 import { CodexAgent } from '../src/agents/codex';
 import { CommandResult } from '../src/types';
@@ -32,94 +31,6 @@ function extractPromptPath(cmd: string): string {
 
   throw new Error(`Could not extract prompt path from command: ${cmd}`);
 }
-
-describe('GeminiAgent', () => {
-  it('writes instruction via base64 and runs gemini CLI', async () => {
-    const agent = new GeminiAgent();
-    const commands: string[] = [];
-    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
-      commands.push(cmd);
-      return { stdout: 'output', stderr: '', exitCode: 0 };
-    });
-
-    const result = await agent.run('Test instruction', '/workspace', mockRunCommand);
-
-    expect(commands).toHaveLength(1);
-    expect(commands[0]).toContain('gemini');
-    expect(commands[0]).toContain('-y');
-    expect(commands[0]).toContain('--sandbox=none');
-    expect(commands[0]).toContain('.pathgrade-prompt-');
-
-    const promptPath = extractPromptPath(commands[0]);
-    expect(await fs.readFile(promptPath, 'utf8')).toBe('Test instruction');
-    expect(result).toContain('output');
-  });
-
-  it('returns combined stdout and stderr', async () => {
-    const agent = new GeminiAgent();
-    const mockRunCommand = vi.fn()
-      .mockResolvedValueOnce({ stdout: 'out', stderr: 'err', exitCode: 0 });
-
-    const result = await agent.run('Test', '/workspace', mockRunCommand);
-    expect(result).toContain('out');
-    expect(result).toContain('err');
-  });
-
-  it('handles non-zero exit code without throwing', async () => {
-    const agent = new GeminiAgent();
-    const mockRunCommand = vi.fn()
-      .mockResolvedValueOnce({ stdout: 'partial', stderr: 'error', exitCode: 1 });
-
-    const result = await agent.run('Test', '/workspace', mockRunCommand);
-    expect(result).toContain('partial');
-    expect(result).toContain('error');
-  });
-
-  it('correctly base64 encodes the instruction', async () => {
-    const agent = new GeminiAgent();
-    const instruction = 'Hello World!';
-    let capturedCmd = '';
-    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
-      if (cmd.includes('gemini')) capturedCmd = cmd;
-      return { stdout: '', stderr: '', exitCode: 0 };
-    });
-
-    await agent.run(instruction, '/workspace', mockRunCommand);
-
-    const promptPath = extractPromptPath(capturedCmd);
-    expect(await fs.readFile(promptPath, 'utf8')).toBe(instruction);
-  });
-
-  it('falls back to transcript accumulation for session replies', async () => {
-    const agent = new GeminiAgent();
-    const commands: string[] = [];
-    let cliCallCount = 0;
-    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
-      commands.push(cmd);
-      if (cmd.includes('gemini')) {
-        cliCallCount++;
-        return {
-          stdout: cliCallCount === 1 ? 'assistant one' : 'assistant two',
-          stderr: '',
-          exitCode: 0,
-        };
-      }
-      return { stdout: '', stderr: '', exitCode: 0 };
-    });
-
-    const session = await agent.createSession('/workspace', mockRunCommand);
-    await session.start({ message: 'First user message' });
-    await session.reply({ message: 'Second user message', continueSession: true });
-
-    expect(commands[0]).toContain('gemini');
-    expect(commands[1]).toContain('gemini');
-
-    const secondPrompt = await fs.readFile(extractPromptPath(commands[1]), 'utf8');
-    expect(secondPrompt).toContain('First user message');
-    expect(secondPrompt).toContain('assistant one');
-    expect(secondPrompt).toContain('Second user message');
-  });
-});
 
 describe('ClaudeAgent', () => {
   /** Build NDJSON stream-json output with a result line */
@@ -493,22 +404,6 @@ describe('traceOutput', () => {
 
     const session = await agent.createSession('/workspace', mockRunCommand);
     const result = await session.start({ message: 'run tests' });
-    expect(result.traceOutput).toBeDefined();
-    expect(result.traceOutput).toContain('tool');
-    expect(result.traceOutput).toBe(result.rawOutput);
-  });
-
-  it('exposes traceOutput for Gemini turns', async () => {
-    const agent = new GeminiAgent();
-    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
-      if (cmd.includes('gemini')) {
-        return { stdout: 'tool: read_file {"path":"src/app.ts"}', stderr: '', exitCode: 0 };
-      }
-      return { stdout: '', stderr: '', exitCode: 0 };
-    });
-
-    const session = await agent.createSession('/workspace', mockRunCommand);
-    const result = await session.start({ message: 'read file' });
     expect(result.traceOutput).toBeDefined();
     expect(result.traceOutput).toContain('tool');
     expect(result.traceOutput).toBe(result.rawOutput);

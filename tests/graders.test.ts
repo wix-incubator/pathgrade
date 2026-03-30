@@ -69,11 +69,11 @@ describe('grader factories', () => {
   it('llmRubricGrader passes model and include_tool_events', () => {
     const g = llmRubricGrader({
       rubric: 'test',
-      model: 'gemini-2.0-flash',
+      model: 'claude-sonnet-4-20250514',
       include_tool_events: true,
       weight: 0.3,
     });
-    expect(g.model).toBe('gemini-2.0-flash');
+    expect(g.model).toBe('claude-sonnet-4-20250514');
     expect(g.include_tool_events).toBe(true);
     expect(g.weight).toBe(0.3);
   });
@@ -165,7 +165,6 @@ describe('LLMGrader', () => {
     const provider = makeProvider('');
 
     // Use vi.stubEnv to safely remove env vars
-    vi.stubEnv('GEMINI_API_KEY', '');
     vi.stubEnv('ANTHROPIC_API_KEY', '');
     vi.stubEnv('OPENAI_API_KEY', '');
 
@@ -184,7 +183,7 @@ describe('LLMGrader', () => {
   });
 
   describe('parseResponse (via grade)', () => {
-    // Test parseResponse indirectly through callGemini
+    // Test parseResponse indirectly through callAnthropic
     // We mock fetch to control API responses
 
     it('parses valid JSON from LLM response', async () => {
@@ -194,17 +193,14 @@ describe('LLMGrader', () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{
-            content: {
-              parts: [{ text: '{"score": 0.9, "reasoning": "Great work"}' }],
-            },
-          }],
+          content: [{ text: '{"score": 0.9, "reasoning": "Great work"}' }],
+          usage: { input_tokens: 10, output_tokens: 5 },
         }),
         text: () => Promise.resolve(''),
       } as any));
 
       const provider = makeProvider('');
-      const env = { GEMINI_API_KEY: 'test-key' };
+      const env = { ANTHROPIC_API_KEY: 'test-key' };
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
       expect(result.score).toBe(0.9);
@@ -218,17 +214,13 @@ describe('LLMGrader', () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{
-            content: {
-              parts: [{ text: '```json\n{"score": 0.7, "reasoning": "decent"}\n```' }],
-            },
-          }],
+          content: [{ text: '```json\n{"score": 0.7, "reasoning": "decent"}\n```' }],
         }),
         text: () => Promise.resolve(''),
       } as any));
 
       const provider = makeProvider('');
-      const env = { GEMINI_API_KEY: 'test-key' };
+      const env = { ANTHROPIC_API_KEY: 'test-key' };
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
       expect(result.score).toBe(0.7);
@@ -241,13 +233,13 @@ describe('LLMGrader', () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{ content: { parts: [{ text: '' }] } }],
+          content: [{ text: '' }],
         }),
         text: () => Promise.resolve(''),
       } as any));
 
       const provider = makeProvider('');
-      const env = { GEMINI_API_KEY: 'test-key' };
+      const env = { ANTHROPIC_API_KEY: 'test-key' };
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
       expect(result.score).toBe(0);
@@ -261,18 +253,16 @@ describe('LLMGrader', () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
 
       const provider = makeProvider('');
-      const env = { GEMINI_API_KEY: 'test-key' };
+      const env = { ANTHROPIC_API_KEY: 'test-key' };
       const result = await grader.grade('/workspace', provider, baseConfig, '/task', [], env);
 
       expect(result.score).toBe(0);
-      expect(result.details).toContain('Gemini API error');
+      expect(result.details).toContain('Anthropic API error');
     });
 
-    it('falls back to Anthropic when Gemini key missing', async () => {
+    it('uses Anthropic API with ANTHROPIC_API_KEY', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
-
-      vi.stubEnv('GEMINI_API_KEY', '');
 
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
@@ -293,8 +283,6 @@ describe('LLMGrader', () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      vi.stubEnv('GEMINI_API_KEY', '');
-
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Anthropic down')));
 
       const provider = makeProvider('');
@@ -305,11 +293,10 @@ describe('LLMGrader', () => {
       expect(result.details).toContain('Anthropic API error');
     });
 
-    it('falls back to OpenAI when Gemini and Anthropic keys are missing', async () => {
+    it('falls back to OpenAI when Anthropic key is missing', async () => {
       mockPathExists.mockResolvedValue(true as any);
       mockReadFile.mockResolvedValue('rubric content' as any);
 
-      vi.stubEnv('GEMINI_API_KEY', '');
       vi.stubEnv('ANTHROPIC_API_KEY', '');
 
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -340,7 +327,7 @@ describe('LLMGrader', () => {
       return {
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+          content: [{ text: '{"score": 1.0, "reasoning": "ok"}' }],
         }),
         text: () => Promise.resolve(''),
       };
@@ -361,10 +348,10 @@ describe('LLMGrader', () => {
       include_tool_events: true,
     } as any;
 
-    const env = { GEMINI_API_KEY: 'test-key' };
+    const env = { ANTHROPIC_API_KEY: 'test-key' };
     await grader.grade('/workspace', provider, config, '/task', sessionLog, env);
 
-    const prompt = capturedBody.contents[0].parts[0].text;
+    const prompt = capturedBody.messages[0].content;
     expect(prompt).toContain('Tool Events');
     expect(prompt).toContain('run_shell via exec_command');
     expect(prompt).toContain('read_file via localGetFileContent');
@@ -380,7 +367,7 @@ describe('LLMGrader', () => {
       return {
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+          content: [{ text: '{"score": 1.0, "reasoning": "ok"}' }],
         }),
         text: () => Promise.resolve(''),
       };
@@ -393,10 +380,10 @@ describe('LLMGrader', () => {
       { type: 'tool_event', timestamp: '', tool_event: { action: 'run_shell', provider: 'codex', providerToolName: 'exec_command', summary: 'npm test', confidence: 'high', rawSnippet: '...' } },
     ];
 
-    const env = { GEMINI_API_KEY: 'test-key' };
+    const env = { ANTHROPIC_API_KEY: 'test-key' };
     await grader.grade('/workspace', provider, baseConfig, '/task', sessionLog, env);
 
-    const prompt = capturedBody.contents[0].parts[0].text;
+    const prompt = capturedBody.messages[0].content;
     expect(prompt).not.toContain('Tool Events');
   });
 
@@ -410,7 +397,7 @@ describe('LLMGrader', () => {
       return {
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{ content: { parts: [{ text: '{"score": 1.0, "reasoning": "ok"}' }] } }],
+          content: [{ text: '{"score": 1.0, "reasoning": "ok"}' }],
         }),
         text: () => Promise.resolve(''),
       };
@@ -424,10 +411,10 @@ describe('LLMGrader', () => {
       { type: 'grader', grader_result: { grader_type: 'deterministic', score: 1.0, weight: 1, details: 'passed' }, timestamp: '' },
     ];
 
-    const env = { GEMINI_API_KEY: 'test-key' };
+    const env = { ANTHROPIC_API_KEY: 'test-key' };
     await grader.grade('/workspace', provider, baseConfig, '/task', sessionLog, env);
 
-    const prompt = capturedBody.contents[0].parts[0].text;
+    const prompt = capturedBody.messages[0].content;
     expect(prompt).toContain('Do something');
     expect(prompt).toContain('$ ls');
     expect(prompt).toContain('Done!');
@@ -444,7 +431,7 @@ describe('LLMGrader', () => {
       return {
         ok: true,
         json: () => Promise.resolve({
-          candidates: [{ content: { parts: [{ text: '{"score": 0.8, "reasoning": "covers the whole conversation"}' }] } }],
+          content: [{ text: '{"score": 0.8, "reasoning": "covers the whole conversation"}' }],
         }),
         text: () => Promise.resolve(''),
       };
@@ -459,10 +446,10 @@ describe('LLMGrader', () => {
       { type: 'agent_result', output: 'raw turn two', assistant_message: 'Project brief created.', turn_number: 2, timestamp: '' },
     ];
 
-    const env = { GEMINI_API_KEY: 'test-key' };
+    const env = { ANTHROPIC_API_KEY: 'test-key' };
     await grader.grade('/workspace', provider, baseConfig, '/task', sessionLog, env);
 
-    const prompt = capturedBody.contents[0].parts[0].text;
+    const prompt = capturedBody.messages[0].content;
     expect(prompt).toContain('Conversation Transcript');
     expect(prompt).toContain('**User:** Help me start a project.');
     expect(prompt).toContain('**Agent:** What is your goal?');

@@ -28,5 +28,5 @@ violations in `app.js`.
 ## Run
 
 ```bash
-GEMINI_API_KEY=your-key pathgrade --smoke
+pathgrade --smoke
 ```

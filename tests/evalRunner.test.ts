@@ -224,11 +224,10 @@ describe('EvalRunner', () => {
       return {
         ok: true,
         json: async () => ({
-          candidates: [{ content: { parts: [{ text: 'No repo links yet, and I do not know the implementation details.' }] } }],
-          usageMetadata: {
-            promptTokenCount: 111,
-            candidatesTokenCount: 22,
-            totalTokenCount: 133,
+          content: [{ text: 'No repo links yet, and I do not know the implementation details.' }],
+          usage: {
+            input_tokens: 111,
+            output_tokens: 22,
           },
         }),
         text: async () => '',
@@ -255,7 +254,7 @@ describe('EvalRunner', () => {
           ],
         },
       },
-    }), 1, { GEMINI_API_KEY: 'test-key' });
+    }), 1, { ANTHROPIC_API_KEY: 'test-key' });
 
     expect(createSession).toHaveBeenCalledWith(mockRuntime, expect.any(Function), undefined);
     expect(reply).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -278,7 +277,7 @@ describe('EvalRunner', () => {
     expect(report.trials[0].persona_input_tokens).toBe(111);
     expect(report.trials[0].persona_output_tokens).toBe(22);
 
-    const prompt = capturedBody.contents[0].parts[0].text;
+    const prompt = capturedBody.messages[0].content;
     expect(prompt).toContain('## Who You Are');
     expect(prompt).toContain('You are a concise Wix product manager.');
     expect(prompt).toContain('The feature is for Wix Stores.');
@@ -312,11 +311,10 @@ describe('EvalRunner', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        candidates: [{ content: { parts: [{ text: 'Repo' }] } }],
-        usageMetadata: {
-          promptTokenCount: 7,
-          candidatesTokenCount: 3,
-          totalTokenCount: 10,
+        content: [{ text: 'Repo' }],
+        usage: {
+          input_tokens: 7,
+          output_tokens: 3,
         },
       }),
       text: async () => '',
@@ -339,7 +337,7 @@ describe('EvalRunner', () => {
           facts: ['Fact'],
         },
       },
-    }), 1, { GEMINI_API_KEY: 'test-key' });
+    }), 1, { ANTHROPIC_API_KEY: 'test-key' });
 
     expect(report.trials[0].input_tokens).toBe(3);
     expect(report.trials[0].output_tokens).toBe(3);

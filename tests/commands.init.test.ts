@@ -112,7 +112,7 @@ describe('getInlineTemplate', () => {
 
 export default defineEval({
   defaults: {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
@@ -151,7 +151,7 @@ export default defineEval({
 
   it('includes default configuration', () => {
     const template = getInlineTemplate();
-    expect(template).toContain("agent: 'gemini'");
+    expect(template).toContain("agent: 'claude'");
     expect(template).toContain('trials: 5');
     expect(template).toContain('timeout: 300');
     expect(template).toContain('threshold: 0.8');

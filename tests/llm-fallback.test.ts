@@ -13,7 +13,7 @@ const mockIsAvailable = vi.mocked(isClaudeCliAvailable);
 const mockCallCli = vi.mocked(callClaudeCli);
 
 // Save real env keys and clear them so tests control key availability
-const envKeysToIsolate = ['GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] as const;
+const envKeysToIsolate = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] as const;
 
 describe('callLLM CLI-first fallback', () => {
     const savedEnv: Record<string, string | undefined> = {};
@@ -71,27 +71,27 @@ describe('callLLM CLI-first fallback', () => {
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({
-                candidates: [{ content: { parts: [{ text: 'gemini fallback' }] } }],
-                usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 5 },
+                content: [{ text: 'anthropic fallback' }],
+                usage: { input_tokens: 3, output_tokens: 5 },
             }),
         });
         vi.stubGlobal('fetch', fetchMock);
 
         const result = await callLLM('test', {
-            env: { GEMINI_API_KEY: 'gemini-key' },
+            env: { ANTHROPIC_API_KEY: 'anthropic-key' },
         });
 
         expect(mockCallCli).toHaveBeenCalled();
         expect(fetchMock).toHaveBeenCalledOnce();
-        expect(result.provider).toBe('gemini');
-        expect(result.text).toBe('gemini fallback');
+        expect(result.provider).toBe('anthropic');
+        expect(result.text).toBe('anthropic fallback');
     });
 
     it('skips CLI when opts.model specifies a non-Claude model', async () => {
         mockIsAvailable.mockResolvedValue(true);
-        // model: 'gemini-flash' should NOT use CLI — it's not a Claude model
+        // model: 'gpt-4o' should NOT use CLI — it's not a Claude model
         // Without API keys this should throw, not silently substitute Claude
-        await expect(callLLM('test', { model: 'gemini-flash', env: {} })).rejects.toThrow();
+        await expect(callLLM('test', { model: 'gpt-4o', env: {} })).rejects.toThrow();
         expect(mockCallCli).not.toHaveBeenCalled();
     });
 

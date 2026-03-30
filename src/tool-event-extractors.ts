@@ -5,15 +5,13 @@ import { ToolAction, ToolEvent } from './tool-events';
  * Extract normalized tool events from raw agent trace output.
  * Best-effort: returns [] when the trace is ambiguous or the agent is unsupported.
  *
- * Trace format (Codex & Gemini): `tool: <tool_name> <json_payload>`
- * Validated against Codex CLI and Gemini CLI stdout output.
+ * Trace format (Codex): `tool: <tool_name> <json_payload>`
+ * Validated against Codex CLI stdout output.
  */
 export function extractToolEvents(agentName: AgentName, traceOutput: string, turnNumber?: number): ToolEvent[] {
   switch (agentName) {
     case 'codex':
       return extractCodexToolEvents(traceOutput, turnNumber);
-    case 'gemini':
-      return extractGenericToolLines(traceOutput, 'gemini', turnNumber);
     case 'claude':
       return extractClaudeStreamJsonEvents(traceOutput, turnNumber);
     default:
@@ -78,7 +76,7 @@ const TOOL_NAME_MAP: Record<string, ToolAction> = {
 
 /**
  * Parse `tool: <name> <json>` lines from trace output.
- * Both Codex and Gemini use this format.
+ * Codex uses this format.
  */
 const TOOL_LINE_REGEX = /^tool:\s+(\S+)\s+(\{.*\})\s*$/;
 const CODEX_EXEC_LINE_REGEX = /^(?<command>.+?) in .+? (?:succeeded|failed|exited)\b.*$/;
@@ -86,7 +84,7 @@ const CODEX_FILE_PATH_REGEX = /^[A-Z?]+\s+(?<path>\/.+)$/;
 
 function extractGenericToolLines(
   traceOutput: string,
-  provider: 'codex' | 'gemini',
+  provider: 'codex',
   turnNumber?: number,
 ): ToolEvent[] {
   const events: ToolEvent[] = [];

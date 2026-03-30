@@ -119,7 +119,7 @@ describe('runEvals local-first runtime path', () => {
 
     loadEvalConfigMock.mockResolvedValue({
       defaults: {
-        agent: 'gemini',
+        agent: 'claude',
         trials: 1,
         timeout: 300,
         threshold: 0.8,
@@ -134,7 +134,7 @@ describe('runEvals local-first runtime path', () => {
       instruction: 'do it',
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
-      agent: 'gemini',
+      agent: 'claude',
       trials: 1,
       timeout: 300,
       environment: { cpus: 2, memory_mb: 2048 },
@@ -204,7 +204,7 @@ describe('runEvals local-first runtime path', () => {
       },
       workspace: [],
       graders: [{ type: 'deterministic', run: 'echo ok', weight: 1 }],
-      agent: 'gemini',
+      agent: 'claude',
       trials: 1,
       timeout: 300,
       environment: { cpus: 2, memory_mb: 2048 },

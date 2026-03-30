@@ -28,7 +28,7 @@ describe('prepareTempTaskDir path traversal', () => {
       // ../../sensitive.txt from baseDir resolves to parentDir/sensitive.txt (outside baseDir)
       workspace: [{ src: '../../sensitive.txt', dest: 'passwd' }],
       graders: [],
-      agent: 'gemini' as const,
+      agent: 'claude' as const,
       trials: 1,
       timeout: 60,
       environment: { cpus: 1, memory_mb: 512 },

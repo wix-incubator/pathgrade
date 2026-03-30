@@ -16,15 +16,15 @@ describe('extractToolEvents', () => {
     ]);
   });
 
-  it('normalizes Gemini shell and file-read traces', () => {
+  it('normalizes Codex shell and file-read traces via generic tool line parser', () => {
     const trace = [
       'tool: exec_command {"cmd":"npm test"}',
       'tool: read_file {"path":"src/index.ts"}',
     ].join('\n');
-    const events = extractToolEvents('gemini', trace);
+    const events = extractToolEvents('codex', trace);
     expect(events).toEqual([
-      expect.objectContaining({ action: 'run_shell', providerToolName: 'exec_command', provider: 'gemini' }),
-      expect.objectContaining({ action: 'read_file', providerToolName: 'read_file', provider: 'gemini' }),
+      expect.objectContaining({ action: 'run_shell', providerToolName: 'exec_command', provider: 'codex' }),
+      expect.objectContaining({ action: 'read_file', providerToolName: 'read_file', provider: 'codex' }),
     ]);
   });
 

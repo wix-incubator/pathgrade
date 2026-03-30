@@ -6,7 +6,7 @@ import { rubricGraderQuality } from './graders/rubric-grader-quality';
 
 export default defineEval({
   defaults: {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 600,
     threshold: 0.7,

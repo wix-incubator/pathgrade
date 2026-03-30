@@ -20,9 +20,8 @@ Tool event extraction is best-effort:
 
 | Agent | Support |
 |-------|---------|
+| Claude | Supported |
 | Codex | Supported |
-| Gemini | Supported |
-| Claude | Unsupported in MVP |
 
 When extraction yields no events, the grader returns score 0 with a diagnostic
 message rather than silently passing.

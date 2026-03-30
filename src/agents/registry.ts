@@ -2,19 +2,16 @@
  * Agent registry — maps agent names to their implementations.
  *
  * Supported agents:
- *   - gemini: Google Gemini CLI
  *   - claude: Anthropic Claude Code CLI
  *   - codex: OpenAI Codex CLI
  */
 import { BaseAgent } from '../types';
 import { AgentName } from '../core/config.types';
-import { GeminiAgent } from './gemini';
 import { ClaudeAgent } from './claude';
 import { CodexAgent } from './codex';
 
 /** Registry of available agent implementations */
 const AGENT_REGISTRY: Record<AgentName, () => BaseAgent> = {
-    gemini: () => new GeminiAgent(),
     claude: () => new ClaudeAgent(),
     codex: () => new CodexAgent(),
 };

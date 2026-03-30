@@ -31,7 +31,7 @@ interface RunOptions {
     ci?: boolean;
     threshold?: number;
     preset?: 'smoke' | 'reliable' | 'regression';
-    agent?: AgentName;   // override agent (gemini|claude|codex)
+    agent?: AgentName;   // override agent (claude|codex)
     output?: string;     // output directory for reports and temp files
     grader?: string;     // filter graders by type (deterministic|llm_rubric|tool_usage)
 }
@@ -52,7 +52,6 @@ export async function runEvals(dir: string, opts: RunOptions) {
     // Load environment variables
     const rootEnv = await loadEnvFile(path.join(dir, '.env'));
     const env: Record<string, string> = { ...rootEnv };
-    if (process.env.GEMINI_API_KEY) env.GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (process.env.ANTHROPIC_API_KEY) env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
     if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     if (process.env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;

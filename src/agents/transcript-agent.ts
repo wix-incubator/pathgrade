@@ -6,7 +6,7 @@ import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult,
 
 /**
  * Base class for agents that manage multi-turn conversations via transcript
- * re-injection (Gemini, Codex). Handles session management, transcript
+ * re-injection (e.g. Codex). Handles session management, transcript
  * accumulation, and prompt file writing.
  */
 export abstract class TranscriptAgent extends BaseAgent {

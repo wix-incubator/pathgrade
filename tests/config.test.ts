@@ -190,7 +190,7 @@ describe('validateConfig', () => {
         graders: [{ type: 'deterministic', execute: async () => ({ score: 1 }) }],
       }],
     });
-    expect(config.defaults.agent).toBe('gemini');
+    expect(config.defaults.agent).toBe('claude');
     expect(config.defaults.trials).toBe(5);
     expect(config.defaults.timeout).toBe(300);
     expect(config.defaults.threshold).toBe(0.8);
@@ -385,7 +385,7 @@ describe('validateConfig', () => {
 
 describe('resolveTask', () => {
   const defaults: EvalDefaults = {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 300,
     threshold: 0.8,
@@ -401,7 +401,7 @@ describe('resolveTask', () => {
     };
 
     const resolved = await resolveTask(task, defaults, '/base');
-    expect(resolved.agent).toBe('gemini');
+    expect(resolved.agent).toBe('claude');
     expect(resolved.trials).toBe(5);
     expect(resolved.timeout).toBe(300);
     expect(resolved.environment).toEqual({ cpus: 2, memory_mb: 2048 });

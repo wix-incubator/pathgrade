@@ -17,7 +17,7 @@ export interface DetectedSkill {
  * 1. SKILL.md in the root directory (the dir itself IS the skill)
  * 2. skill/SKILL.md (example layout with eval.ts at the root)
  * 3. skills/{name}/SKILL.md (sub-skills)
- * 4. .agents/skills/{name}/SKILL.md (Gemini convention)
+ * 4. .agents/skills/{name}/SKILL.md
  */
 export async function detectSkills(dir: string): Promise<DetectedSkill[]> {
     const skills: DetectedSkill[] = [];

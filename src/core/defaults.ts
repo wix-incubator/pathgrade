@@ -2,7 +2,7 @@ import { EvalDefaults } from './config.types';
 
 /** Single source of truth for default config values. Shared by YAML and TS loaders. */
 export const DEFAULT_CONFIG: EvalDefaults = {
-    agent: 'gemini',
+    agent: 'claude',
     trials: 5,
     timeout: 300,
     threshold: 0.8,

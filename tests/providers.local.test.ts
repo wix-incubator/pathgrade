@@ -61,9 +61,9 @@ describe('LocalProvider', () => {
       tempDirs.push(runtime.handle);
 
       const skillName = path.basename(skillDir);
-      // Check Gemini discovery path
-      const geminiPath = path.join(runtime.workspacePath, '.agents', 'skills', skillName, 'SKILL.md');
-      expect(await fsExtra.pathExists(geminiPath)).toBe(true);
+      // Check .agents/skills discovery path
+      const agentsPath = path.join(runtime.workspacePath, '.agents', 'skills', skillName, 'SKILL.md');
+      expect(await fsExtra.pathExists(agentsPath)).toBe(true);
 
       // Check Claude discovery path
       const claudePath = path.join(runtime.workspacePath, '.claude', 'skills', skillName, 'SKILL.md');
