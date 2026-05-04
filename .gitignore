@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+.pathgrade/
+**/debug-output/
+
+# Package-manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tgz
+
+# Yarn release pin and local install state
+.pnp.*
+.yarn/*
+!.yarn/releases/
+!.yarn/releases/yarn-4.12.0.cjs
+.yarn/install-state.gz
+
+# Environment and local secrets
+.env
+.env.*
+
+# OS and editors
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local git worktrees
+.worktrees/

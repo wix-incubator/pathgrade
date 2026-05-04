@@ -1,0 +1,3 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-cursor-003"}
+{"type":"result","is_error":false,"session_id":"sess-cursor-003","result":"Cached hit.","usage":{"input_tokens":10,"output_tokens":30,"cache_creation_input_tokens":500,"cache_read_input_tokens":2000}}

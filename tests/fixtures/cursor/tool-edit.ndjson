@@ -1,0 +1,4 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-edit-01"}
+{"type":"tool_call","subtype":"started","editToolCall":{"args":{"path":"src/app.ts","old":"foo","new":"bar"}}}
+{"type":"result","is_error":false,"session_id":"sess-edit-01","result":"done"}

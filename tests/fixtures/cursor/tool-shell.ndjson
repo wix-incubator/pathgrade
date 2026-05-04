@@ -1,0 +1,3 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"tool_call","subtype":"started","shellToolCall":{"args":{"command":"npm test"}}}
+{"type":"result","is_error":false,"session_id":"sess-shell-01","result":"done"}

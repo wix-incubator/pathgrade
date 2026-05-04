@@ -1,0 +1,5 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-read-01"}
+{"type":"tool_call","subtype":"started","readToolCall":{"args":{"path":"src/app.ts"}}}
+{"type":"tool_call","subtype":"completed","readToolCall":{"args":{"path":"src/app.ts"},"output":"..."}}
+{"type":"result","is_error":false,"session_id":"sess-read-01","result":"done"}

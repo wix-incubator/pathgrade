@@ -1,0 +1,3 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-cursor-002"}
+{"type":"result","is_error":true,"session_id":"sess-cursor-002","result":"Authentication failed: missing CURSOR_API_KEY","usage":{"input_tokens":0,"output_tokens":0}}

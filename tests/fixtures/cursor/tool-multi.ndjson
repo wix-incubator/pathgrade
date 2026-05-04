@@ -1,0 +1,7 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-multi-01"}
+{"type":"tool_call","subtype":"started","readToolCall":{"args":{"path":"src/app.ts"}}}
+{"type":"tool_call","subtype":"started","grepToolCall":{"args":{"pattern":"foo","path":"src"}}}
+{"type":"tool_call","subtype":"started","editToolCall":{"args":{"path":"src/app.ts","old":"a","new":"b"}}}
+{"type":"tool_call","subtype":"started","shellToolCall":{"args":{"command":"npm test"}}}
+{"type":"result","is_error":false,"session_id":"sess-multi-01","result":"done"}

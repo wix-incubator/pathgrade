@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pathgrade</title>
+  <style>
+    /* ─── Reset & Base ──────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --mono: 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --transition: 0.2s ease;
+
+      /* Light theme (default) */
+      --bg: #f8f9fc;
+      --bg-card: #ffffff;
+      --bg-code: #f1f3f8;
+      --bg-hover: #f0f2f7;
+      --border: #e2e5ed;
+      --text: #1a1d27;
+      --text-secondary: #5c6370;
+      --text-muted: #9099a8;
+      --accent: #1a1d27;
+      --accent-hover: #333;
+      --green: #22c55e;
+      --green-bg: #ecfdf5;
+      --green-border: #bbf7d0;
+      --red: #ef4444;
+      --red-bg: #fef2f2;
+      --red-border: #fecaca;
+      --yellow: #f59e0b;
+      --yellow-bg: #fffbeb;
+      --purple: #6b7280;
+      --purple-bg: #f3f4f6;
+      --blue: #6b7280;
+      --blue-bg: #f3f4f6;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+      --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0c0d12;
+      --bg-card: #14161e;
+      --bg-code: #1a1d28;
+      --bg-hover: #1c1f2b;
+      --border: #262a38;
+      --text: #e4e7ef;
+      --text-secondary: #8b92a5;
+      --text-muted: #565d72;
+      --accent: #e4e7ef;
+      --accent-hover: #ccc;
+      --green: #34d87a;
+      --green-bg: #0c2618;
+      --green-border: #1a4a30;
+      --red: #f87171;
+      --red-bg: #2a1216;
+      --red-border: #4a2228;
+      --yellow: #fbbf24;
+      --yellow-bg: #261f0c;
+      --purple: #9ca3af;
+      --purple-bg: #1f2937;
+      --blue: #9ca3af;
+      --blue-bg: #1f2937;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    html {
+      font-size: 15px;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      transition: background var(--transition), color var(--transition);
+      min-height: 100vh;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────── */
+    .shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .topbar h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .topbar h1 span {
+      color: var(--accent);
+    }
+
+    .theme-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+
+    .theme-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ─── Reports List ──────────────────────────────────────── */
+    .reports-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .reports-header {
+      display: grid;
+      grid-template-columns: 1fr 140px 80px 70px 70px 60px 36px;
+      gap: 1.25rem;
+      align-items: center;
+      padding: 0.5rem 1.25rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .sort-col {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: color var(--transition);
+    }
+
+    .sort-col:hover {
+      color: var(--accent);
+    }
+
+    .sort-col.active {
+      color: var(--accent);
+    }
+
+    .sort-arrow {
+      font-size: 0.6rem;
+      opacity: 0.4;
+    }
+
+    .sort-col.active .sort-arrow {
+      opacity: 1;
+    }
+
+    .delete-btn {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.85rem;
+      line-height: 1;
+      transition: all var(--transition);
+    }
+
+    .delete-btn:hover {
+      color: var(--red);
+      border-color: var(--red-border);
+      background: var(--red-bg);
+    }
+
+    .report-row {
+      display: grid;
+      grid-template-columns: 1fr 140px 80px 70px 70px 60px 36px;
+      gap: 1.25rem;
+      align-items: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      transition: all var(--transition);
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .report-row:hover {
+      border-color: var(--accent);
+      box-shadow: var(--shadow-lg);
+      transform: translateY(-1px);
+    }
+
+    .report-task {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .report-date {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .report-metric {
+      text-align: center;
+    }
+
+    .report-metric .val {
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .report-metric .lbl {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .badge-pass {
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid var(--green-border);
+    }
+
+    .badge-fail {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid var(--red-border);
+    }
+
+    .badge-type {
+      background: var(--purple-bg);
+      color: var(--purple);
+    }
+
+    .badge-blue {
+      background: var(--blue-bg);
+      color: var(--blue);
+    }
+
+    /* ─── Detail View ───────────────────────────────────────── */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    .detail-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .detail-header h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .detail-stats {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .stat-pill .val {
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+
+    .stat-pill .lbl {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Trial Card ────────────────────────────────────────── */
+    .trial-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+    }
+
+    .trial-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 1.25rem;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+
+    .trial-header:hover {
+      background: var(--bg-hover);
+    }
+
+    .trial-number {
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      min-width: 4rem;
+    }
+
+    .trial-reward {
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    .trial-reward.pass {
+      color: var(--green);
+    }
+
+    .trial-reward.fail {
+      color: var(--red);
+    }
+
+    .trial-meta {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-left: auto;
+      display: flex;
+      gap: 1rem;
+    }
+
+    .trial-chevron {
+      color: var(--text-muted);
+      transition: transform var(--transition);
+      font-size: 0.8rem;
+    }
+
+    .trial-card.open .trial-chevron {
+      transform: rotate(90deg);
+    }
+
+    .trial-body {
+      display: none;
+      border-top: 1px solid var(--border);
+    }
+
+    .trial-card.open .trial-body {
+      display: block;
+    }
+
+    /* ─── Scorer Results ────────────────────────────────────── */
+    .scorers-section {
+      padding: 1rem 1.25rem;
+      background: var(--bg-hover);
+    }
+
+    .scorer-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .scorer-row:last-child {
+      border-bottom: none;
+    }
+
+    .scorer-score {
+      font-weight: 700;
+      font-family: var(--mono);
+      min-width: 3rem;
+    }
+
+    .scorer-score.pass {
+      color: var(--green);
+    }
+
+    .scorer-score.fail {
+      color: var(--red);
+    }
+
+    .scorer-weight {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .scorer-details {
+      flex: 1;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* ─── Session Log ───────────────────────────────────────── */
+    .log-section {
+      padding: 0 1.25rem 1.25rem;
+    }
+
+    .log-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 0;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: var(--font);
+      width: 100%;
+    }
+
+    .log-toggle:hover {
+      text-decoration: underline;
+    }
+
+    .log-entries {
+      display: none;
+    }
+
+    .log-entries.open {
+      display: block;
+    }
+
+    .log-entry {
+      border-left: 3px solid var(--border);
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 2px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      transition: background var(--transition);
+    }
+
+    .log-entry:hover {
+      background: var(--bg-hover);
+    }
+
+    .log-entry.agent_start {
+      border-left-color: var(--purple);
+    }
+
+    .log-entry.command {
+      border-left-color: var(--blue);
+    }
+
+    .log-entry.agent_result {
+      border-left-color: var(--green);
+    }
+
+    .log-entry.scorer {
+      border-left-color: var(--yellow);
+    }
+
+    .log-entry.reward {
+      border-left-color: var(--red);
+    }
+
+    .log-label {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      margin-right: 0.5rem;
+      font-family: var(--mono);
+    }
+
+    .agent_start .log-label {
+      background: var(--purple-bg);
+      color: var(--purple);
+    }
+
+    .command .log-label {
+      background: var(--blue-bg);
+      color: var(--blue);
+    }
+
+    .agent_result .log-label {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    .scorer .log-label {
+      background: var(--yellow-bg);
+      color: var(--yellow);
+    }
+
+    .reward .log-label {
+      background: var(--red-bg);
+      color: var(--red);
+    }
+
+    .log-ts {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+     .log-content {
+       margin-top: 0.35rem;
+     }
+
+     .log-command-details {
+       border: 1px solid var(--border);
+       border-radius: var(--radius-sm);
+       background: var(--bg-code);
+       overflow: hidden;
+     }
+
+     .log-command-summary {
+       display: flex;
+       align-items: center;
+       gap: 0.6rem;
+       padding: 0.55rem 0.7rem;
+       cursor: pointer;
+       list-style: none;
+     }
+
+     .log-command-summary::-webkit-details-marker {
+       display: none;
+     }
+
+     .log-command-summary::before {
+       content: '▶';
+       color: var(--text-muted);
+       font-size: 0.7rem;
+       flex: 0 0 auto;
+       transition: transform var(--transition);
+     }
+
+     .log-command-details[open] .log-command-summary::before {
+       transform: rotate(90deg);
+     }
+
+     .log-command-summary:hover {
+       background: var(--bg-hover);
+     }
+
+     .log-command-text {
+       flex: 1;
+       min-width: 0;
+       white-space: nowrap;
+       overflow: hidden;
+       text-overflow: ellipsis;
+     }
+
+     .log-command-meta {
+       display: flex;
+       align-items: center;
+       gap: 0.5rem;
+       flex: 0 0 auto;
+     }
+
+     .log-command-hint {
+       font-size: 0.7rem;
+       color: var(--text-muted);
+       text-transform: uppercase;
+       letter-spacing: 0.06em;
+     }
+
+     .log-command-hint::before {
+       content: 'Expand';
+     }
+
+     .log-command-details[open] .log-command-hint::before {
+       content: 'Collapse';
+     }
+
+     .log-command-output {
+       border-top: 1px solid var(--border);
+       padding: 0.65rem 0.7rem 0.7rem;
+     }
+
+     pre.code-block {
+       font-family: var(--mono);
+       font-size: 0.8rem;
+       background: var(--bg-code);
+      padding: 0.6rem 0.75rem;
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+      max-height: 350px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+    }
+
+    .cmd-line {
+      font-family: var(--mono);
+      color: var(--green);
+      font-weight: 500;
+      font-size: 0.85rem;
+    }
+
+    .cmd-line::before {
+      content: '$ ';
+      color: var(--text-muted);
+    }
+
+    .exit-badge {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      margin-top: 0.25rem;
+    }
+
+    .exit-badge.ok {
+      color: var(--green);
+    }
+
+    .exit-badge.err {
+      color: var(--red);
+    }
+
+    .stderr-text {
+      color: var(--red);
+    }
+
+    .reward-val {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .reward-val.pass {
+      color: var(--green);
+    }
+
+    .reward-val.fail {
+      color: var(--red);
+    }
+
+    /* ─── Conversation Transcript ────────────────────────────── */
+    .conv-section {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .conv-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .conv-meta {
+      font-weight: 400;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .conv-turn {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 0.5rem;
+      overflow: hidden;
+    }
+
+    .conv-turn-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      background: var(--bg-hover);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      font-family: var(--mono);
+    }
+
+    .conv-msg {
+      padding: 0.5rem 0.75rem;
+    }
+
+    .conv-msg-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 0.2rem;
+    }
+
+    .conv-msg pre {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      background: var(--bg-code);
+      padding: 0.5rem 0.65rem;
+      border-radius: var(--radius-sm);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+    }
+
+    .conv-step-scorers {
+      padding: 0.4rem 0.75rem 0.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--bg-hover);
+    }
+
+    .conv-step-scorer-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      padding: 0.2rem 0;
+    }
+
+    /* ─── Empty State ───────────────────────────────────────── */
+    .empty {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--text-muted);
+    }
+
+    .empty-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    /* ─── Loading ───────────────────────────────────────────── */
+    .spinner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem;
+      color: var(--text-muted);
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .spinner::before {
+      content: '';
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 0.75rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="shell" id="app">
+    <div class="topbar">
+      <h1 style="display:flex;align-items:center">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" fill="none" height="42">
+          <circle cx="8" cy="24" r="4" fill="#22c55e"/>
+          <line x1="12" y1="24" x2="20" y2="24" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="24" cy="24" r="3" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+          <line x1="27" y1="24" x2="35" y2="24" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="39" cy="24" r="3" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+          <line x1="42" y1="24" x2="50" y2="24" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="56" cy="24" r="6" fill="#22c55e"/>
+          <polyline points="52.5,24 55,26.5 59.5,21.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <text x="72" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" font-size="24" font-weight="600">
+            <tspan fill="var(--text)">path</tspan><tspan fill="#22c55e">grade</tspan>
+          </text>
+        </svg>
+      </h1>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">◐ Dark</button>
+    </div>
+    <div id="content">
+      <div class="spinner">Loading reports…</div>
+    </div>
+  </div>
+
+  <script>
+    // ─── Theme ─────────────────────────────────────────────────
+    function getTheme() { return localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light'); }
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('theme', t);
+      document.getElementById('themeBtn').textContent = t === 'dark' ? '☀ Light' : '◐ Dark';
+    }
+    function toggleTheme() { applyTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
+    applyTheme(getTheme());
+
+    // ─── State ─────────────────────────────────────────────────
+    let reports = [];
+    let sortKey = 'date';
+    let sortDir = 'desc';
+    const $ = id => document.getElementById(id);
+    const esc = s => s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+
+    function parseDate(file) {
+      // filename format: 2026-04-08T14-25-03-134Z  →  2026-04-08T14:25:03.134
+      const m = file.match(/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d+)/);
+      if (!m) return '';
+      return m[1] + 'T' + m[2] + ':' + m[3] + ':' + m[4] + '.' + m[5];
+    }
+
+    function formatDate(ts) {
+      if (!ts) return '';
+      try {
+        const d = new Date(ts);
+        if (isNaN(d)) return ts;
+        const now = new Date();
+        const diff = now - d;
+        const mins = Math.floor(diff / 60000);
+        const hrs = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        if (mins < 1) return 'Just now';
+        if (mins < 60) return mins + 'm ago';
+        if (hrs < 24) return hrs + 'h ago · ' + time;
+        if (days < 7) return days + 'd ago · ' + time;
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' + time;
+      } catch { return ts; }
+    }
+
+    function sortReports(arr) {
+      const sorted = [...arr];
+      sorted.sort((a, b) => {
+        let va, vb;
+        switch (sortKey) {
+          case 'task': va = (a.task || '').toLowerCase(); vb = (b.task || '').toLowerCase(); break;
+          case 'date': va = parseDate(a.file); vb = parseDate(b.file); break;
+          case 'pass_rate': va = a.pass_rate || 0; vb = b.pass_rate || 0; break;
+          case 'pass_at_k': va = a.pass_at_k ?? -1; vb = b.pass_at_k ?? -1; break;
+          case 'pass_pow_k': va = a.pass_pow_k ?? -1; vb = b.pass_pow_k ?? -1; break;
+          case 'status': va = a.pass_rate >= 0.5 ? 1 : 0; vb = b.pass_rate >= 0.5 ? 1 : 0; break;
+          default: return 0;
+        }
+        if (va < vb) return sortDir === 'asc' ? -1 : 1;
+        if (va > vb) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+      return sorted;
+    }
+
+    function setSort(key) {
+      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortKey = key; sortDir = key === 'date' ? 'desc' : 'asc'; }
+      renderListFromCache();
+    }
+
+    // ─── Router ────────────────────────────────────────────────
+    function navigate(view, data) {
+      if (view === 'list') renderList();
+      else if (view === 'detail') loadDetail(data);
+    }
+
+    async function deleteReport(file) {
+      if (!confirm('Delete this report?')) return;
+      const res = await fetch('/api/report?file=' + encodeURIComponent(file), { method: 'DELETE' });
+      if (res.ok) {
+        reports = reports.filter(r => r.file !== file);
+        navigate('list');
+      }
+    }
+
+    // ─── List View ─────────────────────────────────────────────
+    async function renderList() {
+      const res = await fetch('/api/reports');
+      reports = await res.json();
+
+      if (!reports.length) {
+        $('content').innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No reports found. Run an eval first.</div></div>';
+        return;
+      }
+      renderListFromCache();
+    }
+
+    function renderListFromCache() {
+      const sorted = sortReports(reports);
+      const arrow = dir => dir === 'asc' ? '▲' : '▼';
+      const colHeader = (key, label, justify) => {
+        const active = sortKey === key;
+        return `<div class="sort-col ${active ? 'active' : ''}" onclick="setSort('${key}')" style="justify-content:${justify || 'flex-start'}">
+          ${label}<span class="sort-arrow">${active ? arrow(sortDir) : '▲'}</span>
+        </div>`;
+      };
+
+      const header = `<div class="reports-header">
+        ${colHeader('task', 'Task')}
+        ${colHeader('date', 'Date')}
+        ${colHeader('pass_rate', 'Pass Rate', 'center')}
+        ${colHeader('pass_at_k', 'pass@k', 'center')}
+        ${colHeader('pass_pow_k', 'pass^k', 'center')}
+        ${colHeader('status', 'Status', 'center')}
+        <div></div>
+      </div>`;
+
+      const rows = sorted.map(r => {
+        const pr = (r.pass_rate * 100).toFixed(0);
+        const isPass = r.pass_rate >= 0.5;
+        const ts = r.timestamp || parseDate(r.file);
+
+        return `<a class="report-row" onclick="navigate('detail','${esc(r.file)}')" href="javascript:void(0)">
+      <div class="report-task">${esc(r.task)}</div>
+      <div class="report-date">${formatDate(ts)}</div>
+      <div class="report-metric"><div class="val">${pr}%</div></div>
+      <div class="report-metric"><div class="val">${r.pass_at_k != null ? (r.pass_at_k * 100).toFixed(0) + '%' : '—'}</div></div>
+      <div class="report-metric"><div class="val">${r.pass_pow_k != null ? (r.pass_pow_k * 100).toFixed(0) + '%' : '—'}</div></div>
+      <div style="text-align:center"><span class="badge ${isPass ? 'badge-pass' : 'badge-fail'}">${isPass ? 'PASS' : 'FAIL'}</span></div>
+      <button class="delete-btn" onclick="event.preventDefault();event.stopPropagation();deleteReport('${esc(r.file)}')" title="Delete report">&#x2715;</button>
+    </a>`;
+      }).join('');
+
+      $('content').innerHTML = header + '<div class="reports-grid">' + rows + '</div>';
+    }
+
+    // ─── Detail View ───────────────────────────────────────────
+    async function loadDetail(file) {
+      $('content').innerHTML = '<div class="spinner">Loading…</div>';
+      const res = await fetch('/api/report?file=' + encodeURIComponent(file));
+      const report = await res.json();
+      renderDetail(report, file);
+    }
+
+    function renderDetail(r, file) {
+      const avgDur = r.trials.reduce((s, t) => s + (t.duration_ms || 0), 0) / r.trials.length;
+      const totalTokens = r.trials.reduce((s, t) => s + (t.input_tokens || 0) + (t.output_tokens || 0) + (t.conversation_input_tokens || 0) + (t.conversation_output_tokens || 0), 0);
+
+      const stats = `
+    <div class="stat-pill"><div class="val">${(r.pass_rate * 100).toFixed(1)}%</div><div class="lbl">Pass Rate</div></div>
+    <div class="stat-pill"><div class="val">${r.pass_at_k != null ? (r.pass_at_k * 100).toFixed(1) + '%' : '—'}</div><div class="lbl">pass@k</div></div>
+    <div class="stat-pill"><div class="val">${r.pass_pow_k != null ? (r.pass_pow_k * 100).toFixed(1) + '%' : '—'}</div><div class="lbl">pass^k</div></div>
+    <div class="stat-pill"><div class="val">${(avgDur / 1000).toFixed(1)}s</div><div class="lbl">Avg Duration</div></div>
+    <div class="stat-pill"><div class="val">~${totalTokens}</div><div class="lbl">Total Tokens</div></div>
+    <div class="stat-pill"><div class="val">${r.skills_used?.join(', ') || 'none'}</div><div class="lbl">Skills</div></div>
+  `;
+
+      const trials = r.trials.map((t, i) => renderTrial(t, i)).join('');
+
+      $('content').innerHTML = `
+    <a class="back-link" href="javascript:void(0)" onclick="navigate('list')">← All Reports</a>
+    <div class="detail-header">
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <h2 style="flex:1">${esc(r.task)}</h2>
+        <button class="delete-btn" onclick="deleteReport('${esc(file)}')" title="Delete report">&#x2715; Delete</button>
+      </div>
+      <div class="detail-stats">${stats}</div>
+    </div>
+    ${trials}
+  `;
+    }
+
+    function renderTrial(t, idx) {
+      const pass = t.reward >= 0.5;
+      const dur = ((t.duration_ms || 0) / 1000).toFixed(1);
+      const tokens = (t.input_tokens || 0) + (t.output_tokens || 0);
+      const convTokens = (t.conversation_input_tokens || 0) + (t.conversation_output_tokens || 0);
+
+      const scorers = (t.scorer_results || []).map(g => `
+    <div class="scorer-row">
+      <span class="badge badge-type">${esc(g.scorer_type)}</span>
+      <span class="scorer-score ${g.score >= 0.5 ? 'pass' : 'fail'}">${g.score.toFixed(2)}</span>
+      <span class="scorer-weight">×${g.weight}</span>
+      <div class="scorer-details">${esc(g.details)}</div>
+    </div>
+  `).join('');
+
+      const convSection = t.conversation ? renderConversation(t.conversation) : '';
+
+      const logId = 'log-' + idx;
+      const logs = (t.session_log || []).map(e => renderLogEntry(e)).join('');
+
+      const convMeta = t.conversation
+        ? `<span>${t.conversation.total_turns} turns</span><span>${esc(t.conversation.completion_reason)}</span>`
+        : '';
+
+      return `
+    <div class="trial-card" id="trial-${idx}">
+      <div class="trial-header" onclick="toggleTrial(${idx})">
+        <span class="trial-number">${t.name ? esc(t.name) : 'Trial ' + t.trial_id}</span>
+        <span class="trial-reward ${pass ? 'pass' : 'fail'}">${t.reward.toFixed(2)}</span>
+        <span class="badge ${pass ? 'badge-pass' : 'badge-fail'}">${pass ? 'PASS' : 'FAIL'}</span>
+        <span class="trial-meta">
+          <span>${dur}s</span>
+          <span>${t.n_commands || 0} cmds</span>
+          <span>~${tokens} tokens${convTokens ? ' (+' + convTokens + ' conv)' : ''}</span>
+          ${convMeta}
+        </span>
+        <span class="trial-chevron">▶</span>
+      </div>
+      <div class="trial-body">
+        ${scorers ? '<div class="scorers-section">' + scorers + '</div>' : ''}
+        ${convSection}
+        <div class="log-section">
+          <button class="log-toggle" onclick="toggleLog('${logId}')">▶ Session Log (${t.session_log?.length || 0} entries)</button>
+          <div class="log-entries" id="${logId}">${logs}</div>
+        </div>
+      </div>
+    </div>
+  `;
+    }
+
+    function renderConversation(conv) {
+      const turns = (conv.turns || []).map(turn => {
+        const stepScorers = (turn.step_scorer_results || []).map(g => {
+          const scoreClass = g.score >= 0.5 ? 'pass' : 'fail';
+          return `<div class="conv-step-scorer-row">
+            <span class="badge badge-type">${esc(g.scorer_type)}</span>
+            <span class="scorer-score ${scoreClass}">${g.score.toFixed(2)}</span>
+            <span class="scorer-details">${esc(g.details).substring(0, 120)}</span>
+          </div>`;
+        }).join('');
+
+        return `<div class="conv-turn">
+          <div class="conv-turn-header">
+            <span>Turn ${turn.turn_number}</span>
+            <span class="badge badge-blue">${esc(turn.user_message_source)}</span>
+            <span>${((turn.duration_ms || 0) / 1000).toFixed(1)}s</span>
+            <span>${turn.commands?.length || 0} cmds</span>
+          </div>
+          <div class="conv-msg">
+            <div class="conv-msg-label">User</div>
+            <pre>${esc(turn.user_message)}</pre>
+          </div>
+          <div class="conv-msg">
+            <div class="conv-msg-label">Assistant</div>
+            <pre>${esc(turn.assistant_message)}</pre>
+          </div>
+          ${stepScorers ? '<div class="conv-step-scorers">' + stepScorers + '</div>' : ''}
+        </div>`;
+      }).join('');
+
+      return `<div class="conv-section">
+        <div class="conv-header">
+          Conversation
+          <span class="conv-meta">${conv.total_turns} turns · ${esc(conv.completion_reason)}</span>
+        </div>
+        ${turns}
+      </div>`;
+    }
+
+    function renderLogEntry(e) {
+      let body = '';
+      switch (e.type) {
+        case 'agent_start':
+        case 'user_reply':
+          body = '<pre class="code-block">' + esc(e.instruction || '') + '</pre>';
+          break;
+        case 'command':
+          body = '<details class="log-command-details">'
+            + '<summary class="log-command-summary">'
+            + '<span class="cmd-line log-command-text">' + esc(e.command || '') + '</span>'
+            + '<span class="log-command-meta">'
+            + '<span class="exit-badge ' + (e.exitCode === 0 ? 'ok' : 'err') + '">exit ' + (e.exitCode ?? '?') + '</span>'
+            + '<span class="log-command-hint"></span>'
+            + '</span>'
+            + '</summary>'
+            + '<div class="log-command-output">'
+            + '<pre class="code-block">' + esc(e.stdout || '')
+            + (e.stderr ? '<span class="stderr-text">' + esc(e.stderr) + '</span>' : '')
+            + '</pre>'
+            + '</div>'
+            + '</details>';
+          break;
+        case 'agent_result':
+          body = '<pre class="code-block">' + esc(e.output || '') + '</pre>';
+          break;
+        case 'scorer':
+          if (e.scorer_result) {
+            const g = e.scorer_result;
+            body = '<span class="scorer-score ' + (g.score >= 0.5 ? 'pass' : 'fail') + '">'
+              + g.score.toFixed(2) + '</span> '
+              + '<span class="badge badge-type">' + esc(g.scorer_type) + '</span> '
+              + '<span class="scorer-details">' + esc(g.details) + '</span>';
+          }
+          break;
+        case 'reward':
+          body = '<span class="reward-val ' + ((e.value || 0) >= 0.5 ? 'pass' : 'fail') + '">'
+            + (e.value?.toFixed(2) || '0.00') + '</span>'
+            + (e.output ? '<div class="scorer-details" style="margin-top:0.25rem">' + esc(e.output) + '</div>' : '');
+          break;
+        case 'tool_event':
+          body = '<span class="badge badge-type">' + esc(e.tool_event?.action || 'unknown') + '</span> '
+            + '<span class="scorer-details">' + esc(e.tool_event?.summary || '') + '</span>';
+          break;
+        case 'judge_tool_call': {
+          const tc = e.judge_tool_call || {};
+          const okBadge = tc.ok
+            ? '<span class="exit-badge ok">ok</span>'
+            : '<span class="exit-badge err">error</span>';
+          const inputJson = JSON.stringify(tc.input ?? {});
+          const errorLine = tc.ok ? '' : '<div class="stderr-text">' + esc(tc.errorMessage || '') + '</div>';
+          body = '<details class="log-command-details">'
+            + '<summary class="log-command-summary">'
+            + '<span class="badge badge-type">' + esc(tc.name || '?') + '</span> '
+            + '<span class="scorer-details">' + esc('judge:' + (tc.judge_name || '?')) + '</span>'
+            + '<span class="log-command-meta">'
+            + okBadge
+            + '<span class="log-command-hint">' + (tc.bytes || 0) + ' bytes</span>'
+            + '</span>'
+            + '</summary>'
+            + '<div class="log-command-output">'
+            + '<pre class="code-block">' + esc(inputJson) + '</pre>'
+            + errorLine
+            + '</div>'
+            + '</details>';
+          break;
+        }
+      }
+      return '<div class="log-entry ' + e.type + '">'
+        + '<span class="log-label">' + e.type + '</span>'
+        + '<span class="log-ts">' + (e.timestamp || '') + '</span>'
+        + '<div class="log-content">' + body + '</div>'
+        + '</div>';
+    }
+
+    // ─── Interactions ──────────────────────────────────────────
+    function toggleTrial(idx) {
+      document.getElementById('trial-' + idx).classList.toggle('open');
+    }
+    function toggleLog(id) {
+      document.getElementById(id).classList.toggle('open');
+    }
+
+    // ─── Init ──────────────────────────────────────────────────
+    navigate('list');
+  </script>
+</body>
+
+</html>

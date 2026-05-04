@@ -1,0 +1,4 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-cursor-001","cwd":"/workspace"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it."}]}}
+{"type":"result","is_error":false,"session_id":"sess-cursor-001","result":"Done fixing the bug.","usage":{"input_tokens":120,"output_tokens":45,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}

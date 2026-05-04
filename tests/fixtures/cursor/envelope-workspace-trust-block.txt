@@ -1,0 +1,4 @@
+// cursor-agent version: 2026.04.17-787b533
+Workspace Trust Required
+The current workspace has not been trusted. Re-run with --trust to continue, or
+trust the workspace interactively via `cursor-agent trust add`.

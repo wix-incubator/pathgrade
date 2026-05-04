@@ -1,0 +1,6 @@
+// cursor-agent version: 2026.04.17-787b533
+{"type":"system","subtype":"init","session_id":"sess-cursor-004"}
+{"type":"interaction_query","query":"approve web_fetch?"}
+{"type":"interaction_query","query":"approve web_fetch?"}
+{"type":"interaction_query","query":"approve shell?"}
+{"type":"result","is_error":false,"session_id":"sess-cursor-004","result":"Fetched.","usage":{"input_tokens":5,"output_tokens":10}}
