@@ -60,7 +60,7 @@ async function readResponse(proc: ChildProcess, timeoutMs = 3000): Promise<any> 
 
 function spawnMockServer(fixturePath: string): ChildProcess {
   const serverPath = path.resolve(__dirname, '../src/mcp-mock-server.ts');
-  const proc = spawn('npx', ['ts-node', '--transpile-only', serverPath, fixturePath], {
+  const proc = spawn('yarn', ['tsx', serverPath, fixturePath], {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   procs.push(proc);
