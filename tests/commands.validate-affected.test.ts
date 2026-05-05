@@ -62,7 +62,7 @@ describe('runValidateAffected (pathgrade validate --affected)', () => {
         writeFile(
             root,
             'evals/standalone.eval.ts',
-            `import type { PathgradeMeta } from 'pathgrade';
+            `import type { PathgradeMeta } from '@wix/pathgrade';
 export const __pathgradeMeta: PathgradeMeta = { deps: ['integration/**'] };
 `,
         );

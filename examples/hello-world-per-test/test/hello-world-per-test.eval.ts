@@ -9,8 +9,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
-import { check, createAgent, evaluate } from 'pathgrade';
-import type { PathgradeMeta } from 'pathgrade';
+import { check, createAgent, evaluate } from '@wix/pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
 
 /** Standalone example — only re-run when its own files change. */
 export const __pathgradeMeta: PathgradeMeta = {

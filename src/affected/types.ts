@@ -35,7 +35,7 @@ export interface SelectionResult {
 }
 
 /**
- * Public SDK type — exported from `pathgrade` so evals can annotate
+ * Public SDK type — exported from `@wix/pathgrade` so evals can annotate
  * their `__pathgradeMeta` export with a typed shape.
  *
  * `onMissing` is intentionally NOT a user-writable field: it names

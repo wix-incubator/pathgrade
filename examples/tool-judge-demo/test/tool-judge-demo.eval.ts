@@ -24,8 +24,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
-import { judge, check, createAgent, evaluate } from 'pathgrade';
-import type { PathgradeMeta } from 'pathgrade';
+import { judge, check, createAgent, evaluate } from '@wix/pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
 
 export const __pathgradeMeta: PathgradeMeta = {
     deps: ['examples/tool-judge-demo/**'],

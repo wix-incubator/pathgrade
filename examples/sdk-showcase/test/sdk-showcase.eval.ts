@@ -26,7 +26,7 @@ import type {
     Reaction,
     ReactionPreviewResult,
     RunSnapshot,
-} from 'pathgrade';
+} from '@wix/pathgrade';
 import {
     check,
     createAgent,
@@ -38,7 +38,7 @@ import {
     score,
     toolUsage,
     createLLMClient,
-} from 'pathgrade';
+} from '@wix/pathgrade';
 
 /** Re-run when SDK source changes, not just when example files change. */
 export const __pathgradeMeta: PathgradeMeta = {

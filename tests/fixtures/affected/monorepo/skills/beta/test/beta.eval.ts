@@ -1,4 +1,4 @@
-import type { PathgradeMeta } from 'pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
 
 export const __pathgradeMeta: PathgradeMeta = {
     extraDeps: ['skills/alpha/**'],

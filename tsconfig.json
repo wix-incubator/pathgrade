@@ -8,9 +8,9 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "pathgrade": ["src/sdk/index.ts"],
-      "pathgrade/plugin": ["src/plugin/index.ts"],
-      "pathgrade/mcp-mock": ["src/core/mcp-mock.ts"]
+      "@wix/pathgrade": ["src/sdk/index.ts"],
+      "@wix/pathgrade/plugin": ["src/plugin/index.ts"],
+      "@wix/pathgrade/mcp-mock": ["src/core/mcp-mock.ts"]
     },
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

@@ -28,7 +28,7 @@ describe('pathgrade validate', () => {
   }
 
   const VALID_EVAL = `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 
 describe('my-eval', () => {
   it('scores the agent', async () => {
@@ -92,7 +92,7 @@ describe('test', () => { it('works', () => {}); });
 
   it('errors when no describe/it blocks found', async () => {
     const evalPath = path.join(tmpDir, 'no-describe.eval.ts');
-    await fs.writeFile(evalPath, `import { createAgent, evaluate, check } from 'pathgrade';
+    await fs.writeFile(evalPath, `import { createAgent, evaluate, check } from '@wix/pathgrade';
 const agent = createAgent({ agent: 'claude' });
 `);
 
@@ -106,7 +106,7 @@ const agent = createAgent({ agent: 'claude' });
   it('errors when no createAgent call found', async () => {
     const evalPath = path.join(tmpDir, 'no-agent.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it } from 'vitest';
-import { evaluate, check } from 'pathgrade';
+import { evaluate, check } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const result = await evaluate({} as any, [check('x', () => true)]);
 }); });
@@ -122,7 +122,7 @@ describe('test', () => { it('works', async () => {
   it('errors when no evaluate call found', async () => {
     const evalPath = path.join(tmpDir, 'no-evaluate.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it } from 'vitest';
-import { createAgent, check } from 'pathgrade';
+import { createAgent, check } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const agent = await createAgent({ agent: 'claude' });
   await agent.prompt('Do something long enough to pass validation check');
@@ -139,7 +139,7 @@ describe('test', () => { it('works', async () => {
   it('errors when no deterministic scorer found', async () => {
     const evalPath = path.join(tmpDir, 'no-check.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it, expect } from 'vitest';
-import { createAgent, judge, evaluate } from 'pathgrade';
+import { createAgent, judge, evaluate } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const agent = await createAgent({ agent: 'claude', timeout: 300 });
   await agent.prompt('Do something long enough to pass validation check');
@@ -159,7 +159,7 @@ describe('test', () => { it('works', async () => {
   it('warns on filename consistency violation', async () => {
     const evalPath = path.join(tmpDir, 'inconsistent.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const agent = await createAgent({ agent: 'claude', timeout: 300 });
   await agent.prompt('Fix the bug in the application code here please.');
@@ -185,7 +185,7 @@ describe('test', () => { it('works', async () => {
   it('passes filename consistency when instruction mentions the file', async () => {
     const evalPath = path.join(tmpDir, 'consistent.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const agent = await createAgent({ agent: 'claude', timeout: 300 });
   await agent.prompt('Create output.txt with the results of your analysis.');
@@ -208,7 +208,7 @@ describe('test', () => { it('works', async () => {
   it('errors when scorer has empty name', async () => {
     const evalPath = path.join(tmpDir, 'empty-name.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const agent = await createAgent({ agent: 'claude', timeout: 300 });
   await agent.prompt('Do something long enough to pass validation check');
@@ -229,7 +229,7 @@ describe('test', () => { it('works', async () => {
   it('errors when instruction is too short', async () => {
     const evalPath = path.join(tmpDir, 'short-instruction.eval.ts');
     await fs.writeFile(evalPath, `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 describe('test', () => { it('works', async () => {
   const agent = await createAgent({ agent: 'claude', timeout: 300 });
   await agent.prompt('Fix it');

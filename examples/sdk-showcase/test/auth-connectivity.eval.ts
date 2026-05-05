@@ -12,8 +12,8 @@
  * Run:  npx vitest run --config examples/sdk-showcase/vitest.config.mts auth-connectivity
  */
 import { describe, it, expect } from 'vitest';
-import { createAgent, evaluate, check, judge } from 'pathgrade';
-import type { PathgradeMeta } from 'pathgrade';
+import { createAgent, evaluate, check, judge } from '@wix/pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
 
 /** Re-run when SDK source changes, not just when example files change. */
 export const __pathgradeMeta: PathgradeMeta = {

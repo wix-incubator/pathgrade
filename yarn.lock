@@ -642,6 +642,27 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@wix/pathgrade@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@wix/pathgrade@workspace:."
+  dependencies:
+    "@types/fs-extra": "npm:^11.0.4"
+    "@types/node": "npm:^25.3.1"
+    "@types/picomatch": "npm:^4.0.2"
+    "@vitest/coverage-v8": "npm:^4.0.18"
+    fs-extra: "npm:^11.3.3"
+    jiti: "npm:^2.6.1"
+    picomatch: "npm:^4.0.4"
+    tsx: "npm:^4.21.0"
+    typescript: "npm:^5.9.3"
+    vitest: "npm:^4.0.18"
+  peerDependencies:
+    vitest: ^4.0.0
+  bin:
+    pathgrade: bin/pathgrade.js
+  languageName: unknown
+  linkType: soft
+
 "abbrev@npm:^4.0.0":
   version: 4.0.0
   resolution: "abbrev@npm:4.0.0"
@@ -1418,27 +1439,6 @@ __metadata:
   checksum: 10c0/c118dc5a8b5c4166011b2b70608762e260085180bb9e33e80a50dcdb1e78c010b1624f4280c492c92b05fc276715a4c357d1f9edc570f8f1b3d90b6839ebaca1
   languageName: node
   linkType: hard
-
-"pathgrade@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "pathgrade@workspace:."
-  dependencies:
-    "@types/fs-extra": "npm:^11.0.4"
-    "@types/node": "npm:^25.3.1"
-    "@types/picomatch": "npm:^4.0.2"
-    "@vitest/coverage-v8": "npm:^4.0.18"
-    fs-extra: "npm:^11.3.3"
-    jiti: "npm:^2.6.1"
-    picomatch: "npm:^4.0.4"
-    tsx: "npm:^4.21.0"
-    typescript: "npm:^5.9.3"
-    vitest: "npm:^4.0.18"
-  peerDependencies:
-    vitest: ^4.0.0
-  bin:
-    pathgrade: bin/pathgrade.js
-  languageName: unknown
-  linkType: soft
 
 "picocolors@npm:^1.1.1":
   version: 1.1.1

@@ -5,8 +5,8 @@
  */
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
-import type { PathgradeMeta } from 'pathgrade';
-import { getAgentCapabilities } from 'pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
+import { getAgentCapabilities } from '@wix/pathgrade';
 import { HOOK_TIMEOUT_MS, runRegression, type RegressionRun } from './shared.js';
 
 export const __pathgradeMeta: PathgradeMeta = {

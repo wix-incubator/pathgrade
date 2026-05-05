@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 
 describe('{{TASK_NAME}}', () => {
   it('scores the agent result', async () => {

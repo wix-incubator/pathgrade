@@ -22,7 +22,7 @@ describe('selectAffected — alwaysRun', () => {
         writeFile(
             root,
             'skills/smoke/test/smoke.eval.ts',
-            `import type { PathgradeMeta } from 'pathgrade';
+            `import type { PathgradeMeta } from '@wix/pathgrade';
 export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true };
 `,
         );
@@ -44,7 +44,7 @@ export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true };
         writeFile(
             root,
             'skills/smoke/test/smoke.eval.ts',
-            `import type { PathgradeMeta } from 'pathgrade';
+            `import type { PathgradeMeta } from '@wix/pathgrade';
 export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true };
 `,
         );
@@ -64,7 +64,7 @@ export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true };
         writeFile(
             root,
             'skills/smoke/test/smoke.eval.ts',
-            `import type { PathgradeMeta } from 'pathgrade';
+            `import type { PathgradeMeta } from '@wix/pathgrade';
 export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true, deps: ['custom/**'] };
 `,
         );

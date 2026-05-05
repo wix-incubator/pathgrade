@@ -13,8 +13,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
-import { check, createAgent, evaluate } from 'pathgrade';
-import type { PathgradeMeta } from 'pathgrade';
+import { check, createAgent, evaluate } from '@wix/pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
 
 /** Re-run when SDK source changes, not just when example files change. */
 export const __pathgradeMeta: PathgradeMeta = {
