@@ -18,7 +18,9 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": "./bin/pathgrade.js",
+  "bin": {
+    "pathgrade": "bin/pathgrade.js"
+  },
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",
