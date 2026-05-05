@@ -59,7 +59,7 @@
   - [11.1 Call Routing](#111-call-routing)
   - [11.2 Provider Fallback Chain](#112-provider-fallback-chain)
 - [12. Persona System](#12-persona-system)
-- [13. Vitest Plugin (pathgrade/plugin)](#13-vitest-plugin-pathgradeplugin)
+- [13. Vitest Plugin (@wix/pathgrade/plugin)](#13-vitest-plugin-wixpathgradeplugin)
   - [13.1 Plugin Configuration](#131-plugin-configuration)
   - [13.2 Setup File and Lifecycle](#132-setup-file-and-lifecycle)
   - [13.3 Reporter](#133-reporter)
@@ -117,7 +117,7 @@ src/
 │   ├── converse.ts           # runConversation() — declarative multi-turn
 │   └── persona.ts            # createPersona() — LLM-based user simulation
 ├── plugin/
-│   ├── index.ts              # pathgrade/plugin — Vitest plugin factory
+│   ├── index.ts              # @wix/pathgrade/plugin — Vitest plugin factory
 │   ├── setup.ts              # Entry point — calls lifecycle.install()
 │   ├── lifecycle.ts          # Agent tracking, result collection, afterEach hook
 │   └── reporter.ts           # PathgradeReporter — aggregate statistics
@@ -1023,7 +1023,7 @@ Reply in character as the persona described above. Respond to the agent's latest
 
 The persona is used in `runConversation()` as a fallback reply source when no reaction matches.
 
-## 13. Vitest Plugin (pathgrade/plugin)
+## 13. Vitest Plugin (@wix/pathgrade/plugin)
 
 ### 13.1 Plugin Configuration
 
@@ -1221,11 +1221,11 @@ Aborted commands resolve with `exitCode: 124` (matching the `timeout` command co
 - `setRuntime`, `resetRuntime`
 - All domain types (`Agent`, `Scorer`, `ScorerContext`, `EvalResult`, etc.)
 
-**`pathgrade/plugin`** -- Vitest plugin:
+**`@wix/pathgrade/plugin`** -- Vitest plugin:
 - `pathgrade()` plugin factory
 - `PathgradePluginOptions` type
 
-**`pathgrade/mcp-mock`** -- Mock MCP server factory:
+**`@wix/pathgrade/mcp-mock`** -- Mock MCP server factory:
 - `mockMcpServer()`
 - `MockMcpServerConfig`, `MockMcpTool`, `MockMcpServerDescriptor` types
 
