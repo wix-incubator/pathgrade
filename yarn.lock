@@ -1436,7 +1436,7 @@ __metadata:
   peerDependencies:
     vitest: ^4.0.0
   bin:
-    pathgrade: ./bin/pathgrade.js
+    pathgrade: bin/pathgrade.js
   languageName: unknown
   linkType: soft
 
