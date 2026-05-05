@@ -49,7 +49,7 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
 **Prerequisites**: Node.js 20+, vitest 4+
 
 ```bash
-npm i pathgrade vitest
+npm i @wix/pathgrade vitest
 ```
 
 You also need at least one agent CLI installed:
@@ -64,7 +64,7 @@ You also need at least one agent CLI installed:
 ```typescript
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from 'pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin';
 
 export default defineConfig({
     plugins: [pathgrade({
@@ -79,7 +79,7 @@ export default defineConfig({
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, it, expect } from 'vitest';
-import { createAgent, check, evaluate } from 'pathgrade';
+import { createAgent, check, evaluate } from '@wix/pathgrade';
 
 describe('fix the bug', () => {
     it('agent fixes add() to return correct result', async () => {
@@ -136,10 +136,10 @@ Eval files are vitest test files named `*.eval.ts`. They use standard vitest con
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { createAgent, evaluate, check, score, judge, toolUsage } from 'pathgrade';
+import { createAgent, evaluate, check, score, judge, toolUsage } from '@wix/pathgrade';
 ```
 
-All test API functions are imported from `pathgrade`. The vitest plugin is imported from `pathgrade/plugin`. MCP mocks are imported from `pathgrade/mcp-mock`.
+All test API functions are imported from `@wix/pathgrade`. The vitest plugin is imported from `@wix/pathgrade/plugin`. MCP mocks are imported from `@wix/pathgrade/mcp-mock`.
 
 ### createAgent
 
@@ -214,7 +214,7 @@ const agent = await createAgent({
 Override the staging filters with `copyIgnore`:
 
 ```typescript
-import { createAgent, DEFAULT_COPY_IGNORE } from 'pathgrade';
+import { createAgent, DEFAULT_COPY_IGNORE } from '@wix/pathgrade';
 
 const agent = await createAgent({
     workspace: 'fixtures',
@@ -261,7 +261,7 @@ Scorers evaluate what the agent did. Each scorer has a `name`, a `type`, and a `
 A check scorer is a pass/fail gate. It scores 1.0 if the function returns `true`, 0.0 otherwise.
 
 ```typescript
-import { check } from 'pathgrade';
+import { check } from '@wix/pathgrade';
 
 check('output-file-exists', ({ workspace }) =>
     fs.existsSync(path.join(workspace, 'output.txt')),
@@ -286,7 +286,7 @@ check('tests-pass', async ({ runCommand }) => {
 A score scorer returns a number between 0.0 and 1.0, or an object with `{ score, details? }` for partial credit (`details` is optional).
 
 ```typescript
-import { score } from 'pathgrade';
+import { score } from '@wix/pathgrade';
 
 score('test-coverage', async ({ runCommand }) => {
     const { stdout } = await runCommand('npx coverage-summary');
@@ -317,7 +317,7 @@ score('code-quality', async ({ runCommand }) => {
 A judge scorer sends the agent transcript to an LLM and evaluates it against a rubric. The transcript is automatically included.
 
 ```typescript
-import { judge } from 'pathgrade';
+import { judge } from '@wix/pathgrade';
 
 judge('workflow-quality', {
     rubric: `Evaluate the agent's workflow:
@@ -446,7 +446,7 @@ See `examples/tool-judge-demo/` for a runnable before/after.
 A tool usage scorer matches normalized agent tool events against declarative expectations.
 
 ```typescript
-import { toolUsage } from 'pathgrade';
+import { toolUsage } from '@wix/pathgrade';
 
 toolUsage('expected-tool-calls', [
     { action: 'read_file', min: 1, weight: 0.3 },
@@ -477,7 +477,7 @@ toolUsage('expected-tool-calls', [
 `evaluate()` runs an array of scorers against an agent and returns a `EvalResult`:
 
 ```typescript
-import { evaluate } from 'pathgrade';
+import { evaluate } from '@wix/pathgrade';
 
 const result = await evaluate(agent, [
     check('file-exists', ({ workspace }) => fs.existsSync(path.join(workspace, 'out.txt'))),
@@ -765,7 +765,7 @@ When both reactions and a persona are configured, reactions are tried first. If 
 You can also create a persona object directly using `createPersona()`:
 
 ```typescript
-import { createPersona } from 'pathgrade';
+import { createPersona } from '@wix/pathgrade';
 
 const pm = createPersona({
     description: 'You are a concise product manager.',
@@ -844,7 +844,7 @@ Real MCP server configuration pass-through is supported internally but is **not 
 Create fake MCP servers with predefined responses. Mock servers work with Claude only (`AGENT_CAPABILITIES` records `codex.mcp === false`):
 
 ```typescript
-import { mockMcpServer } from 'pathgrade/mcp-mock';
+import { mockMcpServer } from '@wix/pathgrade/mcp-mock';
 
 const kbMock = mockMcpServer({
     name: 'kb-retrieval',
@@ -942,7 +942,7 @@ The `pathgrade()` plugin factory configures vitest for eval runs:
 ```typescript
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from 'pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin';
 
 export default defineConfig({
     plugins: [pathgrade({
@@ -981,7 +981,7 @@ The plugin automatically:
 For unit testing your scorers or running evals without real LLM calls, use `setRuntime()` to inject a fake LLM:
 
 ```typescript
-import { setRuntime, resetRuntime } from 'pathgrade';
+import { setRuntime, resetRuntime } from '@wix/pathgrade';
 import { afterEach } from 'vitest';
 
 afterEach(() => {
@@ -1149,7 +1149,7 @@ expression. Dynamic composition (`deps: [...BASE, 'extra']`) is not
 supported; codegen the file if you need dedup.
 
 ```ts
-import type { PathgradeMeta } from 'pathgrade';
+import type { PathgradeMeta } from '@wix/pathgrade';
 
 // Union extraDeps with the auto-detected skill root.
 export const __pathgradeMeta: PathgradeMeta = {

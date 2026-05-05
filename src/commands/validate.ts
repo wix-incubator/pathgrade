@@ -65,8 +65,8 @@ export async function runValidate(
     }
 
     // Check 3: Imports
-    if (!content.includes("from 'pathgrade'") && !content.includes('from "pathgrade"')) {
-        errors.push({ check: 'imports-pathgrade', message: "No import from 'pathgrade' found." });
+    if (!content.includes("from '@wix/pathgrade'") && !content.includes('from "@wix/pathgrade"')) {
+        errors.push({ check: 'imports-pathgrade', message: "No import from '@wix/pathgrade' found." });
     }
 
     // Check 4: describe/it blocks

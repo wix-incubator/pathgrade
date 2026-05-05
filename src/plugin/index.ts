@@ -62,7 +62,7 @@ export function pathgrade(opts?: PathgradePluginOptions): any {
 
 /**
  * When running from source (not installed via npm), resolve
- * `pathgrade` imports to the local src/ directory so examples
+ * `@wix/pathgrade` imports to the local src/ directory so examples
  * can use canonical package imports while developing locally.
  */
 function resolveLocalAliases(): Record<string, string> | undefined {
@@ -71,8 +71,8 @@ function resolveLocalAliases(): Record<string, string> | undefined {
 
     const src = path.resolve(import.meta.dirname, '..');
     return {
-        'pathgrade/mcp-mock': path.join(src, 'core', 'mcp-mock.ts'),
-        'pathgrade/plugin': path.join(src, 'plugin', 'index.ts'),
-        'pathgrade': path.join(src, 'sdk', 'index.ts'),
+        '@wix/pathgrade/mcp-mock': path.join(src, 'core', 'mcp-mock.ts'),
+        '@wix/pathgrade/plugin': path.join(src, 'plugin', 'index.ts'),
+        '@wix/pathgrade': path.join(src, 'sdk', 'index.ts'),
     };
 }

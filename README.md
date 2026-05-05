@@ -16,7 +16,7 @@
 **Prerequisites**: Node.js 20.11+, Vitest 4+, and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), or the `cursor-agent` CLI
 
 ```bash
-npm install --save-dev pathgrade
+npm install --save-dev @wix/pathgrade
 ```
 
 ### Authentication
@@ -78,7 +78,7 @@ Create a `vitest.config.ts` with the Pathgrade plugin:
 
 ```typescript
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from 'pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin';
 
 export default defineConfig({
     plugins: [pathgrade({ timeout: 120 })],
@@ -95,7 +95,7 @@ Write an eval file such as `hello.eval.ts`:
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, it, expect } from 'vitest';
-import { createAgent, check, evaluate } from 'pathgrade';
+import { createAgent, check, evaluate } from '@wix/pathgrade';
 
 describe('hello world', () => {
     it('agent creates the requested file', async () => {
@@ -281,7 +281,7 @@ See [sdk-showcase](examples/sdk-showcase/) for a single example suite that demon
 Simulate MCP tools when testing Claude-driven evals:
 
 ```typescript
-import { mockMcpServer } from 'pathgrade/mcp-mock';
+import { mockMcpServer } from '@wix/pathgrade/mcp-mock';
 
 const mock = mockMcpServer({
     name: 'weather',
@@ -322,7 +322,7 @@ Run `pathgrade --help` for the full help text.
 ## Plugin Options
 
 ```typescript
-import { pathgrade } from 'pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin';
 
 pathgrade({
     include: ['**/*.eval.ts'],   // default: ['**/*.eval.ts']

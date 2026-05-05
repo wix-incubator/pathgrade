@@ -19,7 +19,7 @@ const BIN = path.join(PKG_ROOT, 'bin', 'pathgrade.js');
 const DIST_ENTRY = path.join(PKG_ROOT, 'dist', 'pathgrade.js');
 
 const VALID_EVAL = `import { describe, it } from 'vitest';
-import { createAgent, check, evaluate } from 'pathgrade';
+import { createAgent, check, evaluate } from '@wix/pathgrade';
 
 describe('sample', () => {
   it('scores the agent', async () => {

@@ -234,7 +234,7 @@ agents/codex.ts  ──→ agents/transcript-agent.ts ──→ types.ts
 
 ## 4. Public API (pathgrade)
 
-All public API is exported from `src/sdk/index.ts` and consumed via `import { ... } from 'pathgrade'`.
+All public API is exported from `src/sdk/index.ts` and consumed via `import { ... } from '@wix/pathgrade'`.
 
 ### 4.1 createAgent
 
@@ -1053,7 +1053,7 @@ The plugin configures vitest:
 Usage in `vitest.config.ts`:
 
 ```typescript
-import { pathgrade } from 'pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin';
 
 export default defineConfig({
     plugins: [pathgrade({ timeout: 600, ci: { threshold: 0.7 } })],

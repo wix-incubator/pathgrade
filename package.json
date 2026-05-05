@@ -1,5 +1,5 @@
 {
-  "name": "pathgrade",
+  "name": "@wix/pathgrade",
   "version": "0.1.0",
   "packageManager": "yarn@4.12.0",
   "description": "Evaluate whether AI agents discover and use your skills correctly",

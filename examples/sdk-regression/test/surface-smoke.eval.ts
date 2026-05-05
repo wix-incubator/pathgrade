@@ -8,7 +8,7 @@ import type {
     AskBatch,
     AskBatchSnapshot,
     PathgradeMeta,
-} from 'pathgrade';
+} from '@wix/pathgrade';
 import {
     AgentCrashError,
     AskBusTimeoutError,
@@ -43,7 +43,7 @@ import {
     toolUsage,
     WorkspaceMissingError,
     EvalScorerError,
-} from 'pathgrade';
+} from '@wix/pathgrade';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -153,7 +153,7 @@ describe('sdk-regression surface smoke (offline)', () => {
         expect(entry.status).toBe('ok');
 
         const [judgeEntry] = await runJudgePipeline(
-            judge('pipeline', { rubric: 'score the transcript' }) as import('pathgrade').JudgeScorer,
+            judge('pipeline', { rubric: 'score the transcript' }) as import('@wix/pathgrade').JudgeScorer,
             ctx as never,
             { llm: mock },
         );

@@ -40,7 +40,7 @@ import type {
     Reaction,
     ReactionPreviewResult,
     RunSnapshot,
-} from 'pathgrade';
+} from '@wix/pathgrade';
 import {
     check,
     createAgent,
@@ -54,7 +54,7 @@ import {
     runScorer,
     score,
     toolUsage,
-} from 'pathgrade';
+} from '@wix/pathgrade';
 
 export const FIXTURE_DIR = path.join(__dirname, 'fixtures', 'buggy-calc');
 export const HOOK_TIMEOUT_MS = 600_000;
@@ -349,7 +349,7 @@ export async function runRegression(opts: RegressionOptions): Promise<Regression
     const [judgePipelineEntry] = await runJudgePipeline(
         judge('standalone-judge', {
             rubric: 'Return 0.9 if the transcript mentions subtract being wrong, else 0.3.',
-        }) as import('pathgrade').JudgeScorer,
+        }) as import('@wix/pathgrade').JudgeScorer,
         ctx,
         { llm: judgeLlm },
     );

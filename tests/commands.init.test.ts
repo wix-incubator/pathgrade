@@ -115,7 +115,7 @@ describe('getInlineTemplate', () => {
   // Replicate the function since it's not exported
   function getInlineTemplate(): string {
     return `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 
 describe('{{TASK_NAME}}', () => {
   it('scores the agent result', async () => {
@@ -208,7 +208,7 @@ describe('runInit LLM selection', () => {
     vi.stubGlobal('fetch', fetchMock);
     process.env.OPENAI_API_KEY = 'sk-test';
     mockCallLLM.mockResolvedValue({
-      text: "import { createAgent, evaluate } from 'pathgrade';\nexport {};\n",
+      text: "import { createAgent, evaluate } from '@wix/pathgrade';\nexport {};\n",
       provider: 'cli',
       model: 'claude-cli',
     });
@@ -221,7 +221,7 @@ describe('runInit LLM selection', () => {
     const files = await fs.readdir(tmpDir);
     const evalFile = files.find((f: string) => f.endsWith('.eval.ts'));
     expect(evalFile).toBeDefined();
-    expect(await fs.readFile(path.join(tmpDir, evalFile!), 'utf-8')).toContain("from 'pathgrade'");
+    expect(await fs.readFile(path.join(tmpDir, evalFile!), 'utf-8')).toContain("from '@wix/pathgrade'");
   });
 
   it('writes a modern pathgrade template when no skills are detected', async () => {
@@ -236,7 +236,7 @@ describe('runInit LLM selection', () => {
     expect(evalFile).toBeDefined();
 
     const content = await fs.readFile(path.join(tmpDir, evalFile!), 'utf-8');
-    expect(content).toContain("from 'pathgrade'");
+    expect(content).toContain("from '@wix/pathgrade'");
     expect(content).toContain('createAgent');
     expect(content).not.toContain('defineEval');
     expect(content).not.toContain('scorers:');

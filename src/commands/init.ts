@@ -156,7 +156,7 @@ function buildInitPrompt(skills: Array<{ name: string; skillMd: string }>): stri
   return `You are an expert at creating evaluation tasks for AI agent skills.
 
 Given the following skill definition(s), generate a single \`.eval.ts\` file
-using the current PathGrade runtime API from \`pathgrade\`.
+using the current PathGrade runtime API from \`@wix/pathgrade\`.
 
 For each task:
 - Write a realistic user instruction
@@ -184,7 +184,7 @@ Respond with ONLY the \`.eval.ts\` file content. Start with the import
 statement. Use this format:
 
 import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 
 describe('<task-name>', () => {
   it('scores the agent result', async () => {
@@ -231,7 +231,7 @@ async function generateWithLLM(
 
 function getInlineTemplate(): string {
   return `import { describe, it, expect } from 'vitest';
-import { createAgent, check, judge, evaluate } from 'pathgrade';
+import { createAgent, check, judge, evaluate } from '@wix/pathgrade';
 
 describe('{{TASK_NAME}}', () => {
   it('scores the agent result', async () => {
