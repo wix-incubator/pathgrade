@@ -6,6 +6,17 @@ Source PRD: `docs/prds/2026-05-05-claude-sdk-agent-driver.md`
 
 All nine slices land on the `claude-sdk-agent-driver` branch (this branch — same one that holds the PRD and these issue drafts). `master` receives a single squashed PR after #009 passes verification. The PRD requires "no transport flag, no half-state" on `master`, so individual slices are not master-mergeable on their own — they accumulate on this branch and the squashed PR is the atomic unit visible to consumers. PRD docs and issue drafts ride along in the same squashed PR.
 
+## Completion protocol
+
+When landing a slice, before adding the Progress Log row:
+
+1. Open the slice's issue file and walk every `- [ ]` in **Acceptance criteria**.
+2. For each item, verify it against the merged diff and the new/updated tests — not against memory, not against the PRD, not against this tracker. The issue file is the contract.
+3. Flip `- [ ]` → `- [x]` only when verified. If the landed implementation deviates from the wording, annotate the checked line inline (`*(Deviation: ...)*`) and pin the rationale in **Completion Notes** below — do not silently rewrite the criterion.
+4. Then update **Overall Status**, the **Issue Drafts** table status column, and append a Progress Log row.
+
+**Do not invoke any `ck-*` skill while working on this migration.** The Creator Kit skill family (`ck-new`, `ck-status`, `ck-utility-pr`, `ck-utility-code-review`, `ck-flow-*`, `ck-product-*`, `ck-ux-*`, `ck-research-*`, etc.) is scoped to a different product and will pull in unrelated workflow assumptions. Use the standard tools — the issue files, the PRD, and direct code/test edits — to land each slice.
+
 ## Overall Status
 
 - [x] 001 - SDK Claude Turn Driver
