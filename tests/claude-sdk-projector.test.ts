@@ -225,7 +225,9 @@ describe('projectSdkMessages — usage and exit code', () => {
         // The convention pre-existed under the NDJSON parser at
         // src/agents/claude.ts:223-227; test fixtures elsewhere already treat
         // cache tokens as billable input volume. PRD §Token-and-cost telemetry
-        // is explicit that the projector must preserve this total.
+        // is explicit that the projector must preserve this total. #003
+        // criterion 8 anchors this as a regression gate — `inputTokens` keeps
+        // including cache tokens; the new cache breakdown fields are additive.
         const projected = projectSdkMessages({
             messages: [
                 resultSuccess({
@@ -238,6 +240,124 @@ describe('projectSdkMessages — usage and exit code', () => {
         });
         expect(projected.result.inputTokens).toBe(200);
         expect(projected.result.outputTokens).toBe(25);
+    });
+
+    it('exposes cacheCreationInputTokens and cacheReadInputTokens as additive breakdown fields (#003)', () => {
+        // PRD §Token and cost telemetry: the projector also populates the new
+        // optional breakdown fields sourced from the SDK's
+        // `cache_creation_input_tokens` / `cache_read_input_tokens` so consumers
+        // can reason about cache volume separately from the totalized
+        // `inputTokens` figure. The total above is still the canonical
+        // billable-volume value.
+        const projected = projectSdkMessages({
+            messages: [
+                resultSuccess({
+                    inputTokens: 100,
+                    cacheCreation: 30,
+                    cacheRead: 70,
+                    outputTokens: 25,
+                }),
+            ],
+        });
+        expect(projected.result.cacheCreationInputTokens).toBe(30);
+        expect(projected.result.cacheReadInputTokens).toBe(70);
+    });
+
+    it('exposes costUsd from a successful result message (#003 / User Story 18)', () => {
+        // PRD §Token and cost telemetry: the projector populates
+        // `AgentTurnResult.costUsd` from the SDK's `total_cost_usd` so
+        // consumers can budget runs against expensive models. Non-zero costs
+        // round-trip without modification — pathgrade does not impose its
+        // own pricing model on top of what the SDK reports.
+        const projected = projectSdkMessages({
+            messages: [resultSuccess({ totalCostUsd: 0.0125 })],
+        });
+        expect(projected.result.costUsd).toBe(0.0125);
+    });
+
+    it('exposes costUsd from an error result message even when the turn failed (#003)', () => {
+        // PRD §Token and cost telemetry: cost projection covers both
+        // SDKResultSuccess.total_cost_usd and SDKResultError.total_cost_usd.
+        // A turn that errored mid-execution still consumed tokens and money;
+        // surfacing that lets the run-level total reflect the real spend
+        // rather than implicitly rounding error turns to zero.
+        const errorWithCost = {
+            type: 'result',
+            subtype: 'error_during_execution',
+            duration_ms: 1,
+            duration_api_ms: 1,
+            is_error: true,
+            num_turns: 1,
+            stop_reason: null,
+            total_cost_usd: 0.004,
+            usage: {
+                input_tokens: 10,
+                output_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            },
+            modelUsage: {},
+            permission_denials: [],
+            errors: [],
+            uuid: 'result-uuid',
+            session_id: 'sess-err',
+        } as unknown as SDKMessage;
+        const projected = projectSdkMessages({ messages: [errorWithCost] });
+        expect(projected.result.exitCode).toBe(1);
+        expect(projected.result.costUsd).toBe(0.004);
+    });
+
+    it('omits costUsd when the SDK does not report total_cost_usd', () => {
+        // Defensive omission — same shape rule as the cache breakdown fields.
+        // A consumer summing run-level cost should be able to detect "no
+        // cost data" cleanly rather than treat it as a zero-cost turn.
+        const noCost = {
+            type: 'result',
+            subtype: 'success',
+            duration_ms: 1,
+            duration_api_ms: 1,
+            is_error: false,
+            num_turns: 1,
+            result: '',
+            stop_reason: 'end_turn',
+            usage: {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            },
+            modelUsage: {},
+            permission_denials: [],
+            uuid: 'result-uuid',
+            session_id: 'sess-1',
+        } as unknown as SDKMessage;
+        const projected = projectSdkMessages({ messages: [noCost] });
+        expect(projected.result.costUsd).toBeUndefined();
+    });
+
+    it('omits the cache breakdown fields when the SDK reports zero cache usage (no usage object)', () => {
+        // Defensive: if the SDK ever stops reporting `usage` entirely (no
+        // `usage` field on the result), the projector must not mint zero
+        // breakdown values that would mislead a consumer counting cache hits.
+        // The `inputTokens` / `outputTokens` field follows the same rule today.
+        const noUsage = {
+            type: 'result',
+            subtype: 'success',
+            duration_ms: 1,
+            duration_api_ms: 1,
+            is_error: false,
+            num_turns: 1,
+            result: '',
+            stop_reason: 'end_turn',
+            total_cost_usd: 0,
+            modelUsage: {},
+            permission_denials: [],
+            uuid: 'result-uuid',
+            session_id: 'sess-1',
+        } as unknown as SDKMessage;
+        const projected = projectSdkMessages({ messages: [noUsage] });
+        expect(projected.result.cacheCreationInputTokens).toBeUndefined();
+        expect(projected.result.cacheReadInputTokens).toBeUndefined();
     });
 
     it('treats a successful result as exitCode 0 with the assistant message visible', () => {
@@ -279,6 +399,31 @@ describe('projectSdkMessages — usage and exit code', () => {
             });
             expect(projected.result.exitCode, `subtype ${subtype}`).toBe(1);
         }
+    });
+
+    it('exposes the typed errorSubtype for each documented SDKResultError variant (#003 / User Story 19)', () => {
+        // The legacy CLI driver scraped the result text with a regex to
+        // distinguish error categories. The SDK projector reads the typed
+        // `subtype` field and surfaces it directly so consumers can triage
+        // failures (max-turns vs budget vs execution) without parsing prose.
+        for (const subtype of [
+            'error_during_execution',
+            'error_max_turns',
+            'error_max_budget_usd',
+            'error_max_structured_output_retries',
+        ] as const) {
+            const projected = projectSdkMessages({
+                messages: [resultError(subtype)],
+            });
+            expect(projected.result.errorSubtype, `subtype ${subtype}`).toBe(subtype);
+        }
+    });
+
+    it('does not set errorSubtype on a successful turn', () => {
+        const projected = projectSdkMessages({
+            messages: [resultSuccess({ text: 'done' })],
+        });
+        expect(projected.result.errorSubtype).toBeUndefined();
     });
 });
 

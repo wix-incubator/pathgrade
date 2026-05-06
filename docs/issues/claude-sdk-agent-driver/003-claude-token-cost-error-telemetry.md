@@ -12,14 +12,14 @@ Type: AFK
 
 ## Acceptance criteria
 
-- [ ] `AgentTurnResult` includes optional `cacheCreationInputTokens`, `cacheReadInputTokens`, and `costUsd` fields.
-- [ ] Claude `inputTokens` remains totalized as uncached input plus cache-creation input plus cache-read input.
-- [ ] Claude SDK result messages populate cache-token breakdown fields and `costUsd` when present.
-- [ ] `agent_result` log entries include `cost_usd` when the turn result has `costUsd`.
-- [ ] Conversation execution accumulates Claude turn costs into `TrialResult.conversation_cost_usd` and emits conservative total cost only when all included components are known.
-- [ ] SDK error subtypes `error_during_execution`, `error_max_turns`, `error_max_budget_usd`, and `error_max_structured_output_retries` are distinguished from successful turns without regex parsing.
-- [ ] Tests cover successful usage, cache-token totalization, cost logging, run-level cost accumulation, and each typed SDK error subtype.
-- [ ] Existing token-totalization tests anchored on the `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` convention (current Claude path at `src/agents/claude.ts:223-227` and Cursor parity at `src/agents/cursor.ts:179-182`) continue to pass unmodified — `inputTokens` keeps including cache tokens; the new cache breakdown fields are additive only. This is a regression gate, not a refactor target.
+- [x] `AgentTurnResult` includes optional `cacheCreationInputTokens`, `cacheReadInputTokens`, and `costUsd` fields.
+- [x] Claude `inputTokens` remains totalized as uncached input plus cache-creation input plus cache-read input.
+- [x] Claude SDK result messages populate cache-token breakdown fields and `costUsd` when present.
+- [x] `agent_result` log entries include `cost_usd` when the turn result has `costUsd`.
+- [x] Conversation execution accumulates Claude turn costs into `TrialResult.conversation_cost_usd` and emits conservative total cost only when all included components are known. *(Deviation: `total_cost_usd` is conservatively NEVER emitted in this slice — judge LLM providers expose no cost yet, so any total would be partial. The field exists on `TrialResult` for the future; `conversation_cost_usd` is the only guaranteed cost surface today, matching User Story #18's "until judge providers expose cost ... documented as partial".)*
+- [x] SDK error subtypes `error_during_execution`, `error_max_turns`, `error_max_budget_usd`, and `error_max_structured_output_retries` are distinguished from successful turns without regex parsing.
+- [x] Tests cover successful usage, cache-token totalization, cost logging, run-level cost accumulation, and each typed SDK error subtype.
+- [x] Existing token-totalization tests anchored on the `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` convention (current Claude path at `src/agents/claude.ts:223-227` and Cursor parity at `src/agents/cursor.ts:179-182`) continue to pass unmodified — `inputTokens` keeps including cache tokens; the new cache breakdown fields are additive only. This is a regression gate, not a refactor target. *(Deviation: the cited Claude path `src/agents/claude.ts:223-227` no longer exists post-#001 — the totalization moved into `src/agents/claude/sdk-message-projector.ts:106-114`. The Cursor reference is current. The convention (sum) is preserved unchanged; the existing projector test's assertion is unchanged, only its comment was extended to anchor the regression gate.)*
 
 ## Blocked by
 

@@ -122,6 +122,14 @@ export interface LogEntry {
     /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_tool_use_id?: string;
     runtime_policies_applied?: RuntimePolicyDescriptor[];
+    /**
+     * Per-turn agent cost in USD when the upstream provider reports it (the
+     * Claude Agent SDK populates `total_cost_usd` on result messages).
+     * Written by `buildModelAgentResultLogEntry` only when the turn result
+     * carries a `costUsd` value; absent for agents that do not expose cost.
+     * PRD §Token and cost telemetry; issue #003 criterion 4.
+     */
+    cost_usd?: number;
     completion_reason?: string;
     completion_detail?: string;
     turn_timings?: Array<{ turn: number; durationMs: number }>;
@@ -158,6 +166,22 @@ export interface TrialResult {
     output_tokens: number;
     conversation_input_tokens?: number;
     conversation_output_tokens?: number;
+    /**
+     * Sum of agent-turn `costUsd` values accumulated during the
+     * conversation, attributed at evaluation time (PRD §Token and cost
+     * telemetry). Today only the Claude SDK driver populates per-turn
+     * cost, so this field is set on Claude trials and absent on
+     * Codex / Cursor trials. Issue #003.
+     */
+    conversation_cost_usd?: number;
+    /**
+     * Sum of all known cost components (conversation + judge + …).
+     * Conservative — emitted ONLY when every included component has a
+     * known cost. Today judge LLM providers do not expose cost, so this
+     * field is never emitted; `conversation_cost_usd` is the only
+     * guaranteed cost surface until that changes. Issue #003.
+     */
+    total_cost_usd?: number;
     session_log: LogEntry[];
     skills_used?: string[];
     diagnostics?: DiagnosticsReport;
@@ -280,6 +304,39 @@ export interface AgentTurnResult {
     runtimePoliciesApplied?: RuntimePolicyDescriptor[];
     inputTokens?: number;
     outputTokens?: number;
+    /**
+     * Optional cache-token breakdown sourced from the Claude Agent SDK's
+     * `cache_creation_input_tokens` field. Additive only — `inputTokens`
+     * still includes cache-creation volume, matching pathgrade's existing
+     * convention (PRD §Token and cost telemetry; issue #003 criterion 8).
+     */
+    cacheCreationInputTokens?: number;
+    /**
+     * Optional cache-token breakdown sourced from the Claude Agent SDK's
+     * `cache_read_input_tokens` field. Additive only — `inputTokens` still
+     * includes cache-read volume.
+     */
+    cacheReadInputTokens?: number;
+    /**
+     * Optional turn cost in USD reported by providers that expose exact
+     * pricing. The Claude Agent SDK populates this from the result
+     * message's `total_cost_usd`. Other drivers (Codex, Cursor) leave it
+     * undefined until their providers expose comparable metadata.
+     * PRD §Token and cost telemetry; issue #003 User Story 18.
+     */
+    costUsd?: number;
+    /**
+     * Typed error subtype reported by the Claude Agent SDK's result message
+     * (`SDKResultError` per `sdk.d.ts`). Set when the turn ended in error;
+     * absent on success. Lets eval consumers triage failures correctly
+     * (max-turns vs budget vs execution) without regex on the result text.
+     * PRD §Token and cost telemetry; issue #003 User Story 19.
+     */
+    errorSubtype?:
+        | 'error_during_execution'
+        | 'error_max_turns'
+        | 'error_max_budget_usd'
+        | 'error_max_structured_output_retries';
     /**
      * Populated when the agent subprocess died mid-turn under a stateful
      * transport (Codex `app-server`). Consumers should translate this into

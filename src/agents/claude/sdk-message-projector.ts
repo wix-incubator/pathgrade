@@ -21,6 +21,14 @@
 
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentTurnResult } from '../../types.js';
+
+type SdkErrorSubtype = NonNullable<AgentTurnResult['errorSubtype']>;
+const SDK_ERROR_SUBTYPES: readonly SdkErrorSubtype[] = [
+    'error_during_execution',
+    'error_max_turns',
+    'error_max_budget_usd',
+    'error_max_structured_output_retries',
+];
 import type { ToolEvent } from '../../tool-events.js';
 import { TOOL_NAME_MAP, buildSummary, enrichSkillEvents } from '../../tool-events.js';
 import type { AskUserAnswerStore } from './ask-user-answer-store.js';
@@ -58,6 +66,10 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
     let isError = false;
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    let cacheCreationInputTokens: number | undefined;
+    let cacheReadInputTokens: number | undefined;
+    let costUsd: number | undefined;
+    let errorSubtype: SdkErrorSubtype | undefined;
     const toolEvents: ToolEvent[] = [];
 
     for (const msg of input.messages) {
@@ -92,6 +104,7 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
                     session_id?: string;
                     result?: string;
                     is_error?: boolean;
+                    total_cost_usd?: number;
                     usage?: {
                         input_tokens?: number;
                         output_tokens?: number;
@@ -107,10 +120,28 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
                         + (r.usage.cache_creation_input_tokens ?? 0)
                         + (r.usage.cache_read_input_tokens ?? 0);
                     outputTokens = r.usage.output_tokens;
+                    // #003: additive cache-token breakdown. `inputTokens`
+                    // above keeps the existing pathgrade convention of
+                    // including cache volume — these fields just expose the
+                    // SDK's own breakdown for consumers that want to reason
+                    // about cache hits/creation separately.
+                    cacheCreationInputTokens = r.usage.cache_creation_input_tokens;
+                    cacheReadInputTokens = r.usage.cache_read_input_tokens;
+                }
+                // #003 User Story 18: surface SDK-reported turn cost on
+                // success and error result subtypes alike. The driver
+                // accumulates these into the conversation cost downstream.
+                if (typeof r.total_cost_usd === 'number') {
+                    costUsd = r.total_cost_usd;
                 }
                 if (r.is_error || (r.subtype && r.subtype !== 'success')) {
                     isError = true;
                     exitCode = 1;
+                    // #003 User Story 19: surface the SDK's typed error
+                    // subtype so consumers can triage without regex on text.
+                    if (r.subtype && (SDK_ERROR_SUBTYPES as readonly string[]).includes(r.subtype)) {
+                        errorSubtype = r.subtype as SdkErrorSubtype;
+                    }
                 }
                 break;
             }
@@ -143,6 +174,10 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
         runtimePoliciesApplied: [],
         inputTokens,
         outputTokens,
+        ...(cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens } : {}),
+        ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(errorSubtype !== undefined ? { errorSubtype } : {}),
     };
     return { result, sessionId };
 }

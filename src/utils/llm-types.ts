@@ -28,10 +28,19 @@ export interface LLMPort {
     callWithTools?(messages: ToolUseMessage[], opts: CallWithToolsOptions): Promise<CallWithToolsResult>;
     /** Running total of tokens consumed through this port. Present on clients from createLLMClient. */
     readonly tokenUsage?: TokenUsage;
+    /**
+     * Running total of USD cost consumed through this port. Present on
+     * clients from `createLLMClient`. Accumulates Claude SDK turn-cost
+     * deltas via `addCost` and judge-LLM cost once judge providers expose
+     * comparable metadata. PRD §Token and cost telemetry; issue #003.
+     */
+    readonly costUsd?: number;
     /** Add externally-observed tokens (e.g. from agent CLI turns). */
     addTokens?(input: number, output: number): void;
-    /** Run `fn` and return its token delta. */
-    measure?<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: TokenUsage }>;
+    /** Add externally-observed cost (e.g. from Claude SDK `total_cost_usd`). */
+    addCost?(usd: number): void;
+    /** Run `fn` and return its token + cost delta. */
+    measure?<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: TokenUsage; costUsd: number }>;
     /** Name of the adapter that resolved the last call (e.g. 'anthropic'). */
     readonly lastProvider?: string;
     /** True when this port can dispatch tool use. Type-guard form preferred at call sites. */
