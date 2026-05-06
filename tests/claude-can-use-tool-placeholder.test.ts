@@ -24,6 +24,7 @@ describe('placeholder canUseTool', () => {
         const result = await canUseTool('AskUserQuestion', { questions: [] }, {
             signal: new AbortController().signal,
             suggestions: [],
+            toolUseID: 'test',
         });
         expect(result.behavior).toBe('deny');
         if (result.behavior === 'deny') {
@@ -38,6 +39,7 @@ describe('placeholder canUseTool', () => {
         const result = await canUseTool('Bash', input, {
             signal: new AbortController().signal,
             suggestions: [],
+            toolUseID: 'test',
         });
         expect(result.behavior).toBe('allow');
         if (result.behavior === 'allow') {
@@ -53,6 +55,7 @@ describe('placeholder canUseTool', () => {
         const result = await canUseTool('AskHumanQuestion', { x: 1 }, {
             signal: new AbortController().signal,
             suggestions: [],
+            toolUseID: 'test',
         });
         expect(result.behavior).toBe('allow');
     });

@@ -240,6 +240,7 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         const askResult = await canUseTool('AskUserQuestion', { questions: [] }, {
             signal: new AbortController().signal,
             suggestions: [],
+            toolUseID: 'test',
         });
         expect(askResult.behavior).toBe('deny');
         if (askResult.behavior === 'deny') {
@@ -249,6 +250,7 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         const bashResult = await canUseTool('Bash', { command: 'ls' }, {
             signal: new AbortController().signal,
             suggestions: [],
+            toolUseID: 'test',
         });
         expect(bashResult.behavior).toBe('allow');
     });
