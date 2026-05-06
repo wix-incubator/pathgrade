@@ -14,12 +14,12 @@ Type: AFK
 
 ## Acceptance criteria
 
-- [ ] SDK init, assistant, tool-use, and result messages are consumed through a typed projector instead of NDJSON parsing.
-- [ ] `AgentTurnResult.assistantMessage`, `visibleAssistantMessage`, `rawOutput`, `traceOutput`, `sessionId`, `toolEvents`, and `runtimePoliciesApplied` are populated from SDK messages.
-- [ ] Tool-use blocks keep structured input data and continue to map through existing `TOOL_NAME_MAP`, `buildSummary`, and `enrichSkillEvents` behavior.
-- [ ] Slash-command invoked skills still emit a synthetic `use_skill` event when the command name appears in SDK init skills.
-- [ ] The ask_user `ToolEvent` arguments shape remains stable for run snapshots and scorer consumers.
-- [ ] Tests feed representative SDK message sequences and assert the public `AgentTurnResult` and tool-event output, including skill and slash-command cases.
+- [x] SDK init, assistant, tool-use, and result messages are consumed through a typed projector instead of NDJSON parsing.
+- [x] `AgentTurnResult.assistantMessage`, `visibleAssistantMessage`, `rawOutput`, `traceOutput`, `sessionId`, `toolEvents`, and `runtimePoliciesApplied` are populated from SDK messages.
+- [x] Tool-use blocks keep structured input data and continue to map through existing `TOOL_NAME_MAP`, `buildSummary`, and `enrichSkillEvents` behavior.
+- [x] Slash-command invoked skills still emit a synthetic `use_skill` event when the command name appears in SDK init skills.
+- [x] The ask_user `ToolEvent` arguments shape remains stable for run snapshots and scorer consumers.
+- [x] Tests feed representative SDK message sequences and assert the public `AgentTurnResult` and tool-event output, including skill and slash-command cases.
 
 ## Blocked by
 

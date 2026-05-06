@@ -14,13 +14,13 @@ Type: AFK
 
 ## Acceptance criteria
 
-- [ ] `ClaudeAgent.createSession()` requires an ask-bus for live ask-user batches and fails fast when one is missing.
-- [ ] The SDK `canUseTool` callback auto-allows non-`AskUserQuestion` tools.
-- [ ] `AskUserQuestion` input is converted into a live `AskBatch` with source `claude`, source tool `AskUserQuestion`, turn number, questions, headers, options, and multi-select metadata.
-- [ ] Reaction answers are returned to the SDK as `{ behavior: "allow", updatedInput: { ...input, answers } }` using the SDK's documented `answers` map shape.
-- [ ] The resulting transcript/tool events show the literal `AskUserQuestion` tool with structured input and the supplied answer source.
-- [ ] Claude's capability table marks `interactiveQuestionTransport` as `reliable`.
-- [ ] Tests cover one full mocked SDK turn where a reaction answer is consumed and the assistant continues in the same turn.
+- [x] `ClaudeAgent.createSession()` requires an ask-bus for live ask-user batches and fails fast when one is missing.
+- [x] The SDK `canUseTool` callback auto-allows non-`AskUserQuestion` tools.
+- [x] `AskUserQuestion` input is converted into a live `AskBatch` with source `claude`, source tool `AskUserQuestion`, turn number, questions, headers, options, and multi-select metadata.
+- [x] Reaction answers are returned to the SDK as `{ behavior: "allow", updatedInput: { ...input, answers } }` using the SDK's documented `answers` map shape.
+- [x] The resulting transcript/tool events show the literal `AskUserQuestion` tool with structured input and the supplied answer source.
+- [x] Claude's capability table marks `interactiveQuestionTransport` as `reliable`.
+- [x] Tests cover one full mocked SDK turn where a reaction answer is consumed and the assistant continues in the same turn.
 
 ## Blocked by
 

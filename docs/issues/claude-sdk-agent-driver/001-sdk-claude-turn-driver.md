@@ -14,15 +14,15 @@ Type: AFK
 
 ## Acceptance criteria
 
-- [ ] `ClaudeAgent.createSession()` uses the SDK query path instead of invoking the Claude CLI in print mode.
-- [ ] The first turn starts a new SDK session and later turns resume with the prior SDK `session_id`.
-- [ ] SDK options include the Claude Code system-prompt preset (`{ type: "preset", preset: "claude_code" }`), hermetic default `settingSources: ["project"]`, the typed option `autoMemoryEnabled: false` (the PRD-correct toggle — not an env var), `permissionMode: "default"`, and a custom spawn function.
-- [ ] `Options.env` is populated with the union of `resolveCredentials()` / `resolveClaude()` auth pass-through and `CLAUDE_CONFIG_DIR` set to a per-trial scratch directory under the workspace (e.g. `<workspace>/.pathgrade-claude-config/`), so host `~/.claude.json`, user memory, and ambient state cannot leak in.
-- [ ] The custom spawn path wraps Claude subprocesses in `sandbox-exec` (macOS; passthrough elsewhere) and constructs the subprocess env by intersecting the incoming `Options.env` with `SAFE_HOST_VARS` for ambient host vars and layering the SDK-provided values on top — no host-process env leaks through. Tests assert `ANTHROPIC_API_KEY` reaches the subprocess and a non-allowlisted host var (e.g. `HOME`) is not propagated except via `Options.env`.
-- [ ] `AgentOptions.claudeCodeExecutable` and `PATHGRADE_CLAUDE_CODE_EXECUTABLE` can override the SDK bundled binary without reintroducing PATH shim avoidance.
-- [ ] Existing MCP mock/config flows still work by reading pathgrade's generated MCP config into `Options.mcpServers` (object form, parsed inline from the file `writeMcpConfig` writes; the on-disk path is preserved for Cursor's separate consumer).
-- [ ] `@anthropic-ai/claude-agent-sdk` is added to `package.json` `dependencies` pinned to a single major version (e.g. `^0.2.x`); the per-platform binary optional-dependency footprint is documented for the install section.
-- [ ] Tests cover SDK option construction, executable override precedence, MCP config loading, env layering through the spawn module, and the placeholder `canUseTool` deny for `AskUserQuestion`, all without launching a real Claude process.
+- [x] `ClaudeAgent.createSession()` uses the SDK query path instead of invoking the Claude CLI in print mode.
+- [x] The first turn starts a new SDK session and later turns resume with the prior SDK `session_id`.
+- [x] SDK options include the Claude Code system-prompt preset (`{ type: "preset", preset: "claude_code" }`), hermetic default `settingSources: ["project"]`, the typed option `autoMemoryEnabled: false` (the PRD-correct toggle — not an env var), `permissionMode: "default"`, and a custom spawn function. *(Deviation: `autoMemoryEnabled` is not on `Options` in installed SDK `0.2.117`; hermetic intent preserved via `CLAUDE_CONFIG_DIR` + `settingSources: ['project']`. See TRACKER progress log 2026-05-06 and inline comment in `src/agents/claude/sdk-options.ts`.)*
+- [x] `Options.env` is populated with the union of `resolveCredentials()` / `resolveClaude()` auth pass-through and `CLAUDE_CONFIG_DIR` set to a per-trial scratch directory under the workspace (e.g. `<workspace>/.pathgrade-claude-config/`), so host `~/.claude.json`, user memory, and ambient state cannot leak in. *(Option-builder + spawn-module sides unit-tested with synthetic auth env; full end-to-end auth pass-through verified under #009 — see #001 land notes.)*
+- [x] The custom spawn path wraps Claude subprocesses in `sandbox-exec` (macOS; passthrough elsewhere) and constructs the subprocess env by intersecting the incoming `Options.env` with `SAFE_HOST_VARS` for ambient host vars and layering the SDK-provided values on top — no host-process env leaks through. Tests assert `ANTHROPIC_API_KEY` reaches the subprocess and a non-allowlisted host var (e.g. `HOME`) is not propagated except via `Options.env`.
+- [x] `AgentOptions.claudeCodeExecutable` and `PATHGRADE_CLAUDE_CODE_EXECUTABLE` can override the SDK bundled binary without reintroducing PATH shim avoidance.
+- [x] Existing MCP mock/config flows still work by reading pathgrade's generated MCP config into `Options.mcpServers` (object form, parsed inline from the file `writeMcpConfig` writes; the on-disk path is preserved for Cursor's separate consumer).
+- [x] `@anthropic-ai/claude-agent-sdk` is added to `package.json` `dependencies` pinned to a single major version (`^0.2.117`); the per-platform binary optional-dependency footprint is documented for the install section.
+- [x] Tests cover SDK option construction, executable override precedence, MCP config loading, env layering through the spawn module, and the placeholder `canUseTool` deny for `AskUserQuestion`, all without launching a real Claude process.
 
 ## Blocked by
 
