@@ -20,7 +20,9 @@ The user impact is that interactive convention flows can only be partially verif
 
 Replace the Claude integration's CLI-scraping driver with one built on `@anthropic-ai/claude-agent-sdk`. The SDK fires a `canUseTool` callback whenever Claude invokes `AskUserQuestion`. Pathgrade resolves the question through its existing ask-bus and reaction infrastructure and returns the chosen answer as the tool's real result. Claude receives the answer mid-turn and proceeds along the correct branch. The transcript records the literal `AskUserQuestion` tool name with its real input and the actual answer. Reactions can now express, verify, and assert the entire handshake — invocation, options, answer, branch — in a single round-trip rather than a multi-turn approximation.
 
-The SDK is a typed-protocol wrapper around a bundled per-platform `claude` binary. Pathgrade keeps its subprocess-based sandbox model: the SDK's custom-spawn hook lets pathgrade wrap each Claude subprocess with `sandbox-exec` exactly as today. The bundled binary becomes the default for reproducible eval runs; users can override it for cases where they need to grade a specific local install. Auth, skills auto-discovery, MCP, and session resume all continue to work the way users already expect, because the SDK delegates them to the same CLI binary.
+The SDK is a typed-protocol wrapper around a bundled per-platform `claude` binary. Pathgrade keeps its subprocess-based sandbox model: the SDK's custom-spawn hook lets pathgrade wrap each Claude subprocess with `sandbox-exec` exactly as today. The bundled binary becomes the default for reproducible eval runs; users can override it for cases where they need to grade a specific local install.
+
+The migration deliberately separates "Claude Code behavior" from "ambient user machine state". Pathgrade uses the Claude Code system-prompt preset so evals exercise the same core prompt stack, tool instructions, coding guidelines, response style, and safety behavior users get in Claude Code. At the same time, the default eval environment is hermetic: fixture-staged project settings and skills are loaded, but host-level user skills, hooks, memory, and local settings are not silently imported unless an explicit compatibility option asks for them. This keeps skill evals faithful to Claude Code while preserving CI reproducibility.
 
 The synthesis machinery that the old driver depended on — blocked-prompt queues, denial reconstruction, the runtime-policy text injection that worked around the missing channel — is removed in the same change, because its reason for existing is gone.
 
@@ -36,11 +38,11 @@ The synthesis machinery that the old driver depended on — blocked-prompt queue
 8. As a fixture author, I want a missing reaction to surface as a structured "unmatched ask_user" failure with the question text and turn number, so that I can diagnose which question went unhandled.
 9. As an eval-running engineer in CI, I want pathgrade to use a pinned, bundled Claude binary by default, so that today's green eval is still green tomorrow even when my locally installed Claude CLI updates.
 10. As an eval-running engineer in CI, I want to override the bundled binary via an environment variable or option, so that I can test against a specific in-development Claude build.
-11. As a pathgrade user with an existing Claude subscription, I want my `claude login` keychain credentials to continue working with pathgrade, so that I don't have to provision new auth for the migration.
-12. As a pathgrade user in CI without keychain access, I want to provide auth via `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, so that automated eval runs work without an interactive login.
+11. As a pathgrade user running local, first-party evals, I want my existing Claude Code authentication to work when permitted by Anthropic's SDK terms and my environment, so that local migration is not unnecessarily disruptive.
+12. As a pathgrade user in CI or productized SDK usage, I want to provide auth via `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, or supported cloud-provider credentials, so that automated eval runs have explicit, documented credentials.
 13. As a pathgrade user using Bedrock, Vertex, or Foundry, I want pathgrade to inherit those credentials from the standard environment variables, so that enterprise auth setups continue working unchanged.
 14. As a fixture author who stages skills into the workspace, I want skills under `<workspace>/.claude/skills/<name>/SKILL.md` to be auto-discovered by Claude during the run, so that fixtures can scope skill availability per trial.
-15. As a fixture author who relies on user-level skills, I want those still available when a fixture doesn't override them, so that ambient eval setup is unchanged.
+15. As a fixture author who needs CLI-faithful ambient behavior, I want an explicit option to include user-level Claude settings and skills, so that I can opt into local-machine realism while understanding the reproducibility tradeoff.
 16. As a pathgrade maintainer, I want each Claude turn to expose typed message events at session init, per assistant message, and at result, so that I can build new observability features without writing more NDJSON parsers.
 17. As a pathgrade maintainer, I want each Claude turn to report cache-creation and cache-read input tokens alongside input and output tokens, so that pathgrade's existing token-usage telemetry remains accurate.
 18. As an eval consumer, I want to see total cost in USD per turn and per run, so that I can budget for batch eval runs against expensive models.
@@ -64,6 +66,8 @@ The synthesis machinery that the old driver depended on — blocked-prompt queue
 36. As a fixture author migrating from the old driver, I want my existing reaction-based and conversation-level tests to keep passing without changes, so that the migration is invisible at the fixture API layer.
 37. As a pathgrade maintainer, I want a one-time verification spike during implementation that confirms `permissionMode: "default"` plus auto-allowing `canUseTool` actually causes `AskUserQuestion` to reach the callback, so that we don't ship a driver that silently regresses to no-handshake under unexpected SDK behavior.
 38. As a pathgrade maintainer, I want the resolved `claude` executable strategy to drop the existing PATH-search shim-avoidance helper, so that one less piece of pre-SDK infrastructure remains in the codebase.
+39. As a pathgrade maintainer, I want the driver to set the Claude Code system-prompt preset explicitly, so that Pathgrade evaluates skills under the same core prompt contract users get in Claude Code rather than the SDK's minimal default prompt.
+40. As a pathgrade maintainer, I want default SDK runs to avoid host-level user settings, local settings, and auto-memory, so that eval results are not contaminated by personal machine state.
 
 ## Implementation Decisions
 
@@ -84,9 +88,12 @@ The synthesis machinery that the old driver depended on — blocked-prompt queue
 ### SDK option choices
 
 - `permissionMode` is `"default"`. The driver always installs a `canUseTool` that auto-allows non-`AskUserQuestion` tools and routes `AskUserQuestion` through the ask-bus. This contract is strictly safer than `bypassPermissions` because it preserves the `canUseTool` callback for every tool decision and removes ambiguity about whether the callback fires for clarifying-question cases under bypass mode.
+- `systemPrompt` is set to `{ type: "preset", preset: "claude_code" }`. This is required because the SDK's default prompt is intentionally minimal and does not include the full Claude Code coding guidelines, response style, safety instructions, or environment context.
 - `cwd` is set to the workspace path so skills under `<workspace>/.claude/skills/` are auto-discovered.
-- `settingSources` is left at the default (`["user", "project"]`), preserving auto-discovery of user-level skills under `~/.claude/skills/`.
-- `allowedTools` is not set, leaving the full Claude tool surface available, including `AskUserQuestion`.
+- `settingSources` defaults to `["project"]` for hermetic evals. The driver does not omit `settingSources`, because the SDK's omitted default also loads user and local sources. Project sources are enough for fixture-staged `.claude/skills/`, `.claude/commands/`, `CLAUDE.md`, rules, hooks, and settings under the prepared workspace.
+- A CLI-faithful compatibility option may set `settingSources` to `["user", "project", "local"]`. That option must be documented as non-hermetic because user skills, hooks, settings, local files, and memory can affect results.
+- The driver sets an isolated Claude config/home environment and disables auto memory (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) unless the compatibility option is enabled. This prevents host `~/.claude.json`, user memory, and other ambient state from leaking into default CI runs.
+- `allowedTools` is not set, leaving the full Claude tool surface available, including `Skill` and `AskUserQuestion`. The implementation must verify this against the SDK because skills require the `Skill` tool to be enabled when an allowlist is used.
 - `model` is forwarded from the existing session option.
 - `mcpServers` is built from pathgrade's existing MCP config JSON, parsed into the SDK options shape inline. Existing stdio-based mock servers continue working unchanged.
 - `pathToClaudeCodeExecutable` is omitted by default (uses the SDK's bundled per-platform binary), and is set when the user supplies an override via a new conversation option or environment variable.
@@ -111,8 +118,9 @@ The synthesis machinery that the old driver depended on — blocked-prompt queue
 
 ### Authentication
 
-- Authentication is delegated to the bundled Claude subprocess. No pathgrade-side auth handling is added or changed.
-- Documented sources of auth that work end-to-end: subscription via keychain, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` plus `CLAUDE_CODE_OAUTH_SCOPES`, Bedrock (`AWS_BEARER_TOKEN_BEDROCK` and the bypass switches), Vertex, and Foundry. Pathgrade's existing sandbox env-pass-through ensures these reach the subprocess.
+- Authentication is delegated to the bundled Claude subprocess, but the migration does not treat consumer `claude.ai` login as a product-safe default for SDK-powered use. The user guide must distinguish local first-party eval usage from productized or third-party SDK usage.
+- Supported explicit auth sources are `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` where appropriate, `apiKeyHelper` when loaded from controlled settings, Bedrock, Vertex, and Foundry. Pathgrade's sandbox env-pass-through ensures these reach the subprocess.
+- Existing subscription/keychain credentials may continue to work for local CLI-faithful runs, but this is documented as an environment-dependent compatibility path rather than the recommended CI or productized SDK path.
 
 ### Multi-turn semantics
 
@@ -128,7 +136,7 @@ The synthesis machinery that the old driver depended on — blocked-prompt queue
 
 - The migration is one change. The repo never lives in a half-state with both drivers present.
 - The SDK is added to the package manifest as a runtime dependency pinned to a major version. The bundled-binary optional dependency that ships per platform follows the SDK's own dependency graph.
-- The user guide is updated to call out that `AskUserQuestion` is unavailable inside subagents (per the SDK's documented limitation) and to explain the new `pathToClaudeCodeExecutable` override pathway.
+- The user guide is updated to call out that `AskUserQuestion` is unavailable inside subagents (per the SDK's documented limitation), to explain the new `pathToClaudeCodeExecutable` override pathway, to document the Claude Code system-prompt preset, and to document hermetic versus CLI-faithful setting-source modes.
 
 ## Testing Decisions
 
@@ -140,6 +148,7 @@ A good test exercises external behavior — the contract a consumer of the modul
 - **Ask-user-bridge module.** Tests feed canned tool-name and input pairs against a mock ask-bus that returns canned `AskAnswer` results, and assert that `CanUseToolResult.updatedInput.answers` matches the SDK's documented shape across single-select, multi-select, and free-text variants. A separate set of tests exercises non-`AskUserQuestion` tool names, asserting pass-through with original input. Prior art: the existing ask-bus handler tests that exercise reaction matching and unmatched-fallback behavior.
 - **SDK-message-projector module.** Tests feed canned typed-message sequences (a successful turn, each error subtype, an init message with skills and slash commands, a multi-tool-use assistant turn, hook-lifecycle events, rate-limit events) and assert the resulting turn-result shape including assistant message text, tool events, runtime-policies-applied, input/output/cache tokens, error flags, and visible assistant message. Prior art: the existing tool-events tests for canonical-action mapping, and the existing converse projector tests that turn message sequences into typed outputs.
 - **MCP-config-loader helper.** Tests read sample MCP config files (one mock-server variant, one passthrough config-file variant) and assert the resulting `mcpServers` options object shape. Prior art: any existing fixture-loading tests in the providers layer.
+- **SDK-option builder.** Tests assert that the default query options include the Claude Code system-prompt preset, hermetic `settingSources`, isolated config/home env, auto-memory disablement, custom spawn, and no `allowedTools` allowlist. A separate test asserts that the CLI-faithful compatibility option intentionally loads user, project, and local setting sources.
 
 ### Integration test
 
@@ -154,10 +163,12 @@ A good test exercises external behavior — the contract a consumer of the modul
 ### Verification spike
 
 - A one-time integration check (5-line script committed under the test tree) confirms that `permissionMode: "default"` plus an auto-allowing `canUseTool` does in fact route `AskUserQuestion` through the callback against a real SDK. The check is a smoke test for the SDK-level contract that the design depends on; once the integration test exercises the same contract transitively, the spike script can be removed.
+- The same spike confirms that `systemPrompt: { type: "preset", preset: "claude_code" }` is accepted by the pinned SDK, that fixture-staged skills are visible with `settingSources: ["project"]`, and that leaving `allowedTools` unset exposes both `Skill` and `AskUserQuestion`.
 
 ## Out of Scope
 
 - Fixture-facing permission knobs (`permissionMode`, `allowedTools`, `disallowedTools`, custom `canUseTool`). Fixtures continue to see today's behavior: every tool runs, ask-user reactions resolve through the bus.
+- Fixture-facing arbitrary system-prompt replacement. The driver always uses the Claude Code preset for CLI-faithful skill evaluation; future work can add explicit prompt-variant evals if needed.
 - Migrating stdio-based MCP mock servers to in-process SDK MCP servers. The existing forking model is preserved.
 - Codex (exec mode) migration to an equivalent SDK-driven path. Codex (app-server) already has a real handshake; Codex (exec) remains subject to the existing fail-fast preflight.
 - Cursor migration. Cursor is still in the `noninteractive` capability tier and continues to use today's mechanisms.
@@ -172,7 +183,8 @@ A good test exercises external behavior — the contract a consumer of the modul
 ## Further Notes
 
 - This PRD tracks Issue #38 ("Non-interactive mode masks the ask-user handshake — can't verify answer consumption"). The migration directly closes the gap the issue describes.
-- The migration is a strict superset of current capabilities. Every CLI behavior pathgrade depends on (auth, skills auto-discovery, MCP config, sandbox isolation, session resume, slash-command detection, skill-event enrichment) is preserved. Several capabilities are upgraded for free: typed error subtypes, total-cost reporting, per-turn cache-token detail, hook lifecycle events, task lifecycle events.
+- The migration is a targeted capability upgrade, not a claim that the SDK default environment is identical to a user's interactive CLI. The driver opts into the Claude Code prompt preset and controls filesystem setting sources so Pathgrade evaluates skills in a reproducible Claude Code-like environment.
 - The SDK ships per-platform `claude` binaries as optional npm dependencies. Install size will increase by tens of megabytes; this should be called out in the install section of the user guide. Users who already have the CLI installed and want to avoid the duplicate footprint can skip the optional dependency at install time and set the override path.
 - Worth filing alongside this PRD: an upstream feature request to Anthropic for explicit documentation of the `permissionMode: "default"` × `canUseTool` × `AskUserQuestion` interaction, so the verification spike under "Testing Decisions" can be retired once the docs are updated.
+- Worth filing alongside this PRD: an upstream feature request for a documented "CLI-equivalent but hermetic" SDK recipe that combines the Claude Code prompt preset with controlled setting sources and disabled ambient memory.
 - The same architectural pattern (SDK-driven driver, custom spawn, `canUseTool` for ask-user routing) is the obvious next step for Cursor once that integration is ready to migrate. This PRD does not pre-commit to the Cursor path but leaves the door open.
