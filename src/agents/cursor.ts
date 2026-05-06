@@ -235,15 +235,22 @@ export class CursorAgent extends BaseAgent {
         options?: AgentSessionOptions,
     ): Promise<AgentTurnResult & { sessionId?: string }> {
         // Runtime policies are injected into the first-turn prompt only.
-        // Mirrors claude.ts:116 — on resumed turns (sessionId set) the policy
-        // was already delivered, so we skip re-prepending.
+        // On resumed turns (sessionId set) the policy was already delivered,
+        // so we skip re-prepending. The legacy Claude CLI driver had the same
+        // pattern; the post-#007 Claude SDK driver no longer prepends runtime
+        // policies at all (its transport is `'reliable'`), so the previous
+        // "Mirrors claude.ts" reference no longer applies — Cursor and the
+        // Codex transcript agent are now the only consumers of this path.
         const appliedRuntimePolicies = sessionId ? [] : [...(options?.runtimePolicies ?? [])];
         const effectiveInstruction = appliedRuntimePolicies.length > 0
             ? prependRuntimePolicies(instruction, appliedRuntimePolicies, { agent: 'cursor' })
             : instruction;
 
-        // Mirror Claude's tempfile-via-argv approach (claude.ts:~120): write
-        // the prompt to a shell-escape-safe tempfile and splice via $(cat …).
+        // Tempfile-via-argv approach: write the prompt to a shell-escape-safe
+        // tempfile and splice via $(cat …). The legacy Claude CLI driver used
+        // the same pattern; the SDK-based Claude driver passes `prompt`
+        // directly to `query()` and no longer needs this. Cursor still does
+        // because it shells out to the `cursor-agent` CLI.
         const promptPath = '"${TMPDIR:-/tmp}/.pathgrade-cursor-prompt.md"';
         const b64 = Buffer.from(effectiveInstruction).toString('base64');
         await runCommand(`mkdir -p "\${TMPDIR:-/tmp}" && echo '${b64}' | base64 -d > ${promptPath}`);

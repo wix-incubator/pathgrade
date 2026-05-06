@@ -25,6 +25,10 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAgent } from '../src/agents/claude.js';
 import { createAskBus } from '../src/sdk/ask-bus/bus.js';
+import {
+    NONINTERACTIVE_RUNTIME_POLICY,
+    renderRuntimePolicy,
+} from '../src/sdk/runtime-policy.js';
 
 interface RecordedQuery {
     prompt: string | unknown;
@@ -404,5 +408,60 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         }), { askBus });
 
         await expect(session.start({ message: 'go' })).rejects.toThrow(/did not resolve within 0ms/);
+    });
+
+    it('does NOT prepend the non-interactive runtime-policy text to the SDK prompt even when sessionOptions carries it (#007)', async () => {
+        // Pre-#004, the legacy Claude CLI driver prepended the
+        // `noninteractive-user-question` policy text in front of the
+        // user's message on first turn to wallpaper the missing live
+        // ask-user transport. Post-#004 the policy infrastructure is
+        // intentionally never consulted on the Claude path — capability
+        // flipped to `'reliable'`, planRuntimePolicies('claude') === [].
+        // #007 locks this in: even if a caller hands the SDK driver an
+        // AgentSessionOptions with `runtimePolicies` populated, the SDK
+        // `query()` must see the bare user message, not a prepend.
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-policy'),
+                makeResultSuccess('sess-policy', 'ok'),
+            ],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus, runtimePolicies: [NONINTERACTIVE_RUNTIME_POLICY] });
+
+        await session.start({ message: 'do the thing' });
+
+        // Bare prompt — no policy text injected.
+        expect(fake.calls[0].prompt).toBe('do the thing');
+        // Defensive: the rendered policy text must not appear anywhere in
+        // the prompt the SDK saw.
+        const renderedPolicy = renderRuntimePolicy(NONINTERACTIVE_RUNTIME_POLICY, { agent: 'claude' });
+        expect(String(fake.calls[0].prompt)).not.toContain(renderedPolicy);
+    });
+
+    it('returns runtimePoliciesApplied as an empty array even when sessionOptions carries policies (#007)', async () => {
+        // Mirrors the projector-level invariant exercised by
+        // tests/claude-sdk-projector.test.ts but at the driver shell so a
+        // future refactor that re-introduces a policy-application path
+        // (e.g. through claude.ts reading sessionOptions.runtimePolicies)
+        // breaks this test before it ships.
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-empty-applied'),
+                makeResultSuccess('sess-empty-applied', 'ok'),
+            ],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus, runtimePolicies: [NONINTERACTIVE_RUNTIME_POLICY] });
+
+        const result = await session.start({ message: 'hi' });
+
+        expect(result.runtimePoliciesApplied).toEqual([]);
     });
 });

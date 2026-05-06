@@ -4,6 +4,10 @@ import path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CursorAgent } from '../src/agents/cursor.js';
 import { CommandResult } from '../src/types.js';
+import {
+  NONINTERACTIVE_RUNTIME_POLICY,
+  renderRuntimePolicy,
+} from '../src/sdk/runtime-policy.js';
 
 function isCursorPromptCommand(cmd: string): boolean {
   return /(?:^|[/"\s])cursor-agent"?\s+-p\b/.test(cmd);
@@ -375,5 +379,61 @@ describe('CursorAgent runTurn', () => {
 
     const out = await agent.run('hi', workspace, mockRunCommand);
     expect(out).toContain('hello from cursor');
+  });
+
+  it('prepends the non-interactive runtime policy to the first-turn prompt and skips it on resumed turns (#007)', async () => {
+    // Cursor's `interactiveQuestionTransport` is `'noninteractive'`, so
+    // `planRuntimePolicies('cursor')` still returns the workaround policy.
+    // #007 deletes the workaround on the *Claude* path; this test locks in
+    // that Cursor's existing behavior is unchanged: the rendered policy
+    // text shows up in the first-turn prompt (verified via the base64-
+    // encoded tempfile write that precedes the `cursor-agent` invocation),
+    // and on a resumed turn (turn 2 with a session id) the policy is NOT
+    // re-prepended — mirrors `appliedRuntimePolicies = sessionId ? [] : ...`
+    // in `cursor.ts`.
+    const agent = new CursorAgent();
+    const commands: string[] = [];
+    let cliCallCount = 0;
+    const mockRunCommand = vi.fn().mockImplementation(async (cmd: string): Promise<CommandResult> => {
+      commands.push(cmd);
+      if (isCursorPromptCommand(cmd)) {
+        cliCallCount++;
+        return {
+          stdout: makeCursorResultNdjson({
+            sessionId: 'sess-policy',
+            result: cliCallCount === 1 ? 'turn1' : 'turn2',
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const session = await agent.createSession(workspace, mockRunCommand, {
+      runtimePolicies: [NONINTERACTIVE_RUNTIME_POLICY],
+    });
+
+    // Turn 1 — first-turn prompt carries the rendered policy.
+    const firstResult = await session.start({ message: 'first user message' });
+    const renderedPolicy = renderRuntimePolicy(NONINTERACTIVE_RUNTIME_POLICY, { agent: 'cursor' });
+    const firstWrite = commands[0]; // base64 prompt write precedes the cursor-agent call
+    const firstB64 = firstWrite.match(/echo '([A-Za-z0-9+/=]+)'/)?.[1];
+    expect(firstB64).toBeDefined();
+    const firstPrompt = Buffer.from(firstB64!, 'base64').toString('utf8');
+    expect(firstPrompt).toContain(renderedPolicy);
+    expect(firstPrompt).toContain('first user message');
+    expect(firstResult.runtimePoliciesApplied).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
+
+    // Turn 2 — resumed session, policy must NOT be re-prepended.
+    const beforeTurn2 = commands.length;
+    const secondResult = await session.reply({ message: 'second user message', continueSession: true });
+    const secondWrite = commands[beforeTurn2]; // first command of turn 2 is the base64 write
+    const secondB64 = secondWrite.match(/echo '([A-Za-z0-9+/=]+)'/)?.[1];
+    expect(secondB64).toBeDefined();
+    const secondPrompt = Buffer.from(secondB64!, 'base64').toString('utf8');
+    expect(secondPrompt).not.toContain(renderedPolicy);
+    expect(secondPrompt).toContain('second user message');
+    expect(secondResult.runtimePoliciesApplied).toEqual([]);
   });
 });
