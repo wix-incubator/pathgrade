@@ -12,12 +12,12 @@ Type: AFK
 
 ## Acceptance criteria
 
-- [ ] A declined ask-user batch returns `{ behavior: "deny", message: "User declined to answer" }` to the SDK.
-- [ ] Ask-bus resolution rejection or timeout returns SDK deny with the error message and causes the conversation runner to report an error completion.
-- [ ] `AskUserUnmatchedSignal` includes `questionTexts: string[]` in addition to batch id and turn number.
-- [ ] Unmatched ask-user completion detail includes the turn number, batch id, and at least the first unmatched question text.
-- [ ] `onUnmatchedAskUser` behavior remains compatible for `error`, `first-option`, and `decline`, including free-text/secret degradation to error where applicable.
-- [ ] Tests cover declined answers, bus timeout/rejection, unmatched structured signal fields, and user-facing completion detail.
+- [x] A declined ask-user batch returns `{ behavior: "deny", message: "User declined to answer" }` to the SDK.
+- [x] Ask-bus resolution rejection or timeout returns SDK deny with the error message and causes the conversation runner to report an error completion.
+- [x] `AskUserUnmatchedSignal` includes `questionTexts: string[]` in addition to batch id and turn number.
+- [x] Unmatched ask-user completion detail includes the turn number, batch id, and at least the first unmatched question text.
+- [x] `onUnmatchedAskUser` behavior remains compatible for `error`, `first-option`, and `decline`, including free-text/secret degradation to error where applicable.
+- [x] Tests cover declined answers, bus timeout/rejection, unmatched structured signal fields, and user-facing completion detail.
 
 ## Blocked by
 

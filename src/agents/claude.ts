@@ -121,7 +121,7 @@ export class ClaudeAgent extends BaseAgent {
         // The store is rebuilt per turn so a question on turn 2 cannot read
         // a stale answer from turn 1 even on toolUseID collisions.
         let answerStore = createAskUserAnswerStore();
-        const canUseTool = createAskUserBridge({
+        const bridge = createAskUserBridge({
             askBus,
             getTurnNumber: () => turnNumber,
             answerStore: { record: (id, e) => answerStore.record(id, e), get: (id) => answerStore.get(id) },
@@ -130,11 +130,14 @@ export class ClaudeAgent extends BaseAgent {
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
             turnNumber += 1;
             answerStore = createAskUserAnswerStore();
+            // #006: clear any ask-bus rejection captured on a prior turn so a
+            // stale error never causes a spurious throw on this turn.
+            bridge.clearLastError();
             if (firstMessage === undefined) firstMessage = message;
             const sdkOptions = buildClaudeSdkOptions({
                 workspacePath,
                 spawnClaudeCodeProcess: sandboxedSpawn,
-                canUseTool,
+                canUseTool: bridge,
                 authEnv: collectAuthEnv(sessionOptions),
                 model: sessionOptions?.model,
                 claudeCodeExecutable,
@@ -147,6 +150,14 @@ export class ClaudeAgent extends BaseAgent {
             for await (const msg of stream as unknown as AsyncIterable<SDKMessage>) {
                 messages.push(msg);
             }
+            // #006: an ask-bus rejection (timeout or first-subscriber throw)
+            // produced an SDK deny mid-turn AND captured the underlying
+            // error on the bridge. Re-throw so `runConversation`'s catch
+            // surfaces `completionReason: 'error'` with the bus message —
+            // otherwise the conversation continues against an SDK that
+            // already gave up on the tool call.
+            const bridgeError = bridge.lastError();
+            if (bridgeError) throw bridgeError;
             const projected = projectSdkMessages({
                 messages,
                 turnNumber,

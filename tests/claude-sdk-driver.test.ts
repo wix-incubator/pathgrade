@@ -352,4 +352,57 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
             source: 'reaction',
         });
     });
+
+    it('throws the ask-bus rejection out of runTurn so runConversation reports completionReason error (#006)', async () => {
+        // No subscriber installed — the bus' 0ms timeout fires when the
+        // bridge awaits resolution. The bridge denies to the SDK with the
+        // error message AND records on `lastError()`; the driver re-throws
+        // after the SDK stream finishes, so the conversation runner's catch
+        // sees an Error with the bus message and emits `error` completion.
+        const askToolUseId = 'toolu-ask-timeout';
+        const askInput = {
+            questions: [
+                { question: 'Pick one?', options: [{ label: 'A' }, { label: 'B' }] },
+            ],
+        };
+        const fakeQuery = (args: { prompt: string | unknown; options?: Options }): Query => {
+            return (async function* () {
+                yield makeInitMessage('sess-timeout');
+                yield {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'tool_use', id: askToolUseId, name: 'AskUserQuestion', input: askInput },
+                        ],
+                    },
+                    parent_tool_use_id: null,
+                    uuid: 'a1',
+                    session_id: 'sess-timeout',
+                } as unknown as SDKMessage;
+                // The SDK still calls canUseTool — the bridge denies once
+                // the timeout fires. We swallow the result here because the
+                // mock SDK has no real tool-call machinery; what matters is
+                // the bridge captures the rejection.
+                await args.options!.canUseTool!(
+                    'AskUserQuestion',
+                    askInput,
+                    {
+                        signal: new AbortController().signal,
+                        suggestions: [],
+                        toolUseID: askToolUseId,
+                    },
+                );
+                yield makeResultSuccess('sess-timeout', 'streamed-result-text');
+            })() as unknown as Query;
+        };
+
+        const agent = new ClaudeAgent({ query: fakeQuery });
+        const askBus = createAskBus({ askUserTimeoutMs: 0 });
+        // No subscriber — the live batch will time out.
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await expect(session.start({ message: 'go' })).rejects.toThrow(/did not resolve within 0ms/);
+    });
 });

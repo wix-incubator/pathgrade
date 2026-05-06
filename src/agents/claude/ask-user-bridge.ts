@@ -1,6 +1,6 @@
 /**
  * Ask-user bridge — `canUseTool` callback expressed as a pure factory over
- * `(askBus, getTurnNumber, answerStore)`. Issue #004.
+ * `(askBus, getTurnNumber, answerStore)`. Issues #004 and #006.
  *
  * Replaces the placeholder deny installed by #001. PRD §Module decomposition
  * spells out the contract; the short version:
@@ -15,12 +15,16 @@
  *     awaits resolution, and returns the SDK's documented `answers` shape
  *     (`{ [questionText]: string }`, multi-select comma-joined per the SDK's
  *     own field comment) on `updatedInput`.
- *
- * Decline / unmatched / bus-rejection deny shapes are #006's slice. Until
- * then a declined `AskAnswer` (`source: 'declined'`) or a bus rejection
- * (`AskBusTimeoutError`) propagates as a thrown driver error or a generic
- * deny — that is the planned interim behavior, not a bug. #004 tests cover
- * only the answered-batch happy path.
+ *   - **Declined resolution → SDK deny.** When every `AskAnswer` carries
+ *     `source: 'declined'` (the `'decline'` fallback path, plus the
+ *     declined-shape any `'error'` unmatched signal produces), the bridge
+ *     surfaces the SDK's `{ behavior: 'deny', message: 'User declined to
+ *     answer' }` instead of `'allow'` with empty answer strings.
+ *   - **Bus rejection → SDK deny + `lastError()`.** A bus timeout (or any
+ *     other rejection) becomes `{ behavior: 'deny', message: err.message }`
+ *     to the SDK *and* is captured on `lastError()` so the driver can
+ *     re-throw after the SDK stream ends. The conversation runner's catch
+ *     reports `completionReason: 'error'` with the same message.
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
@@ -42,6 +46,26 @@ export interface AskUserBridgeDeps {
     answerStore: AskUserAnswerStore;
 }
 
+/**
+ * The bridge is a callable `CanUseTool` with two side accessors used by the
+ * driver to bubble bus rejections out of the turn loop:
+ *
+ *   - `lastError()` returns the most recent ask-bus rejection captured by
+ *     this bridge instance, or null. The driver checks it after the SDK
+ *     stream ends; a non-null value gets thrown so `runConversation` reports
+ *     `completionReason: 'error'` with the bus error message.
+ *   - `clearLastError()` resets the field — called at the top of each turn
+ *     so a stale error from a prior turn never triggers a spurious throw.
+ *
+ * Issue #006. Encoded as attached function properties so #004's existing
+ * call sites (`const canUseTool = createAskUserBridge(...); canUseTool(...)`)
+ * keep working unchanged.
+ */
+export type AskUserBridge = CanUseTool & {
+    lastError(): Error | null;
+    clearLastError(): void;
+};
+
 /** Subset of `AskUserQuestionInput` the bridge consumes. Lifted from
  * `node_modules/@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts:566` (the SDK
  * exposes a heavily-tupled literal type — we read structurally to keep the
@@ -57,10 +81,11 @@ interface ClaudeAskInput {
     questions?: ReadonlyArray<ClaudeAskQuestion>;
 }
 
-export function createAskUserBridge(deps: AskUserBridgeDeps): CanUseTool {
+export function createAskUserBridge(deps: AskUserBridgeDeps): AskUserBridge {
     const { askBus, getTurnNumber, answerStore } = deps;
+    let lastError: Error | null = null;
 
-    return async (toolName, input, options) => {
+    const canUseTool: CanUseTool = async (toolName, input, options) => {
         if (toolName !== 'AskUserQuestion') {
             return { behavior: 'allow', updatedInput: input };
         }
@@ -72,7 +97,19 @@ export function createAskUserBridge(deps: AskUserBridgeDeps): CanUseTool {
             options.toolUseID,
         );
         const handle = askBus.emit(batch);
-        const resolution = await handle.resolution;
+        let resolution: Awaited<typeof handle.resolution>;
+        try {
+            resolution = await handle.resolution;
+        } catch (err) {
+            // #006: ask-bus timeouts and other rejections deny the SDK with
+            // the underlying error message AND surface on `lastError()` so
+            // the driver re-throws after the turn ends. The conversation
+            // runner's catch reports `completionReason: 'error'` with the
+            // same message — no half-state where the SDK keeps running on
+            // a tool refusal that the runner never noticed.
+            lastError = err instanceof Error ? err : new Error(String(err));
+            return { behavior: 'deny', message: lastError.message };
+        }
         // Live batches always settle (either to a resolution or a rejection).
         // A null resolution means a 'post-hoc' batch — impossible here since
         // we just emitted lifecycle: 'live'. Throw if the bus contract is
@@ -87,12 +124,29 @@ export function createAskUserBridge(deps: AskUserBridgeDeps): CanUseTool {
         const source = pickAnswerSource(resolution.answers);
         answerStore.record(options.toolUseID, { answers, source });
 
+        // #006: a fully-declined resolution (every answer `source: 'declined'`)
+        // surfaces as the SDK's documented `deny` shape. Returning an `allow`
+        // with empty `answers` strings would make Claude believe the user
+        // typed empty answers — strictly worse than telling the SDK the
+        // tool call was refused. Mixed-disposition resolutions (e.g. one
+        // declined among reactions) still allow with whatever `answers`
+        // the bus yielded, since at least one question carries a real value.
+        if (resolution.answers.length > 0
+            && resolution.answers.every((a) => a.source === 'declined')) {
+            return { behavior: 'deny', message: 'User declined to answer' };
+        }
+
         const allow: PermissionResult = {
             behavior: 'allow',
             updatedInput: { ...(input as Record<string, unknown>), answers },
         };
         return allow;
     };
+
+    const bridge = canUseTool as AskUserBridge;
+    bridge.lastError = () => lastError;
+    bridge.clearLastError = () => { lastError = null; };
+    return bridge;
 }
 
 /**

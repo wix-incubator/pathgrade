@@ -27,6 +27,7 @@ import { inspectReactions } from './reaction-preview.js';
 import { getVisibleAssistantMessage, normalizeTurnResult } from './visible-turn.js';
 import type { VerboseEmitter } from '../reporters/verbose-emitter.js';
 import type { AskBus } from './ask-bus/types.js';
+import { AskBusTimeoutError } from './ask-bus/bus.js';
 import { createAskUserHandler } from './ask-bus/handler.js';
 import { AgentCrashError } from './agent-crash.js';
 import type { ToolEvent } from '../tool-events.js';
@@ -97,10 +98,16 @@ export async function runConversation(
         if (!askUserHandlerApi) return null;
         const err = askUserHandlerApi.getUnmatchedError();
         if (!err) return null;
-        return buildResult(
-            'error',
-            `unmatched ask_user on turn ${err.turnNumber}: ${err.batchId}`,
-        );
+        // #006: include the first question text so the surfaced detail
+        // names *what* the agent asked, not just that some batch on some
+        // turn failed. Multi-question batches list only the first to keep
+        // detail strings bounded — full list ships on the structured
+        // signal for any tooling that needs it.
+        const firstText = err.questionTexts[0];
+        const detail = firstText
+            ? `unmatched ask_user on turn ${err.turnNumber}: ${err.batchId}: ${firstText}`
+            : `unmatched ask_user on turn ${err.turnNumber}: ${err.batchId}`;
+        return buildResult('error', detail);
     };
 
     const MAX_TURN_RETRIES = 2;
@@ -273,6 +280,11 @@ export async function runConversation(
                 // Subprocess crashes bypass retries regardless of transport —
                 // the error itself is the signal that replay is unsafe.
                 if (err instanceof AgentCrashError) throw err;
+                // #006: ask-bus rejections (no subscriber, slow subscriber)
+                // do not recover on retry — retrying just burns the retry
+                // window before the same `error` completion. Surface the
+                // bus error immediately.
+                if (err instanceof AskBusTimeoutError) throw err;
                 if (attempt < maxRetries) {
                     deps.log.push({
                         type: 'agent_result',

@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createAskBus } from '../src/sdk/ask-bus/bus.js';
+import { AskBusTimeoutError, createAskBus } from '../src/sdk/ask-bus/bus.js';
 import { createAskUserBridge } from '../src/agents/claude/ask-user-bridge.js';
 import { createAskUserAnswerStore } from '../src/agents/claude/ask-user-answer-store.js';
 import type { AskBatch } from '../src/sdk/ask-bus/types.js';
@@ -197,5 +197,102 @@ describe('ask-user-bridge canUseTool', () => {
         if (result.behavior !== 'allow') return;
         const updated = result.updatedInput as { answers: Record<string, string> };
         expect(updated.answers).toEqual({ 'Which channels?': 'Email,Slack,SMS' });
+    });
+});
+
+describe('ask-user-bridge canUseTool — #006 declined / bus-rejection denies', () => {
+    it('returns SDK deny when every question resolves with source: "declined" (User Story #29)', async () => {
+        // The `decline` fallback path (and the explicit declined `'error'`
+        // path that ends the turn) both surface every answer with empty
+        // values + `source: 'declined'`. Translating that to a bare allow
+        // with empty `answers` would make Claude believe the user had
+        // answered with empty strings; the SDK's documented `deny`
+        // behavior is the right shape. PRD §AskUserQuestion bridge.
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        bus.onAsk((batch, respond) => {
+            respond({
+                answers: batch.questions.map((q) => ({
+                    questionId: q.id,
+                    values: [],
+                    source: 'declined' as const,
+                })),
+            });
+        });
+        const canUseTool = createAskUserBridge({
+            askBus: bus,
+            getTurnNumber: () => 1,
+            answerStore: createAskUserAnswerStore(),
+        });
+        const input = {
+            questions: [
+                {
+                    question: 'Which database should we use?',
+                    options: [{ label: 'SQLite' }, { label: 'Postgres' }],
+                    multiSelect: false,
+                },
+            ],
+        };
+        const result = await canUseTool('AskUserQuestion', input, PERMISSION_CTX);
+        expect(result).toEqual({ behavior: 'deny', message: 'User declined to answer' });
+    });
+
+    it('returns SDK deny with the bus error message when the live batch times out', async () => {
+        // Use a 0ms timeout so the bus rejects on the next tick even with no
+        // subscriber installed. The bridge translates the rejection into the
+        // SDK's `deny` shape (so the model sees a refusal) AND records the
+        // error on the bridge's `lastError()` accessor so the driver can
+        // throw it after the turn ends — that's how the conversation runner
+        // sees `completionReason: 'error'`. PRD §AskUserQuestion bridge.
+        const bus = createAskBus({ askUserTimeoutMs: 0 });
+        const bridge = createAskUserBridge({
+            askBus: bus,
+            getTurnNumber: () => 1,
+            answerStore: createAskUserAnswerStore(),
+        });
+        const result = await bridge(
+            'AskUserQuestion',
+            { questions: [{ question: 'q?', options: [{ label: 'x' }] }] },
+            { ...PERMISSION_CTX, toolUseID: 'tu-timeout' },
+        );
+        expect(result.behavior).toBe('deny');
+        if (result.behavior !== 'deny') return;
+        expect(result.message).toMatch(/did not resolve within 0ms/);
+        const captured = bridge.lastError();
+        expect(captured).toBeInstanceOf(AskBusTimeoutError);
+        expect((captured as AskBusTimeoutError).batchId).toBe('tu-timeout');
+        expect((captured as AskBusTimeoutError).turnNumber).toBe(1);
+    });
+
+    it('still records the declined answer source on the per-turn store so the projector can stamp it', async () => {
+        // Even on a deny, the projector still sees the AskUserQuestion
+        // tool_use block in the assistant message and stamps an envelope.
+        // The bridge writes `source: 'declined'` into the store so the
+        // projector can pick the same source instead of the default
+        // `'unknown'` boundary stamp.
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        bus.onAsk((batch, respond) => {
+            respond({
+                answers: batch.questions.map((q) => ({
+                    questionId: q.id,
+                    values: [],
+                    source: 'declined' as const,
+                })),
+            });
+        });
+        const store = createAskUserAnswerStore();
+        const canUseTool = createAskUserBridge({
+            askBus: bus,
+            getTurnNumber: () => 1,
+            answerStore: store,
+        });
+        await canUseTool(
+            'AskUserQuestion',
+            { questions: [{ question: 'q?', options: [{ label: 'x' }] }] },
+            { ...PERMISSION_CTX, toolUseID: 'tu-decline' },
+        );
+        expect(store.get('tu-decline')).toEqual({
+            answers: { 'q?': '' },
+            source: 'declined',
+        });
     });
 });

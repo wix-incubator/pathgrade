@@ -23,6 +23,14 @@ export interface AskUserHandlerContext {
 export interface AskUserUnmatchedSignal {
     batchId: string;
     turnNumber: number;
+    /**
+     * The question text(s) on the live batch that triggered the unmatched
+     * signal — populated whether the trigger is `'error'` outright or a
+     * `'first-option'` degradation (free-text / isSecret). Consumers compose
+     * the user-facing completion detail from at least the first entry.
+     * Issue #006 / User Story #8.
+     */
+    questionTexts: string[];
 }
 
 export interface AskUserHandlerApi {
@@ -267,10 +275,18 @@ export function createAskUserHandler(ctx: AskUserHandlerContext): AskUserHandler
         respond(resolution);
 
         if (anyUnmatched && ctx.onUnmatchedAskUser === 'error') {
-            unmatchedError = { batchId: batch.batchId, turnNumber: batch.turnNumber };
+            unmatchedError = {
+                batchId: batch.batchId,
+                turnNumber: batch.turnNumber,
+                questionTexts: batch.questions.map((q) => q.question),
+            };
         } else if (anyUnmatched && ctx.onUnmatchedAskUser === 'first-option') {
             // 'first-option' falls through to 'error' when no options / isSecret.
-            unmatchedError = { batchId: batch.batchId, turnNumber: batch.turnNumber };
+            unmatchedError = {
+                batchId: batch.batchId,
+                turnNumber: batch.turnNumber,
+                questionTexts: batch.questions.map((q) => q.question),
+            };
         }
     };
 
