@@ -418,6 +418,7 @@ The default `createSession()` wraps `run()` into a simple session for backwards 
 interface AgentSession {
     start(input: AgentTurnInput): Promise<AgentTurnResult>;
     reply(input: AgentTurnInput): Promise<AgentTurnResult>;
+    dispose?(): Promise<void>;
 }
 
 interface AgentTurnInput {
@@ -429,51 +430,75 @@ interface AgentTurnResult {
     rawOutput: string;
     assistantMessage: string;
     visibleAssistantMessage: string;
-    visibleAssistantMessageSource: 'assistant_message' | 'blocked_prompt';
+    visibleAssistantMessageSource: 'assistant_message';
     exitCode: number;
     traceOutput?: string;
     timedOut?: boolean;
-    blockedPrompts: BlockedInteractivePrompt[];
     toolEvents: ToolEvent[];
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+    costUsd?: number;
+    errorSubtype?:
+        | 'error_during_execution'
+        | 'error_max_turns'
+        | 'error_max_budget_usd'
+        | 'error_max_structured_output_retries';
+    runtimePoliciesApplied?: string[];
+    crashInfo?: { pid?: number; signal?: NodeJS.Signals | null; exitCode?: number | null };
 }
 ```
 
 - `start()`: First turn -- initializes a new agent session
 - `reply()`: Subsequent turns -- continues an existing session
+- `dispose()`: Optional teardown for sessions backed by long-lived transports / subprocesses
 - `traceOutput`: Raw trace data for tool event extraction (separate from cleaned output)
+- `inputTokens` is the totalized pathgrade input-token volume (uncached + cache-creation + cache-read). The optional `cacheCreationInputTokens` / `cacheReadInputTokens` fields are additive breakdowns and only populated by drivers whose providers expose them (Claude SDK today; Codex / Cursor leave them undefined).
+- `costUsd` is the per-turn cost when the upstream provider reports it (Claude SDK populates from `total_cost_usd`).
+- `errorSubtype` carries the typed Claude Agent SDK `SDKResultError` subtype on error turns (success turns leave it undefined).
+- The deprecated `blockedPrompts` field and the `'blocked_prompt'` value of `visibleAssistantMessageSource` were removed in the Claude SDK driver migration; the synthesis-by-denial code path no longer exists.
 
 ### 5.3 Agent Implementations
 
 #### ClaudeAgent (`src/agents/claude.ts`)
 
-- **CLI**: `claude -p --output-format stream-json --verbose --dangerously-skip-permissions`
-- **Session**: Native session resume via `--resume <session_id>`
-- **Trace format**: NDJSON stream with typed lines (`type: 'result'`, `type: 'assistant'` with tool_use blocks)
-- **MCP**: Supports `--mcp-config` flag
-- **Instruction delivery**: Base64-encoded temp file to avoid shell escaping issues with long prompts
-- **Error handling**: Detects API errors via pattern matching, parses denied `AskUserQuestion` calls into structured blocked prompts, and preserves hidden completion text separately from the visible prompt
+The Claude driver runs on `@anthropic-ai/claude-agent-sdk`. The driver class is orchestration over five deep modules:
 
-Key parsing methods:
-- `parseStreamJson()`: Extracts result text, session_id, blocked prompts, and visible-turn metadata from NDJSON
-- `sanitizeSessionId()`: Prevents injection via session_id
-- `extractBlockedPrompts()`: Converts denied interactive prompts into ordered structured prompt objects
-- `reconstructFromGenericDenial()`: Extracts text-like fields from any denied tool input
+| Module | Location | Responsibility |
+|--------|----------|----------------|
+| Sandboxed-Claude-spawn | `src/providers/sandboxed-claude-spawn.ts` | `Options.spawnClaudeCodeProcess` adapter; on macOS wraps argv with `sandbox-exec`, intersects env with `SAFE_HOST_VARS` and layers SDK-supplied env on top. |
+| MCP-config loader | `src/providers/mcp-config.ts` (`loadMcpServersForSdk`) | Reads pathgrade's MCP config JSON into the SDK's `Options.mcpServers` object. |
+| SDK-options builder | `src/agents/claude/sdk-options.ts` | Pure builder for per-turn `Options`: `permissionMode: 'default'`, `systemPrompt: { type: 'preset', preset: 'claude_code' }`, `settingSources: ['project']`, `cwd`, `model`, `mcpServers`, `canUseTool`, `spawnClaudeCodeProcess`, `pathToClaudeCodeExecutable`, `resume`, and a per-trial `CLAUDE_CONFIG_DIR` in `Options.env`. |
+| Ask-user bridge | `src/agents/claude/ask-user-bridge.ts` (+ `ask-user-answer-store.ts`) | Live `canUseTool` callback. Auto-allows non-`AskUserQuestion` tools. For `AskUserQuestion`, builds a live `AskBatch` from the SDK's typed input, emits to the per-conversation `AskBus`, awaits resolution, and returns the SDK's documented `{ behavior: 'allow', updatedInput: { ...input, answers } }` shape (or `{ behavior: 'deny', message }` on decline / bus rejection). The per-turn answer store carries reaction / fallback / declined source onto the `AskUserQuestion` ToolEvent envelope through the projector. |
+| SDK-message projector | `src/agents/claude/sdk-message-projector.ts` | Pure typed-message-stream → `AgentTurnResult` projector. Accumulates assistant text, tool events (with `Skill` / SKILL.md enrichment and slash-command synthetic `use_skill`), totalized `inputTokens` plus `cacheCreationInputTokens` / `cacheReadInputTokens` breakdown, `costUsd` from `total_cost_usd`, and typed `errorSubtype` on `SDKResultError`. `runtimePoliciesApplied` is always `[]` — the noninteractive runtime-policy workaround does not apply to Claude post-migration. |
 
-#### CodexAgent (`src/agents/codex.ts`)
+- **Session**: Native session resume via the SDK's `resume` option, set on every turn after the first using the prior turn's `session_id`.
+- **MCP**: `Options.mcpServers` populated from the same MCP config JSON pathgrade writes for the on-disk fixture path.
+- **Auth**: `resolveCredentials()` produces the env subset Pathgrade forwards into `Options.env`. The allowlist covers `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`, AWS / Bedrock surfaces, Google / Vertex surfaces, and Azure / Foundry surfaces. The sandbox env filter still strips ambient host vars not on `SAFE_HOST_VARS`.
+- **Capabilities**: `claude.interactiveQuestionTransport === 'reliable'`. `planRuntimePolicies('claude')` returns `[]` (the noninteractive runtime policy is preserved for Codex `exec` and Cursor only).
+- **Binary resolution**: SDK's bundled per-platform `claude` binary by default; overridable via `AgentOptions.claudeCodeExecutable` then `PATHGRADE_CLAUDE_CODE_EXECUTABLE`.
 
-- **Base class**: `TranscriptAgent` (`src/agents/transcript-agent.ts`)
-- **CLI**: `codex exec --full-auto --skip-git-repo-check`
-- **Session**: Stateless -- full transcript is re-injected each turn via `TranscriptAgent`
-- **Auth**: Delegated to `src/providers/credentials.ts` — seeds API-key auth via `codex login --with-api-key` when `OPENAI_API_KEY` is available, or reuses a host `~/.codex/auth.json` cache for Codex when present
-- **Trace format**: stdout/stderr parsed for `tool:` lines, exec summary patterns, file update blocks
+#### CodexAgent (`src/agents/codex.ts`) and CodexAppServerAgent (`src/agents/codex-app-server/`)
+
+- **CLI** (`exec` transport): `codex exec --full-auto --skip-git-repo-check`. Stateless — full transcript re-injected each turn via `TranscriptAgent`.
+- **App-server transport** (default): `codex app-server` keeps native thread state and supports the real `request_user_input` ask-user handshake.
+- **Auth**: Delegated to `src/providers/credentials.ts` — seeds API-key auth via `codex login --with-api-key` when `OPENAI_API_KEY` is available, or reuses a host `~/.codex/auth.json` cache when present (under `exec` transport).
+- **Trace format**: stdout/stderr parsed for `tool:` lines, exec summary patterns, file update blocks (under `exec`); typed app-server events under `app-server`.
+
+#### CursorAgent (`src/agents/cursor.ts`)
+
+- **CLI**: `cursor-agent` invoked with the prepended noninteractive-user-question runtime policy on first turn (capability tier `'noninteractive'`).
+- **Auth**: forwards `CURSOR_API_KEY`; on macOS reuses Keychain OAuth tokens.
+- **Trace format**: stdout parsed for tool / file-update markers.
 
 #### TranscriptAgent (`src/agents/transcript-agent.ts`)
 
-Base class for agents without native session persistence. Each turn:
-1. Appends the new user message to an in-memory transcript
-2. Builds a prompt containing all previous turns plus a continuation instruction
-3. Calls `runTurn()` (implemented by subclass)
-4. Appends the assistant response to the transcript
+Base class for agents without native session persistence (used by the Codex `exec` transport). Each turn:
+1. Appends the new user message to an in-memory transcript.
+2. Builds a prompt containing all previous turns plus a continuation instruction.
+3. Calls `runTurn()` (implemented by subclass).
+4. Appends the assistant response to the transcript.
 
 Prompt files are written to `$TMPDIR` with a UUID filename to avoid collisions.
 
@@ -485,9 +510,9 @@ Prompt files are written to `$TMPDIR` with a UUID filename to avoid collisions.
 function createAgentEnvironment(name: AgentName): BaseAgent
 ```
 
-Maps `'claude'` to `ClaudeAgent` and `'codex'` to `CodexAgent`. Throws on unknown names. Also exports `getAgentNames()` for listing available agents.
+Maps `'claude'` to `ClaudeAgent`, `'codex'` to `CodexAgent` (or `CodexAppServerAgent` based on resolved transport), and `'cursor'` to `CursorAgent`. Throws on unknown names. Also exports `getAgentNames()` for listing available agents.
 
-`AgentName` is the union type `'claude' | 'codex'`.
+`AgentName` is the union type `'claude' | 'codex' | 'cursor'`.
 
 ## 6. Workspace Isolation
 
