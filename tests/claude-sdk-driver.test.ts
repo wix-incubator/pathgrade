@@ -108,6 +108,21 @@ function makeResultSuccess(sessionId: string, text: string): SDKMessage {
 }
 
 describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
+    it('fails fast when no askBus is supplied (live batches require a real subscriber)', async () => {
+        // The SDK driver emits `lifecycle: 'live'` ask-user batches via the
+        // canUseTool callback (#004). Silently resolving to `null` or an empty
+        // answer map would send an empty answer back to Claude on the wire,
+        // which is a worse failure mode than refusing to start. Match the
+        // shared `requireAskBusForLiveBatches` contract.
+        const fake = makeFakeQuery([[]]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        await expect(
+            agent.createSession('/tmp/workspace', async () => ({
+                stdout: '', stderr: '', exitCode: 0,
+            })),
+        ).rejects.toThrow(/askBus/);
+    });
+
     it('runs turn 1 through SDK query() with no resume option', async () => {
         const fake = makeFakeQuery([
             [
@@ -222,36 +237,119 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         expect(Array.isArray(result.blockedPrompts)).toBe(true);
     });
 
-    it('routes AskUserQuestion through the placeholder deny while #004 is unimplemented', async () => {
-        // Capture the canUseTool the driver installed and exercise it directly;
-        // this guards the interim-state contract noted on issue #001.
-        const fake = makeFakeQuery([
-            [makeInitMessage('s'), makeResultSuccess('s', 'ok')],
-        ]);
-        const agent = new ClaudeAgent({ query: fake.query });
+    it('routes AskUserQuestion through the live ask-user bridge (#004)', async () => {
+        // Drives a single mocked SDK turn where Claude emits an AskUserQuestion
+        // tool_use, the bridge resolves it through a reaction-style ask-bus
+        // subscriber, and the assistant continues the same turn with text
+        // that consumed the chosen branch. The result must surface:
+        //   - assistantMessage built from the typed `result` text;
+        //   - one ToolEvent for AskUserQuestion whose arguments carry both
+        //     the structured input AND the bridge-supplied `answers` +
+        //     `answerSource: 'reaction'`.
+        const askInput = {
+            questions: [
+                {
+                    question: 'Which database should we use?',
+                    header: 'Database',
+                    multiSelect: false,
+                    options: [
+                        { label: 'SQLite', description: 'Local file' },
+                        { label: 'Postgres', description: 'Server' },
+                    ],
+                },
+            ],
+        };
+
+        // Custom fake query for this case: between the AskUserQuestion
+        // tool_use message and the follow-up assistant text, the fake invokes
+        // the real driver-installed `canUseTool` exactly the way the SDK
+        // does — passing the same `toolUseID` that's on the tool_use block.
+        // That's the real production handshake, not a side-channel call.
+        let updatedInputSeenBySdk: Record<string, unknown> | undefined;
+        const askToolUseId = 'toolu-ask-1';
+        const fakeQuery = (args: { prompt: string | unknown; options?: Options }): Query => {
+            return (async function* () {
+                yield makeInitMessage('sess-ask');
+                yield {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'tool_use', id: askToolUseId, name: 'AskUserQuestion', input: askInput },
+                        ],
+                    },
+                    parent_tool_use_id: null,
+                    uuid: 'a1',
+                    session_id: 'sess-ask',
+                } as unknown as SDKMessage;
+                // SDK calls canUseTool synchronously after the tool_use block
+                // is parsed; the bridge resolves through the bus and returns
+                // an `allow` with the SDK's documented `answers` shape on
+                // `updatedInput`. The mocked SDK accepts that and continues.
+                const result = await args.options!.canUseTool!(
+                    'AskUserQuestion',
+                    askInput,
+                    {
+                        signal: new AbortController().signal,
+                        suggestions: [],
+                        toolUseID: askToolUseId,
+                    },
+                );
+                if (result.behavior === 'allow') {
+                    updatedInputSeenBySdk = result.updatedInput;
+                }
+                yield makeAssistantMessage('Going with SQLite.', 'sess-ask');
+                yield makeResultSuccess('sess-ask', 'Going with SQLite.');
+            })() as unknown as Query;
+        };
+
+        const agent = new ClaudeAgent({ query: fakeQuery });
         const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        // Reaction-style subscriber — answers from the option list directly,
+        // the same shape `createAskUserHandler` produces in production.
+        askBus.onAsk((batch, respond) => {
+            respond({
+                answers: [
+                    { questionId: batch.questions[0].id, values: ['SQLite'], source: 'reaction' },
+                ],
+            });
+        });
+
         const session = await agent.createSession('/tmp/workspace', async () => ({
             stdout: '', stderr: '', exitCode: 0,
         }), { askBus });
 
-        await session.start({ message: 'hi' });
+        // Drive the turn — exercising the real canUseTool the driver wired up.
+        const result = await session.start({ message: 'pick a db' });
 
-        const canUseTool = fake.calls[0].options!.canUseTool!;
-        const askResult = await canUseTool('AskUserQuestion', { questions: [] }, {
-            signal: new AbortController().signal,
-            suggestions: [],
-            toolUseID: 'test',
+        // The SDK saw the bridge-supplied answers on `updatedInput`.
+        expect(updatedInputSeenBySdk).toBeDefined();
+        expect((updatedInputSeenBySdk as { answers: Record<string, string> }).answers).toEqual({
+            'Which database should we use?': 'SQLite',
         });
-        expect(askResult.behavior).toBe('deny');
-        if (askResult.behavior === 'deny') {
-            expect(askResult.message).toMatch(/#004/);
-        }
 
-        const bashResult = await canUseTool('Bash', { command: 'ls' }, {
-            signal: new AbortController().signal,
-            suggestions: [],
-            toolUseID: 'test',
+        // Assistant continued in the same turn with the chosen branch.
+        expect(result.assistantMessage).toBe('Going with SQLite.');
+        expect(result.exitCode).toBe(0);
+
+        // Tool event surfaces the live ask-user round-trip with answer source.
+        const askEvent = result.toolEvents.find((e) => e.providerToolName === 'AskUserQuestion');
+        expect(askEvent).toBeDefined();
+        expect(askEvent!.action).toBe('ask_user');
+        expect(askEvent!.arguments).toMatchObject({
+            answers: { 'Which database should we use?': 'SQLite' },
+            answerSource: 'reaction',
         });
-        expect(bashResult.behavior).toBe('allow');
+        expect(askEvent!.arguments?.questions).toEqual(askInput.questions);
+
+        // Bus snapshot has the resolved batch (post-resolution snapshot view).
+        const snapshot = askBus.snapshot();
+        expect(snapshot).toHaveLength(1);
+        expect(snapshot[0].source).toBe('claude');
+        expect(snapshot[0].sourceTool).toBe('AskUserQuestion');
+        expect(snapshot[0].lifecycle).toBe('live');
+        expect(snapshot[0].resolution?.answers[0]).toMatchObject({
+            values: ['SQLite'],
+            source: 'reaction',
+        });
     });
 });

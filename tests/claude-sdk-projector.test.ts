@@ -21,6 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { projectSdkMessages } from '../src/agents/claude/sdk-message-projector.js';
+import { createAskUserAnswerStore } from '../src/agents/claude/ask-user-answer-store.js';
 
 // --- typed-message fixtures (kept terse; cast through `unknown` for the
 // fields the SDK requires that aren't relevant to what each test asserts).
@@ -532,6 +533,32 @@ describe('projectSdkMessages — AskUserQuestion projection (boundary with #004)
         // No legacy answer fields anywhere (the #004 bridge will add them).
         expect(JSON.stringify(args)).not.toMatch(/"reaction"|"fallback"|"declined"/);
         expect(args).not.toHaveProperty('answers');
+    });
+
+    it('merges bridge-supplied answers + answerSource onto the ask_user envelope when supplied', () => {
+        // #004: the live ask-user bridge resolves the AskUserQuestion through
+        // the bus and writes the SDK-shape `answers` map plus the source tag
+        // into a per-turn `AskUserAnswerStore` keyed by `toolUseID`. The
+        // projector consumes that store while building the ToolEvent so the
+        // resulting envelope carries the supplied answers and the
+        // `'reaction' | 'fallback' | 'declined'` source instead of the
+        // pre-bridge `answerSource: 'unknown'` boundary stamp.
+        const answerStore = createAskUserAnswerStore();
+        answerStore.record('toolu-AskUserQuestion', {
+            answers: { 'Which package manager?': 'yarn' },
+            source: 'reaction',
+        });
+        const projected = projectSdkMessages({
+            messages: [assistantToolUse('AskUserQuestion', askInput)],
+            answerStore,
+        });
+        const args = projected.result.toolEvents[0].arguments;
+        expect(args).toMatchObject({
+            answers: { 'Which package manager?': 'yarn' },
+            answerSource: 'reaction',
+        });
+        // Structured input still preserved alongside the answer fields.
+        expect(args?.questions).toEqual(askInput.questions);
     });
 
     it('preserves multiSelect/header/options on each question (snapshot-stable shape)', () => {

@@ -413,7 +413,7 @@ export interface AgentCapabilities {
 export type AgentTransport = 'exec' | 'app-server';
 
 const BASE_CAPABILITIES: Record<AgentName, AgentCapabilities> = {
-    claude: { mcp: true, nativeSession: true, interactiveQuestionTransport: 'noninteractive' },
+    claude: { mcp: true, nativeSession: true, interactiveQuestionTransport: 'reliable' },
     codex: { mcp: false, nativeSession: true, interactiveQuestionTransport: 'noninteractive' },
     cursor: { mcp: true, nativeSession: true, interactiveQuestionTransport: 'noninteractive' },
 };

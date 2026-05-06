@@ -11,11 +11,13 @@
  *   - `loadMcpServersForSdk`      — reads pathgrade's MCP config JSON into
  *                                   the SDK's `Options.mcpServers` shape.
  *   - `buildClaudeSdkOptions`     — pure builder for the per-turn `Options`.
- *   - `placeholderCanUseTool`     — interim `canUseTool` that auto-allows
- *                                   non-`AskUserQuestion` tools and denies
- *                                   `AskUserQuestion` with a self-explanatory
- *                                   message until issue #004 lands the live
- *                                   ask-user bridge.
+ *   - `createAskUserBridge`       — live `canUseTool` (issue #004) that
+ *                                   auto-allows non-`AskUserQuestion` tools
+ *                                   and resolves `AskUserQuestion` through
+ *                                   the ask-bus, returning the SDK's
+ *                                   documented `answers` map shape on
+ *                                   `updatedInput`. Per-turn answer store
+ *                                   feeds the projector.
  *   - `projectSdkMessages`        — pure typed-message → `AgentTurnResult`
  *                                   projector (issue #002). Replaces the
  *                                   legacy NDJSON parser wholesale.
@@ -42,8 +44,10 @@ import {
     buildClaudeSdkOptions,
     resolveClaudeCodeExecutable,
 } from './claude/sdk-options.js';
-import { createPlaceholderCanUseTool } from './claude/can-use-tool-placeholder.js';
 import { projectSdkMessages } from './claude/sdk-message-projector.js';
+import { createAskUserBridge } from './claude/ask-user-bridge.js';
+import { createAskUserAnswerStore } from './claude/ask-user-answer-store.js';
+import { requireAskBusForLiveBatches } from '../sdk/ask-bus/bus.js';
 
 /** Shape of the SDK `query()` callable, narrowed for orchestration use. */
 export type ClaudeSdkQueryFn = (args: {
@@ -86,6 +90,10 @@ export class ClaudeAgent extends BaseAgent {
         _runCommand: AgentCommandRunner,
         sessionOptions?: AgentSessionOptions,
     ): Promise<AgentSession> {
+        // Live ask-user batches require a real subscriber. Fail fast at session
+        // construction rather than silently sending an empty answer back to
+        // Claude on the wire when the bus is missing. PRD §Module decomposition.
+        const askBus = requireAskBusForLiveBatches(sessionOptions, 'ClaudeSdkAgent');
         const workspacePath = getWorkspacePath(runtime);
         const queryFn: ClaudeSdkQueryFn = this.deps.query ?? (sdkQuery as unknown as ClaudeSdkQueryFn);
         const platform = this.deps.platform ?? process.platform;
@@ -97,7 +105,6 @@ export class ClaudeAgent extends BaseAgent {
             hostEnv,
             sandboxProfile: this.deps.sandboxProfile,
         });
-        const canUseTool = createPlaceholderCanUseTool();
         const claudeCodeExecutable = resolveClaudeCodeExecutable({
             agentOptionsExecutable: this.opts.claudeCodeExecutable,
             envExecutable,
@@ -107,9 +114,22 @@ export class ClaudeAgent extends BaseAgent {
         let priorSessionId: string | undefined;
         let turnNumber = 0;
         let firstMessage: string | undefined;
+        // The live ask-user bridge replaces the #001 placeholder canUseTool.
+        // The bridge resolves AskUserQuestion through the bus and writes the
+        // resulting answers + source into the per-turn answer store; the
+        // projector merges those onto the AskUserQuestion ToolEvent envelope.
+        // The store is rebuilt per turn so a question on turn 2 cannot read
+        // a stale answer from turn 1 even on toolUseID collisions.
+        let answerStore = createAskUserAnswerStore();
+        const canUseTool = createAskUserBridge({
+            askBus,
+            getTurnNumber: () => turnNumber,
+            answerStore: { record: (id, e) => answerStore.record(id, e), get: (id) => answerStore.get(id) },
+        });
 
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
             turnNumber += 1;
+            answerStore = createAskUserAnswerStore();
             if (firstMessage === undefined) firstMessage = message;
             const sdkOptions = buildClaudeSdkOptions({
                 workspacePath,
@@ -131,6 +151,7 @@ export class ClaudeAgent extends BaseAgent {
                 messages,
                 turnNumber,
                 firstMessage,
+                answerStore,
             });
             if (projected.sessionId) priorSessionId = projected.sessionId;
             return projected.result;

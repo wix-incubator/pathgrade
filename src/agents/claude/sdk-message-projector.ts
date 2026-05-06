@@ -23,6 +23,7 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentTurnResult } from '../../types.js';
 import type { ToolEvent } from '../../tool-events.js';
 import { TOOL_NAME_MAP, buildSummary, enrichSkillEvents } from '../../tool-events.js';
+import type { AskUserAnswerStore } from './ask-user-answer-store.js';
 
 export interface ProjectTurnInput {
     /** Buffered typed-message stream from one `query()` call. */
@@ -31,6 +32,15 @@ export interface ProjectTurnInput {
     turnNumber?: number;
     /** First user message of the turn — used for slash-command skill detection. */
     firstMessage?: string;
+    /**
+     * Optional per-turn answer store written by the ask-user-bridge (#004).
+     * When present, the projector merges `answers` + `answerSource` from the
+     * store onto each `AskUserQuestion` ToolEvent envelope using the SDK's
+     * `toolUseID` (the tool-use block `id`) as the join key. When absent or
+     * empty for a given `toolUseID`, the projector keeps the boundary stamp
+     * `answerSource: 'unknown'` it stamped before the bridge existed.
+     */
+    answerStore?: AskUserAnswerStore;
 }
 
 export interface ProjectedTurn {
@@ -71,7 +81,7 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
                         continue;
                     }
                     if (block.type === 'tool_use') {
-                        toolEvents.push(buildToolEvent(block, input.turnNumber));
+                        toolEvents.push(buildToolEvent(block, input.turnNumber, input.answerStore));
                     }
                 }
                 break;
@@ -174,12 +184,14 @@ function prependSlashCommandSkillEvent(
 function buildToolEvent(
     block: Record<string, unknown>,
     turnNumber: number | undefined,
+    answerStore: AskUserAnswerStore | undefined,
 ): ToolEvent {
     const providerToolName = String(block.name || 'unknown');
     const rawInput = (block.input as Record<string, unknown> | undefined) ?? undefined;
+    const toolUseId = typeof block.id === 'string' ? block.id : undefined;
     const action = TOOL_NAME_MAP[providerToolName] ?? 'unknown';
     const args = action === 'ask_user'
-        ? buildAskUserArguments(rawInput)
+        ? buildAskUserArguments(rawInput, answerStore?.get(toolUseId))
         : rawInput;
     const summary = buildSummary(action, providerToolName, args);
     const rawSnippet = JSON.stringify(block).slice(0, 200);
@@ -210,8 +222,16 @@ function buildToolEvent(
  */
 function buildAskUserArguments(
     input: Record<string, unknown> | undefined,
+    bridgeEntry: { answers: Record<string, string>; source: string } | undefined,
 ): Record<string, unknown> {
-    if (!input) return { answerSource: 'unknown' };
-    return { ...input, answerSource: 'unknown' };
+    const base = input ? { ...input } : {};
+    if (bridgeEntry) {
+        return {
+            ...base,
+            answers: { ...bridgeEntry.answers },
+            answerSource: bridgeEntry.source,
+        };
+    }
+    return { ...base, answerSource: 'unknown' };
 }
 

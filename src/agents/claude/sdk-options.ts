@@ -1,8 +1,8 @@
 /**
  * Pure builder that turns pathgrade's per-turn session inputs into the Claude
  * Agent SDK's `Options` object passed to `query()`. The driver class is just
- * orchestration over this builder, the sandboxed-spawn module, the ask-user
- * bridge (#004), and the SDK message projector (#002).
+ * orchestration over this builder, the sandboxed-spawn module, the live
+ * ask-user bridge (#004), and the SDK message projector (#002).
  *
  * PRD reference: docs/prds/2026-05-05-claude-sdk-agent-driver.md
  *   §SDK option choices — every default in this file is dictated there.
@@ -28,7 +28,7 @@ export interface ClaudeSdkOptionsInputs {
     workspacePath: string;
     /** Custom spawn hook from the sandboxed-claude-spawn module. */
     spawnClaudeCodeProcess: (opts: SdkSpawnOptions) => SpawnedProcess;
-    /** Custom tool-permission callback (placeholder until #004 lands the ask bridge). */
+    /** Custom tool-permission callback — the live ask-user bridge (#004). */
     canUseTool: CanUseTool;
     /**
      * Auth env from `resolveCredentials()` / `resolveClaude()`. The driver
