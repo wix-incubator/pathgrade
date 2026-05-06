@@ -24,6 +24,7 @@ import type {
     SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAgent } from '../src/agents/claude.js';
+import type { TrialRuntime } from '../src/types.js';
 import { createAskBus } from '../src/sdk/ask-bus/bus.js';
 import {
     NONINTERACTIVE_RUNTIME_POLICY,
@@ -204,6 +205,47 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         expect(opts.canUseTool).toBeTypeOf('function');
         expect(opts.spawnClaudeCodeProcess).toBeTypeOf('function');
         expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/workspace/.pathgrade-claude-config');
+    });
+
+    it('forwards ANTHROPIC_* keys from the runtime handle env onto Options.env', async () => {
+        // Auth comes from `prepareWorkspace → resolveCredentials`, which writes
+        // ANTHROPIC_* (keychain OAuth, host-forwarded API key, or proxy creds)
+        // into `Workspace.env`. The managed session passes that env through
+        // the EnvironmentHandle's `env` field; the driver must lift the
+        // Anthropic keys out and place them on `Options.env` so the SDK
+        // subprocess (which inherits a SAFE_HOST_VARS-filtered env) can
+        // authenticate. Unrelated keys must NOT leak — the driver's contract
+        // is auth, not arbitrary env pass-through.
+        const fake = makeFakeQuery([
+            [makeInitMessage('s'), makeResultSuccess('s', 'ok')],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const runtime: TrialRuntime = {
+            handle: '/tmp/workspace',
+            workspacePath: '/tmp/workspace',
+            env: {
+                ANTHROPIC_API_KEY: 'sk-test-123',
+                ANTHROPIC_BASE_URL: 'https://proxy.example.com',
+                ANTHROPIC_AUTH_TOKEN: 'oauth-token',
+                UNRELATED_VAR: 'should-not-leak',
+            },
+        };
+        const session = await agent.createSession(runtime, async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await session.start({ message: 'hi' });
+
+        const opts = fake.calls[0].options!;
+        expect(opts.env!.ANTHROPIC_API_KEY).toBe('sk-test-123');
+        expect(opts.env!.ANTHROPIC_BASE_URL).toBe('https://proxy.example.com');
+        expect(opts.env!.ANTHROPIC_AUTH_TOKEN).toBe('oauth-token');
+        // CLAUDE_CONFIG_DIR (set by the builder) survives the union — the
+        // auth env merges with the per-workspace config dir, doesn't replace it.
+        expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/workspace/.pathgrade-claude-config');
+        // Unrelated runtime env stays out of Options.env.
+        expect('UNRELATED_VAR' in opts.env!).toBe(false);
     });
 
     it('forwards the model option onto the SDK query', async () => {

@@ -51,14 +51,26 @@ describe('sdk-regression (claude)', () => {
         expect(preview.turns.length).toBeGreaterThan(0);
     }, HOOK_TIMEOUT_MS);
 
-    it('records the noninteractive runtime policy (Claude transport)', async () => {
+    it('uses the reliable AskUser transport (no noninteractive runtime policy)', async () => {
+        // Slice #004 flipped Claude's transport from 'noninteractive' →
+        // 'reliable' once the live ask-user bridge replaced the prompt-prepend
+        // workaround. `planRuntimePolicies('claude')` therefore returns `[]`
+        // and the legacy `noninteractive-user-question` policy must never
+        // appear in the log. Any AskUserQuestion that fires must have been
+        // resolved by the bridge (source: 'reaction' or 'fallback'), never
+        // the projector's pre-bridge `'unknown'` placeholder.
         const { snapshot } = await getRun();
-        expect(getAgentCapabilities(AGENT).interactiveQuestionTransport).toBe('noninteractive');
+        expect(getAgentCapabilities(AGENT).interactiveQuestionTransport).toBe('reliable');
         expect(
             snapshot.log.some((e) =>
                 e.runtime_policies_applied?.some((p) => p.id === 'noninteractive-user-question'),
             ),
-        ).toBe(true);
+        ).toBe(false);
+        const askUserEvents = snapshot.toolEvents.filter((e) => e.action === 'ask_user');
+        for (const ev of askUserEvents) {
+            const args = ev.arguments as Record<string, unknown>;
+            expect(args.answerSource).not.toBe('unknown');
+        }
     }, HOOK_TIMEOUT_MS);
 
     it('covers prompt(), exec(), and startChat() surfaces', async () => {

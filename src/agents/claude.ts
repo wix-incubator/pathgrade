@@ -36,6 +36,7 @@ import {
     BaseAgent,
     CommandResult,
     EnvironmentHandle,
+    getRuntimeEnv,
     getWorkspacePath,
 } from '../types.js';
 import { createSandboxedClaudeSpawn } from '../providers/sandboxed-claude-spawn.js';
@@ -138,7 +139,7 @@ export class ClaudeAgent extends BaseAgent {
                 workspacePath,
                 spawnClaudeCodeProcess: sandboxedSpawn,
                 canUseTool: bridge,
-                authEnv: collectAuthEnv(sessionOptions),
+                authEnv: collectAuthEnv(runtime),
                 model: sessionOptions?.model,
                 claudeCodeExecutable,
                 resume: priorSessionId,
@@ -187,20 +188,22 @@ export class ClaudeAgent extends BaseAgent {
 
 /**
  * Auth env the driver carries into `Options.env` for the SDK subprocess.
- * Today `AgentSessionOptions` does not expose an env-pass-through field on
- * the Claude path; the resolver lives at the workspace prep layer
- * (`prepareWorkspace` calls `resolveCredentials()`), and consumers feed the
- * resolved env via the runtime handle's env. Pull from there when present.
+ * `prepareWorkspace` calls `resolveCredentials()` and writes the resolved
+ * Anthropic auth (Keychain OAuth, host-forwarded API key, or proxy creds)
+ * onto `Workspace.env`; the managed session passes that env through the
+ * runtime handle. The driver's job is to lift the Anthropic-specific keys
+ * out — the spawn module's `SAFE_HOST_VARS` filter does NOT include
+ * ANTHROPIC_*, so anything we don't put on `Options.env` won't reach the
+ * SDK subprocess. We intentionally pluck only the auth keys; arbitrary env
+ * pass-through belongs to the resolver, not the driver.
  */
-function collectAuthEnv(sessionOptions?: AgentSessionOptions): Record<string, string> {
-    void sessionOptions;
-    // The orchestration shell does not yet plumb resolveCredentials() output
-    // through to the SDK driver — that wiring lands when `prepareWorkspace`
-    // adopts the SDK driver as its eval-time runtime. Until then, callers can
-    // only set auth via `Options.env` indirectly through the SAFE_HOST_VARS
-    // intersection in the spawn module (which by design does NOT include
-    // ANTHROPIC_API_KEY). The smoke test `tests/claude-sdk-smoke.test.ts`
-    // already exercises real-SDK auth using the same env-pass-through shape.
-    return {};
+function collectAuthEnv(runtime: EnvironmentHandle): Record<string, string> {
+    const runtimeEnv = getRuntimeEnv(runtime);
+    const authEnv: Record<string, string> = {};
+    for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']) {
+        const value = runtimeEnv[key];
+        if (value) authEnv[key] = value;
+    }
+    return authEnv;
 }
 
