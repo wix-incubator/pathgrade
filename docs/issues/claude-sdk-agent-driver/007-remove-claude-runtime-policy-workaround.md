@@ -6,6 +6,8 @@
 
 Remove the non-interactive runtime-policy workaround from Claude runs now that Claude has a reliable live ask-user transport. The policy infrastructure should remain intact for Codex exec and Cursor, but Claude turns should no longer receive the ask-user workaround text or report it as applied.
 
+This is a pure deletion / capability flip on the Claude path; no module is added or restructured. The runtime-policy module itself stays in place to serve Codex (exec) and Cursor.
+
 Type: AFK
 
 ## Acceptance criteria

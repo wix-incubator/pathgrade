@@ -2,6 +2,10 @@
 
 Source PRD: `docs/prds/2026-05-05-claude-sdk-agent-driver.md`
 
+## Merge model
+
+All nine slices land on the `claude-sdk-agent-driver` feature branch; `master` receives a single squashed PR after #009 passes verification. The PRD requires "no transport flag, no half-state" on `master`, so individual slices are not master-mergeable on their own — they accumulate on the feature branch and the squashed PR is the atomic unit visible to consumers.
+
 ## Overall Status
 
 - [ ] 001 - SDK Claude Turn Driver
@@ -45,6 +49,7 @@ Source PRD: `docs/prds/2026-05-05-claude-sdk-agent-driver.md`
 | Date | Update |
 | --- | --- |
 | 2026-05-06 | Broke the PRD into nine AFK vertical-slice issue drafts and created this tracker. |
+| 2026-05-06 | Tightened drafts after readiness review: documented merge model (single squashed PR after #009), pinned ToolEvent.arguments boundary between #002 and #004, added missing #001 acceptance items (SDK pin, CLAUDE_CONFIG_DIR, env layering, autoMemoryEnabled), declared interim behavior between sequential slices, locked snapshot back-compat to read-only, and added module-decomposition pointers to each slice. |
 
 ## Completion Notes
 

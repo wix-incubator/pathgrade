@@ -6,6 +6,8 @@
 
 Add Claude SDK telemetry projection for cache-token breakdowns, per-turn cost, run-level conversation cost, and typed SDK error result subtypes. This should preserve current total-token accounting while adding optional fields for the extra information exposed by the SDK.
 
+Extends the **SDK-message-projector** module from #002. No new module; this slice adds fields and code paths to the existing projector and to `TrialResult` accumulation.
+
 Type: AFK
 
 ## Acceptance criteria
@@ -17,6 +19,7 @@ Type: AFK
 - [ ] Conversation execution accumulates Claude turn costs into `TrialResult.conversation_cost_usd` and emits conservative total cost only when all included components are known.
 - [ ] SDK error subtypes `error_during_execution`, `error_max_turns`, `error_max_budget_usd`, and `error_max_structured_output_retries` are distinguished from successful turns without regex parsing.
 - [ ] Tests cover successful usage, cache-token totalization, cost logging, run-level cost accumulation, and each typed SDK error subtype.
+- [ ] Existing token-totalization tests anchored on the `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` convention (current Claude path at `src/agents/claude.ts:223-227` and Cursor parity at `src/agents/cursor.ts:179-182`) continue to pass unmodified — `inputTokens` keeps including cache tokens; the new cache breakdown fields are additive only. This is a regression gate, not a refactor target.
 
 ## Blocked by
 

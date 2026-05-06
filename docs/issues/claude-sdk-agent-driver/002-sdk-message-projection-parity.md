@@ -6,6 +6,10 @@
 
 Project the SDK's typed message stream into Pathgrade's existing turn-result and tool-event contracts. A Claude SDK turn should produce the same externally visible assistant text, tool events, skill enrichment, slash-command skill detection, session metadata, and snapshot-compatible ask_user projection that existing scorers and reporters expect.
 
+Implement as the **SDK-message-projector** module per PRD §Module decomposition. The projector is a pure function over the typed SDK message stream; it does not own session state and does not call the ask-bus.
+
+Boundary with #004: this slice emits `ToolEvent.arguments` for `AskUserQuestion` events with the existing snapshot-stable fields (questions, headers, options, multiSelect) and an `answerSource` field set to `'unknown'` when no answer is yet available. The actual answer values and the `'reaction' | 'fallback' | 'declined'` source tag are attached by the ask-user-bridge in #004 onto the same envelope. Implementers of #002 should not look for an answer source here — there isn't one yet.
+
 Type: AFK
 
 ## Acceptance criteria

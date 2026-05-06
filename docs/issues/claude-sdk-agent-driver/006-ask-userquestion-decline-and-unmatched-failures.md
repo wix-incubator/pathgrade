@@ -6,6 +6,8 @@
 
 Handle all non-happy ask-user outcomes for the Claude SDK bridge. Declined reactions should become the SDK's deny shape, bus resolution failures should terminate cleanly, and unmatched questions should surface structured diagnostics that include the question text, batch id, and turn number.
 
+Extends the **ask-user-bridge** module from #004 per PRD §Module decomposition, plus a small extension to `AskUserUnmatchedSignal` and `createAskUserHandler()`. No new module.
+
 Type: AFK
 
 ## Acceptance criteria

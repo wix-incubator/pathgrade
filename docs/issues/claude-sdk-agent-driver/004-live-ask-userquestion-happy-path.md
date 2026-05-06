@@ -6,6 +6,10 @@
 
 Implement the live `AskUserQuestion` handshake through the SDK `canUseTool` callback. When Claude asks a structured question, Pathgrade should emit a live ask batch through the existing ask-bus, resolve it from `whenAsked` reactions in real time, return the answer to Claude as the tool result, and let Claude continue the same turn down the chosen branch.
 
+Implement as the **ask-user-bridge** module per PRD §Module decomposition: a pure function over `(askBus, turnNumber, toolName, toolInput) → PermissionResult`. Replaces the placeholder `canUseTool` deny that #001 installed for `AskUserQuestion`.
+
+Interim behavior with #006: this slice covers the happy path only — answered batches translate to `{ behavior: "allow", updatedInput: { ...input, answers } }`. Until #006 lands, declined reactions and bus rejections/timeouts may throw or fall through to a generic deny — that is the planned interim behavior, not a bug. #006 supplies the precise deny shape (`{ behavior: "deny", message: "User declined to answer" }`) and the bus-error mapping. Tests in #004 should not assert decline or timeout outputs; those land in #006.
+
 Type: AFK
 
 ## Acceptance criteria
