@@ -94,7 +94,7 @@ export interface LogEntry {
     exitCode?: number;
     output?: string;
     assistant_message?: string;
-    assistant_message_source?: VisibleAssistantMessageSource;
+    assistant_message_source?: VisibleAssistantMessageSource | 'blocked_prompt';
     raw_assistant_message?: string;
     value?: number;
     scorer_result?: ScorerResult;
@@ -103,11 +103,23 @@ export interface LogEntry {
     step_scorer_key?: string;
     tool_event?: import('./tool-events.js').ToolEvent;
     judge_tool_call?: JudgeToolCallLogData;
+    /**
+     * @deprecated Read-only compatibility for snapshots predating the
+     * blocked-prompt synthesis deletion (issue #008). New writers never emit
+     * any of the `blocked_prompt_*` / `synthetic_blocked_prompt` fields, but
+     * `loadRunSnapshot` still parses them so historical run-snapshots load.
+     * Do not set these fields from new code paths.
+     */
     synthetic_blocked_prompt?: boolean;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_source_turn?: number;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_index?: number;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_count?: number;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_source_tool?: string;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_tool_use_id?: string;
     runtime_policies_applied?: RuntimePolicyDescriptor[];
     completion_reason?: string;
@@ -254,21 +266,7 @@ export interface AgentTurnInput {
     continueSession?: boolean;
 }
 
-export interface BlockedInteractivePromptOption {
-    label: string;
-    description?: string;
-}
-
-export interface BlockedInteractivePrompt {
-    prompt: string;
-    header?: string;
-    options: BlockedInteractivePromptOption[];
-    sourceTool: string;
-    toolUseId?: string;
-    order: number;
-}
-
-export type VisibleAssistantMessageSource = 'assistant_message' | 'blocked_prompt';
+export type VisibleAssistantMessageSource = 'assistant_message';
 
 export interface AgentTurnResult {
     rawOutput: string;
@@ -278,15 +276,6 @@ export interface AgentTurnResult {
     exitCode: number;
     traceOutput?: string;
     timedOut?: boolean;
-    /**
-     * @deprecated Consume ask_user questions via `askBus.snapshot()` and the
-     * `AskBatchSnapshot` shape instead. This field is eagerly populated in
-     * parallel with the `AskBatch` emission for a single release-window; it
-     * will be removed once (a) no internal code references `blockedPrompts` or
-     * `blocked_prompt_*` and (b) `RUN_SNAPSHOT_VERSION` has bumped past the
-     * legacy reader. New code should read from the bus.
-     */
-    blockedPrompts: BlockedInteractivePrompt[];
     toolEvents: import('./tool-events.js').ToolEvent[];
     runtimePoliciesApplied?: RuntimePolicyDescriptor[];
     inputTokens?: number;
@@ -362,7 +351,6 @@ export abstract class BaseAgent {
                 visibleAssistantMessageSource: 'assistant_message',
                 exitCode: 0,
                 traceOutput: rawOutput,
-                blockedPrompts: [],
                 toolEvents: [],
                 runtimePoliciesApplied: [],
             };

@@ -238,7 +238,6 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         // least return a structurally-valid `AgentTurnResult`.
         expect(result.exitCode).toBe(0);
         expect(Array.isArray(result.toolEvents)).toBe(true);
-        expect(Array.isArray(result.blockedPrompts)).toBe(true);
     });
 
     it('routes AskUserQuestion through the live ask-user bridge (#004)', async () => {

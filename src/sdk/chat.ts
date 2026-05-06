@@ -1,15 +1,8 @@
 import type { AgentTurnResult, CommandResult, LogEntry } from '../types.js';
 import type { ChatSession, Message } from './types.js';
-import { buildModelAgentResultLogEntry, buildSyntheticAgentResultLogEntry } from './agent-result-log.js';
+import { buildModelAgentResultLogEntry } from './agent-result-log.js';
 import { getVisibleAssistantMessage } from './visible-turn.js';
 import type { VerboseEmitter } from '../reporters/verbose-emitter.js';
-import {
-    advancePendingBlockedPromptQueue,
-    createPendingBlockedPromptQueue,
-    getBlockedPromptReplayLogMetadata,
-    normalizeBlockedPromptReply,
-    type PendingBlockedPromptQueue,
-} from './blocked-prompt-queue.js';
 
 export interface ChatSessionDeps {
     /** Mutable reference to the trial's messages array */
@@ -28,13 +21,11 @@ export class ChatSessionImpl implements ChatSession {
     private _turn: number;
     private _done = false;
     private _lastMessage: string;
-    private pendingBlockedPromptQueue: PendingBlockedPromptQueue | null;
     private deps: ChatSessionDeps;
 
     constructor(firstTurnResult: AgentTurnResult, deps: ChatSessionDeps) {
         this._turn = 1;
         this._lastMessage = getVisibleAssistantMessage(firstTurnResult);
-        this.pendingBlockedPromptQueue = createPendingBlockedPromptQueue(firstTurnResult, this._turn);
         this.deps = deps;
     }
 
@@ -60,45 +51,25 @@ export class ChatSessionImpl implements ChatSession {
         }
 
         const timestamp = () => new Date().toISOString();
-        const syntheticTurnNumber = this.pendingBlockedPromptQueue?.sourceTurn ?? (this._turn + 1);
-        const normalizedMessage = this.pendingBlockedPromptQueue
-            ? normalizeBlockedPromptReply(this.pendingBlockedPromptQueue, message)
-            : message;
+        const turnNumber = this._turn + 1;
 
-        this.deps.messages.push({ role: 'user', content: normalizedMessage });
+        this.deps.messages.push({ role: 'user', content: message });
         this.deps.log.push({
             type: 'user_reply',
             timestamp: timestamp(),
-            instruction: normalizedMessage,
-            turn_number: syntheticTurnNumber,
+            instruction: message,
+            turn_number: turnNumber,
         });
         this.deps.verbose?.turnStart({
-            turn: syntheticTurnNumber,
+            turn: turnNumber,
             kind: 'user_reply',
-            message: normalizedMessage,
+            message: message,
         });
-
-        if (this.pendingBlockedPromptQueue) {
-            const replay = advancePendingBlockedPromptQueue(this.pendingBlockedPromptQueue);
-            this.pendingBlockedPromptQueue = replay.queue;
-            if (replay.nextPromptMessage) {
-                this.deps.log.push(buildSyntheticAgentResultLogEntry({
-                    timestamp: timestamp(),
-                    assistantMessage: replay.nextPromptMessage,
-                    extraFields: getBlockedPromptReplayLogMetadata(replay.queue!),
-                }));
-                this.deps.messages.push({ role: 'agent', content: replay.nextPromptMessage });
-                this._lastMessage = replay.nextPromptMessage;
-                return;
-            }
-        }
-
-        const turnNumber = this._turn + 1;
 
         let turnResult: AgentTurnResult;
         const turnStart = Date.now();
         try {
-            turnResult = await this.deps.sendTurn(normalizedMessage);
+            turnResult = await this.deps.sendTurn(message);
         } catch (err) {
             this._done = true;
             throw err;
@@ -134,7 +105,6 @@ export class ChatSessionImpl implements ChatSession {
             outputLines: response.split('\n').length,
             messagePreview: response,
         });
-        this.pendingBlockedPromptQueue = createPendingBlockedPromptQueue(turnResult, turnNumber);
 
         if (turnResult.exitCode !== 0) {
             this._done = true;

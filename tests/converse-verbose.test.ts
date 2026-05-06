@@ -104,60 +104,6 @@ describe('runConversation verbose wiring', () => {
         expect(retry).toContain('transient blip');
     });
 
-    it('emits blockedPrompt when a turn yields blocked interactive prompts', async () => {
-        const sink = createFakeSink();
-        const verbose = createVerboseEmitter({ enabled: true, sink });
-
-        const turn1: AgentTurnResult = {
-            rawOutput: 'Need input',
-            assistantMessage: 'Need input',
-            visibleAssistantMessage: 'Need input',
-            visibleAssistantMessageSource: 'blocked_prompt',
-            exitCode: 0,
-            blockedPrompts: [
-                {
-                    prompt: 'Pick A or B',
-                    options: [
-                        { label: 'A' },
-                        { label: 'B' },
-                    ],
-                    sourceTool: 'AskUserQuestion',
-                    toolUseId: 'q1',
-                    order: 0,
-                },
-                {
-                    prompt: 'Pick C or D',
-                    options: [
-                        { label: 'C' },
-                        { label: 'D' },
-                    ],
-                    sourceTool: 'AskUserQuestion',
-                    toolUseId: 'q2',
-                    order: 1,
-                },
-            ],
-            toolEvents: [],
-        };
-
-        await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 5,
-                reactions: [
-                    { when: /Pick A or B/, reply: 'A' },
-                    { when: /Pick C or D/, reply: 'C' },
-                ],
-                until: ({ lastMessage }) => lastMessage === 'done',
-            },
-            makeDeps({ sendTurn: scriptedSender([turn1, 'done']), verbose }),
-        );
-
-        const stripped = sink.lines.map(stripAnsi);
-        const blocked = stripped.filter((l) => l.startsWith('  ⎔ blocked prompt'));
-        expect(blocked.length).toBeGreaterThanOrEqual(1);
-        expect(blocked[0]).toMatch(/^  ⎔ blocked prompt from AskUserQuestion /);
-    });
-
     it('emits tool events for a turn', async () => {
         const sink = createFakeSink();
         const verbose = createVerboseEmitter({ enabled: true, sink });
@@ -167,7 +113,6 @@ describe('runConversation verbose wiring', () => {
             visibleAssistantMessage: 'working',
             visibleAssistantMessageSource: 'assistant_message',
             exitCode: 0,
-            blockedPrompts: [],
             toolEvents: [
                 { action: 'read_file', provider: 'claude', providerToolName: 'Read', summary: 'a.ts', confidence: 'high', rawSnippet: '' },
             ],

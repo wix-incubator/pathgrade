@@ -145,7 +145,6 @@ describe('projectSdkMessages — empty input', () => {
         expect(projected.result.exitCode).toBe(0);
         expect(projected.result.toolEvents).toEqual([]);
         expect(projected.result.runtimePoliciesApplied).toEqual([]);
-        expect(projected.result.blockedPrompts).toEqual([]);
         expect(projected.sessionId).toBeUndefined();
     });
 });

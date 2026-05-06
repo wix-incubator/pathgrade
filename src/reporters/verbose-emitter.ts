@@ -68,12 +68,6 @@ export interface ReactionFiredArgs {
     reply: string;
 }
 
-export interface BlockedPromptArgs {
-    sourceTool: string;
-    promptIndex: number;
-    promptCount: number;
-}
-
 export interface ConversationEndArgs {
     reason: string;
     turns: number;
@@ -89,7 +83,6 @@ export interface VerboseEmitter {
     turnEnd(args: TurnEndArgs): void;
     retry(args: RetryArgs): void;
     reactionFired(args: ReactionFiredArgs): void;
-    blockedPrompt(args: BlockedPromptArgs): void;
     conversationEnd(args: ConversationEndArgs): void;
 }
 
@@ -126,7 +119,6 @@ function disabledEmitter(): VerboseEmitter {
         turnEnd() {},
         retry() {},
         reactionFired() {},
-        blockedPrompt() {},
         conversationEnd() {},
     };
 }
@@ -180,12 +172,6 @@ export function createVerboseEmitter(opts: VerboseEmitterOptions): VerboseEmitte
         reactionFired({ reactionIndex, pattern, reply }) {
             const p = preview(reply, PREVIEW_MAX_CHARS);
             writeLine(`  ${fmt.cyan('⚡')} reaction ${fmt.bold(`#${reactionIndex}`)} ${fmt.dim(pattern)} → "${p}"`);
-        },
-
-        blockedPrompt({ sourceTool, promptIndex, promptCount }) {
-            writeLine(
-                `  ${fmt.dim('⎔')} blocked prompt from ${sourceTool} ${fmt.dim(`#${promptIndex + 1}/${promptCount}`)}`,
-            );
         },
 
         conversationEnd({ reason, turns, durationMs, detail }) {

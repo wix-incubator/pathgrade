@@ -139,7 +139,6 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
         visibleAssistantMessageSource: 'assistant_message',
         exitCode,
         traceOutput,
-        blockedPrompts: [],
         toolEvents: finalToolEvents,
         runtimePoliciesApplied: [],
         inputTokens,

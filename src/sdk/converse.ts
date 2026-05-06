@@ -14,15 +14,7 @@ import type {
 import {
     buildAskBatchLogEntries,
     buildModelAgentResultLogEntry,
-    buildSyntheticAgentResultLogEntry,
 } from './agent-result-log.js';
-import {
-    advancePendingBlockedPromptQueue,
-    createPendingBlockedPromptQueue,
-    getBlockedPromptReplayLogMetadata,
-    normalizeBlockedPromptReply,
-    type PendingBlockedPromptQueue,
-} from './blocked-prompt-queue.js';
 import { inspectReactions } from './reaction-preview.js';
 import { getVisibleAssistantMessage, normalizeTurnResult } from './visible-turn.js';
 import type { VerboseEmitter } from '../reporters/verbose-emitter.js';
@@ -80,7 +72,6 @@ export async function runConversation(
     const turnDetails: TurnDetail[] = [];
     const reactionsFired: ReactionFiredEntry[] = [];
     let turn = 0;
-    let pendingBlockedPromptQueue: PendingBlockedPromptQueue | null = null;
     const conversationStart = Date.now();
 
     const askUserHandlerApi = deps.askBus
@@ -228,28 +219,6 @@ export async function runConversation(
         });
     };
 
-    const pushSyntheticAgentMessage = (
-        response: string,
-        extraLogFields: Record<string, string | number | boolean | undefined>,
-    ): void => {
-        deps.messages.push({ role: 'agent', content: response });
-        deps.log.push(buildSyntheticAgentResultLogEntry({
-            timestamp: new Date().toISOString(),
-            assistantMessage: response,
-            extraFields: extraLogFields,
-        }));
-    };
-
-    const emitActiveBlockedPrompt = (queue: PendingBlockedPromptQueue | null): void => {
-        if (!queue) return;
-        const prompt = queue.prompts[queue.activeIndex];
-        deps.verbose?.blockedPrompt({
-            sourceTool: prompt.sourceTool,
-            promptIndex: prompt.order,
-            promptCount: queue.prompts.length,
-        });
-    };
-
     const doModelTurn = async (
         message: string,
         options: { preLogged?: boolean; kind?: 'agent_start' | 'user_reply' } = {},
@@ -269,9 +238,7 @@ export async function runConversation(
                 turn++;
                 const response = getVisibleAssistantMessage(turnResult);
                 const durationMs = Date.now() - turnStart;
-                pendingBlockedPromptQueue = createPendingBlockedPromptQueue(turnResult, turn);
                 pushModelAgentMessage(response, turn, durationMs, turnResult);
-                emitActiveBlockedPrompt(pendingBlockedPromptQueue);
                 return response;
             } catch (err) {
                 lastError = err;
@@ -332,7 +299,7 @@ export async function runConversation(
 
         while (true) {
             // Check until predicate
-            if (!pendingBlockedPromptQueue && opts.until) {
+            if (opts.until) {
                 const done = await opts.until({
                     turn,
                     lastMessage: agentMessage,
@@ -344,17 +311,15 @@ export async function runConversation(
             }
 
             // Check maxTurns
-            if (!pendingBlockedPromptQueue && turn >= maxTurns) {
+            if (turn >= maxTurns) {
                 return buildResult('maxTurns');
             }
 
             // Run step scorers scheduled for this turn
-            if (!pendingBlockedPromptQueue) {
-                for (const sg of stepScorers) {
-                    if (sg.afterTurn === turn && deps.runStepScorers) {
-                        const result = await deps.runStepScorers(sg.scorers);
-                        stepResults.push({ afterTurn: sg.afterTurn, result });
-                    }
+            for (const sg of stepScorers) {
+                if (sg.afterTurn === turn && deps.runStepScorers) {
+                    const result = await deps.runStepScorers(sg.scorers);
+                    stepResults.push({ afterTurn: sg.afterTurn, result });
                 }
             }
 
@@ -391,25 +356,6 @@ export async function runConversation(
             }
             if (reply === null) {
                 return buildResult('noReply');
-            }
-
-            if (pendingBlockedPromptQueue) {
-                reply = normalizeBlockedPromptReply(pendingBlockedPromptQueue, reply);
-                const sourceTurn = pendingBlockedPromptQueue.sourceTurn;
-                pushUserMessage(reply, 'user_reply', sourceTurn);
-                const replay = advancePendingBlockedPromptQueue(pendingBlockedPromptQueue);
-                pendingBlockedPromptQueue = replay.queue;
-                if (replay.nextPromptMessage) {
-                    agentMessage = replay.nextPromptMessage;
-                    pushSyntheticAgentMessage(agentMessage, getBlockedPromptReplayLogMetadata(replay.queue!));
-                    emitActiveBlockedPrompt(replay.queue);
-                    continue;
-                }
-                if (turn >= maxTurns) {
-                    return buildResult('maxTurns');
-                }
-                agentMessage = await doModelTurn(reply, { preLogged: true, kind: 'user_reply' });
-                continue;
             }
 
             agentMessage = await doModelTurn(reply, { kind: 'user_reply' });

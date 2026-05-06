@@ -528,7 +528,6 @@ function assembleTurnResult(args: {
         visibleAssistantMessageSource: 'assistant_message',
         exitCode,
         traceOutput: rawOutput,
-        blockedPrompts: [],
         toolEvents,
         ...(exitCode !== 0
             ? {

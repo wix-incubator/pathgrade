@@ -292,7 +292,6 @@ export class CursorAgent extends BaseAgent {
             sessionId: parsed.sessionId,
             traceOutput: result.stdout,
             timedOut: result.timedOut,
-            blockedPrompts: [],
             toolEvents,
             runtimePoliciesApplied: appliedRuntimePolicies,
             ...(parsed.tokenUsage
