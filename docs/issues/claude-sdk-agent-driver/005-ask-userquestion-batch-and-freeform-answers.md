@@ -12,12 +12,12 @@ Type: AFK
 
 ## Acceptance criteria
 
-- [ ] A single `AskUserQuestion` call with multiple questions emits one live batch containing every question.
-- [ ] Each question in a batch is matched independently against `whenAsked` predicates and can receive a different answer.
-- [ ] Multi-select answers are returned in the SDK's comma-separated answer string contract. Tests assert that all selected option labels are present in the answer string but **do not** pin a specific separator format (e.g. literal `", "` vs `","`); the SDK comment states "comma-separated" without specifying the separator format, and the bridge follows whatever the bundled binary expects.
-- [ ] Free-text answers supplied by reactions are returned through the same `answers` map as option answers.
-- [ ] `whenAsked` predicates see the same structured fields they see today: question text, header, options, and multi-select-derived shape.
-- [ ] Tests cover multi-question batches, different answers per question, multi-select answers, free-text answers, and predicate compatibility.
+- [x] A single `AskUserQuestion` call with multiple questions emits one live batch containing every question.
+- [x] Each question in a batch is matched independently against `whenAsked` predicates and can receive a different answer.
+- [x] Multi-select answers are returned in the SDK's comma-separated answer string contract. Tests assert that all selected option labels are present in the answer string but **do not** pin a specific separator format (e.g. literal `", "` vs `","`); the SDK comment states "comma-separated" without specifying the separator format, and the bridge follows whatever the bundled binary expects.
+- [x] Free-text answers supplied by reactions are returned through the same `answers` map as option answers.
+- [x] `whenAsked` predicates see the same structured fields they see today: question text, header, options, and multi-select-derived shape.
+- [x] Tests cover multi-question batches, different answers per question, multi-select answers, free-text answers, and predicate compatibility.
 
 ## Blocked by
 
