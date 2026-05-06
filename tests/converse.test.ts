@@ -3,6 +3,7 @@ import { previewReactions, runConversation, type ConversationDeps } from '../src
 import type { AgentTurnResult } from '../src/types.js';
 import type { Message } from '../src/sdk/types.js';
 import type { LogEntry } from '../src/types.js';
+import { createAskBus } from '../src/sdk/ask-bus/bus.js';
 
 function scriptedAgent(responses: string[]) {
     let i = 0;
@@ -519,6 +520,70 @@ describe('conversation runner', () => {
         });
     });
 
+
+    it('29: log-then-throw — pushModelAgentMessage runs for non-zero exit before runner throws', async () => {
+        // Latent regression repair: AgentImpl.sendTurn used to throw on
+        // `turnResult.exitCode !== 0` BEFORE pushModelAgentMessage projected
+        // the partial-turn observability surfaces (`model_agent_result`,
+        // `ask_batch`, turn timings/details). This dropped five log surfaces
+        // for any turn that ended in an ask-bus rejection. The fix moves the
+        // throw out of the closure: sendTurn returns the result regardless
+        // of exit code; runConversation throws AFTER pushModelAgentMessage
+        // runs. This test pins both halves: the partial-turn log entries
+        // ARE emitted, and the runner ultimately reports completionReason
+        // 'error' with the constructed throw's message.
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        const log: LogEntry[] = [];
+
+        const sendTurn = async (): Promise<AgentTurnResult> => {
+            // Simulate a partial-turn ask_user batch the bus saw before the
+            // turn ultimately ended in error — exactly the observability we
+            // want to preserve.
+            bus.emit({
+                batchId: 'bp-rejected',
+                turnNumber: 1,
+                source: 'claude',
+                lifecycle: 'live',
+                sourceTool: 'AskUserQuestion',
+                questions: [
+                    { id: 'q1', question: 'Pick one?', options: null, isOther: false, isSecret: false },
+                ],
+            });
+            return {
+                rawOutput: 'bus rejected: did not resolve within 0ms',
+                assistantMessage: '',
+                visibleAssistantMessage: '',
+                visibleAssistantMessageSource: 'assistant_message',
+                exitCode: 1,
+                errorSubtype: 'bus_rejection',
+                toolEvents: [],
+                runtimePoliciesApplied: [],
+                traceOutput: 'partial-trace',
+            };
+        };
+
+        const result = await runConversation(
+            { firstMessage: 'go', maxTurns: 1 },
+            makeDeps({ sendTurn, log, askBus: bus }),
+        );
+
+        // Both partial-turn log surfaces fired before the throw propagated.
+        expect(log.find((e) => e.type === 'agent_result')).toBeDefined();
+        const askBatchEntries = log.filter((e) => e.type === 'ask_batch');
+        expect(askBatchEntries).toHaveLength(1);
+        expect(askBatchEntries[0]).toMatchObject({
+            type: 'ask_batch',
+            turn_number: 1,
+            batch_id: 'bp-rejected',
+        });
+
+        // The runner's outer catch surfaced the constructed throw with the
+        // exit-code message shape mirroring what AgentImpl.sendTurn used to
+        // throw, so existing reason resolution (`'error'`) still works.
+        expect(result.completionReason).toBe('error');
+        expect(result.completionDetail).toContain('Agent exited with code 1');
+        expect(result.completionDetail).toContain('did not resolve within 0ms');
+    });
 
     it('28: logs user reply text in session_log entries', async () => {
         const log: LogEntry[] = [];

@@ -26,7 +26,7 @@ function baseInputs(overrides: Partial<ClaudeSdkOptionsInputs> = {}): ClaudeSdkO
         workspacePath: '/tmp/workspace',
         spawnClaudeCodeProcess: noopSpawn,
         canUseTool: noopCanUseTool,
-        authEnv: {},
+        runtimeEnv: {},
         ...overrides,
     };
 }
@@ -101,7 +101,7 @@ describe('buildClaudeSdkOptions — base options (TB4)', () => {
 describe('buildClaudeSdkOptions — env (TB5)', () => {
     it('passes the auth env through into Options.env', () => {
         const opts = buildClaudeSdkOptions(baseInputs({
-            authEnv: {
+            runtimeEnv: {
                 ANTHROPIC_API_KEY: 'sk-test',
                 ANTHROPIC_BASE_URL: 'https://proxy.example/v1',
             },
@@ -117,7 +117,7 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
         // leaking into default CI runs.
         const opts = buildClaudeSdkOptions(baseInputs({
             workspacePath: '/tmp/trial-42',
-            authEnv: {},
+            runtimeEnv: {},
         }));
         expect(opts.env).toBeDefined();
         expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/trial-42/.pathgrade-claude-config');
@@ -128,7 +128,7 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
         // future helper might pass through optional keys. The builder treats
         // explicit `undefined` as "do not set" so the SDK's env stays clean.
         const opts = buildClaudeSdkOptions(baseInputs({
-            authEnv: { ANTHROPIC_API_KEY: 'sk-test', UNSET: undefined as unknown as string },
+            runtimeEnv: { ANTHROPIC_API_KEY: 'sk-test', UNSET: undefined as unknown as string },
         }));
         expect(opts.env!.ANTHROPIC_API_KEY).toBe('sk-test');
         expect('UNSET' in opts.env!).toBe(false);
@@ -140,7 +140,7 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
         // today), the driver's per-workspace value must win.
         const opts = buildClaudeSdkOptions(baseInputs({
             workspacePath: '/tmp/trial-7',
-            authEnv: { CLAUDE_CONFIG_DIR: '/leaked/host/path' },
+            runtimeEnv: { CLAUDE_CONFIG_DIR: '/leaked/host/path' },
         }));
         expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/trial-7/.pathgrade-claude-config');
     });

@@ -31,11 +31,16 @@ export interface ClaudeSdkOptionsInputs {
     /** Custom tool-permission callback — the live ask-user bridge (#004). */
     canUseTool: CanUseTool;
     /**
-     * Auth env from `resolveCredentials()` / `resolveClaude()`. The driver
-     * unions this with `CLAUDE_CONFIG_DIR` before passing to `Options.env`;
-     * see TB5 for that step.
+     * The curated workspace runtime env, spread wholesale onto `Options.env`.
+     * Carries (1) ANTHROPIC_* credentials resolved by `resolveCredentials()`,
+     * (2) sandbox HOME/TMPDIR set by `prepareWorkspace`, and (3) any
+     * `createAgent({ env })` keys the user supplied. The driver does not
+     * gatekeep which keys reach the SDK subprocess — `prepareWorkspace`
+     * curates the workspace env upstream and the sandboxed-spawn module's
+     * `SAFE_HOST_VARS` filter defends host-env leakage from a different
+     * direction. This is the single env composition point the driver owns.
      */
-    authEnv: Record<string, string>;
+    runtimeEnv: Record<string, string>;
     /** Forwarded to the SDK only when set. */
     model?: string;
     /**
@@ -111,12 +116,17 @@ export function buildClaudeSdkOptions(inputs: ClaudeSdkOptionsInputs): Options {
     if (inputs.resume !== undefined) opts.resume = inputs.resume;
     if (inputs.mcpServers !== undefined) opts.mcpServers = inputs.mcpServers;
 
-    // Env: auth pass-through layered first (filtering out explicit `undefined`
-    // values so the SDK's env stays clean); the driver-owned CLAUDE_CONFIG_DIR
-    // wins on collision so the hermetic-default invariant cannot be silently
-    // weakened by an upstream resolver leaking a host value.
+    // Env composition ownership: the driver does NOT pluck specific keys.
+    // `prepareWorkspace` curates the runtime env (safe host vars, sandbox
+    // HOME/TMPDIR, resolveCredentials() output, user-supplied
+    // `createAgent({ env })`); the sandboxed-spawn module's SAFE_HOST_VARS
+    // filter guards host-env leakage from a different direction. The
+    // driver's job is to spread that curated env wholesale onto Options.env,
+    // then layer driver-owned hermetic overrides on top — `CLAUDE_CONFIG_DIR`
+    // wins on collision so an upstream leak (or a user-supplied env value)
+    // cannot weaken the per-trial isolation invariant.
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(inputs.authEnv)) {
+    for (const [key, value] of Object.entries(inputs.runtimeEnv)) {
         if (value === undefined) continue;
         env[key] = value;
     }

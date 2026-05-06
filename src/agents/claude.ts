@@ -34,7 +34,6 @@ import {
     AgentSessionOptions,
     AgentTurnResult,
     BaseAgent,
-    CommandResult,
     EnvironmentHandle,
     getRuntimeEnv,
     getWorkspacePath,
@@ -114,7 +113,6 @@ export class ClaudeAgent extends BaseAgent {
 
         let priorSessionId: string | undefined;
         let turnNumber = 0;
-        let firstMessage: string | undefined;
         // The live ask-user bridge replaces the #001 placeholder canUseTool.
         // The bridge resolves AskUserQuestion through the bus and writes the
         // resulting answers + source into the per-turn answer store; the
@@ -132,14 +130,13 @@ export class ClaudeAgent extends BaseAgent {
             turnNumber += 1;
             answerStore = createAskUserAnswerStore();
             // #006: clear any ask-bus rejection captured on a prior turn so a
-            // stale error never causes a spurious throw on this turn.
+            // stale error never causes a spurious result on this turn.
             bridge.clearLastError();
-            if (firstMessage === undefined) firstMessage = message;
             const sdkOptions = buildClaudeSdkOptions({
                 workspacePath,
                 spawnClaudeCodeProcess: sandboxedSpawn,
                 canUseTool: bridge,
-                authEnv: collectAuthEnv(runtime),
+                runtimeEnv: getRuntimeEnv(runtime),
                 model: sessionOptions?.model,
                 claudeCodeExecutable,
                 resume: priorSessionId,
@@ -151,21 +148,46 @@ export class ClaudeAgent extends BaseAgent {
             for await (const msg of stream as unknown as AsyncIterable<SDKMessage>) {
                 messages.push(msg);
             }
-            // #006: an ask-bus rejection (timeout or first-subscriber throw)
-            // produced an SDK deny mid-turn AND captured the underlying
-            // error on the bridge. Re-throw so `runConversation`'s catch
-            // surfaces `completionReason: 'error'` with the bus message —
-            // otherwise the conversation continues against an SDK that
-            // already gave up on the tool call.
-            const bridgeError = bridge.lastError();
-            if (bridgeError) throw bridgeError;
+            // The legacy NDJSON parser only synthesized the slash-command
+            // `use_skill` event from the *opening* user message. The Claude
+            // SDK emits a fresh `init` system message (carrying `skills`) on
+            // every `query()` call — each turn spawns a fresh subprocess —
+            // so passing the current turn's message into the projector on
+            // turn 2+ would re-fire synthesis for the same skill activation.
+            // Gate by turn number to preserve the legacy semantic: synthesize
+            // on turn 1 only, never thereafter.
+            const projectorFirstMessage = turnNumber === 1 ? message : undefined;
             const projected = projectSdkMessages({
                 messages,
                 turnNumber,
-                firstMessage,
+                firstMessage: projectorFirstMessage,
                 answerStore,
             });
+            // Capture the SDK-reported session id BEFORE checking for a bus
+            // rejection so the next turn's `Options.resume` points at this
+            // turn's session even when the turn ended in an ask-bus error.
             if (projected.sessionId) priorSessionId = projected.sessionId;
+
+            // #006: an ask-bus rejection (timeout, missing subscriber, handler
+            // throw) produced an SDK deny mid-turn AND captured the underlying
+            // error on the bridge. Returning an error `AgentTurnResult` rather
+            // than throwing lets the conversation runner project the partial
+            // turn through `pushModelAgentMessage` (`ask_batch`,
+            // `model_agent_result`, turn timings/details) before propagating
+            // the failure — preserving observability into what the agent
+            // attempted before being killed.
+            const bridgeError = bridge.lastError();
+            if (bridgeError) {
+                const errorMessage = bridgeError instanceof Error
+                    ? bridgeError.message
+                    : String(bridgeError);
+                return {
+                    ...projected.result,
+                    exitCode: 1,
+                    errorSubtype: 'bus_rejection',
+                    rawOutput: errorMessage,
+                };
+            }
             return projected.result;
         };
 
@@ -175,35 +197,11 @@ export class ClaudeAgent extends BaseAgent {
         };
     }
 
-    async run(
-        instruction: string,
-        workspacePath: string,
-        runCommand: (cmd: string) => Promise<CommandResult>,
-    ): Promise<string> {
-        const session = await this.createSession(workspacePath, runCommand);
-        const result = await session.start({ message: instruction });
-        return result.assistantMessage;
-    }
+    // Note: ClaudeAgent does not override `run()`. The driver's session
+    // construction requires an `askBus` for live `AskUserQuestion` batches,
+    // which `run()` cannot supply. Rather than route through `createSession`
+    // and surface "askBus required" — a misleading error suggesting the
+    // caller could add an argument — the class inherits `BaseAgent.run()`'s
+    // diagnostic "Agent must implement createSession() or run()" so the
+    // failure mode points the caller at the right API surface.
 }
-
-/**
- * Auth env the driver carries into `Options.env` for the SDK subprocess.
- * `prepareWorkspace` calls `resolveCredentials()` and writes the resolved
- * Anthropic auth (Keychain OAuth, host-forwarded API key, or proxy creds)
- * onto `Workspace.env`; the managed session passes that env through the
- * runtime handle. The driver's job is to lift the Anthropic-specific keys
- * out — the spawn module's `SAFE_HOST_VARS` filter does NOT include
- * ANTHROPIC_*, so anything we don't put on `Options.env` won't reach the
- * SDK subprocess. We intentionally pluck only the auth keys; arbitrary env
- * pass-through belongs to the resolver, not the driver.
- */
-function collectAuthEnv(runtime: EnvironmentHandle): Record<string, string> {
-    const runtimeEnv = getRuntimeEnv(runtime);
-    const authEnv: Record<string, string> = {};
-    for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']) {
-        const value = runtimeEnv[key];
-        if (value) authEnv[key] = value;
-    }
-    return authEnv;
-}
-

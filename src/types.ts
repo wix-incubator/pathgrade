@@ -326,17 +326,26 @@ export interface AgentTurnResult {
      */
     costUsd?: number;
     /**
-     * Typed error subtype reported by the Claude Agent SDK's result message
-     * (`SDKResultError` per `sdk.d.ts`). Set when the turn ended in error;
-     * absent on success. Lets eval consumers triage failures correctly
-     * (max-turns vs budget vs execution) without regex on the result text.
-     * PRD §Token and cost telemetry; issue #003 User Story 19.
+     * Typed error subtype set when the turn ended in error; absent on success.
+     * Lets eval consumers triage failures correctly without regex on the
+     * result text. PRD §Token and cost telemetry; issue #003 User Story 19.
+     *
+     * The `error_*` values are SDK-reported result subtypes (`SDKResultError`
+     * per `sdk.d.ts`). `'bus_rejection'` is driver-synthesized: when the live
+     * ask-user bridge captures a bus error (timeout, missing subscriber,
+     * subscriber throw), the Claude SDK driver constructs an error
+     * `AgentTurnResult` with this subtype rather than throwing, so the
+     * partial-turn observability pipeline (`ask_batch`, `model_agent_result`,
+     * turn timings/details) captures the rejected turn before the runner
+     * propagates the error. The naming distinction (no `error_` prefix)
+     * marks the layer of origin: SDK vs driver.
      */
     errorSubtype?:
         | 'error_during_execution'
         | 'error_max_turns'
         | 'error_max_budget_usd'
-        | 'error_max_structured_output_retries';
+        | 'error_max_structured_output_retries'
+        | 'bus_rejection';
     /**
      * Populated when the agent subprocess died mid-turn under a stateful
      * transport (Codex `app-server`). Consumers should translate this into

@@ -53,10 +53,44 @@ export interface ConversationDeps {
      * `allowUnreachableReactions: true`.
      */
     transport?: AgentTransport;
+    /**
+     * Per-turn timeout in seconds. Used to format the agent-timeout error
+     * message thrown after `pushModelAgentMessage` records the partial turn.
+     * Optional for callers that supply their own thrown errors via `sendTurn`.
+     */
+    agentTimeoutSec?: number;
 }
 
 function isTimeoutError(err: unknown): boolean {
     return err instanceof Error && /timed out/i.test(err.message);
+}
+
+/**
+ * Translate a non-zero-exit `AgentTurnResult` into the Error the conversation
+ * loop throws after `pushModelAgentMessage` records the partial turn. The
+ * message shape mirrors what `AgentImpl.sendTurn` previously threw so
+ * downstream catch blocks (`isTimeoutError`, `AgentCrashError`,
+ * `AskBusTimeoutError`) keep matching by error class and message.
+ */
+function buildTurnExitError(
+    turnResult: AgentTurnResult,
+    timeoutSec: number | undefined,
+): Error {
+    if (turnResult.timedOut) {
+        const limit = timeoutSec !== undefined ? `Agent (limit: ${timeoutSec}s)` : 'Agent';
+        return new Error(`${limit} timed out (agent killed)`);
+    }
+    const detail = turnResult.rawOutput?.trim();
+    const suffix = detail ? `: ${detail}` : '';
+    if (turnResult.crashInfo) {
+        return new AgentCrashError(`Agent crashed${suffix}`, {
+            ...(turnResult.crashInfo.pid !== undefined ? { pid: turnResult.crashInfo.pid } : {}),
+            ...(turnResult.crashInfo.signal !== undefined ? { signal: turnResult.crashInfo.signal } : {}),
+            ...(turnResult.crashInfo.exitCode !== undefined ? { exitCode: turnResult.crashInfo.exitCode } : {}),
+            partialToolEvents: turnResult.toolEvents,
+        });
+    }
+    return new Error(`Agent exited with code ${turnResult.exitCode}${suffix}`);
 }
 
 export async function runConversation(
@@ -232,14 +266,11 @@ export async function runConversation(
         // turn is not safely replayable, so retries are suppressed.
         const maxRetries = deps.transport === 'app-server' ? 0 : MAX_TURN_RETRIES;
         let lastError: unknown;
+        let turnResult: AgentTurnResult | undefined;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                const turnResult = normalizeTurnResult(await deps.sendTurn(message));
-                turn++;
-                const response = getVisibleAssistantMessage(turnResult);
-                const durationMs = Date.now() - turnStart;
-                pushModelAgentMessage(response, turn, durationMs, turnResult);
-                return response;
+                turnResult = normalizeTurnResult(await deps.sendTurn(message));
+                break;
             } catch (err) {
                 lastError = err;
                 // Don't retry timeouts — only transient agent errors
@@ -274,7 +305,23 @@ export async function runConversation(
                 }
             }
         }
-        throw lastError;
+        if (turnResult === undefined) throw lastError;
+
+        turn++;
+        const response = getVisibleAssistantMessage(turnResult);
+        const durationMs = Date.now() - turnStart;
+        // Project the partial turn (`pushModelAgentMessage`) BEFORE any
+        // exit-code throw so the failure mode is observable in the same
+        // shape as a successful turn — `model_agent_result`, `ask_batch`,
+        // turn timings/details all capture the rejected turn before the
+        // runner propagates the error. Exit-code failures bypass retry by
+        // construction (already logged): retrying would re-emit those log
+        // entries on a successful retry, double-counting the turn.
+        pushModelAgentMessage(response, turn, durationMs, turnResult);
+        if (turnResult.exitCode !== 0) {
+            throw buildTurnExitError(turnResult, deps.agentTimeoutSec);
+        }
+        return response;
     };
 
     try {
