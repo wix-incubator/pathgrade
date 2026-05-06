@@ -2,9 +2,26 @@ import fs from 'fs-extra';
 import * as path from 'path';
 import type { MockMcpServerDescriptor } from '../core/mcp-mock.types.js';
 
+/**
+ * Stdio-server shape pathgrade writes to `.pathgrade-mcp.json`. Lines up
+ * directly with the SDK's `McpStdioServerConfig` (`sdk.d.ts:1005`) — the
+ * optional `type: 'stdio'` discriminator is omitted because the JSON
+ * `writeMcpConfig` produces does not include it.
+ */
+export interface McpStdioEntry {
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+}
+
+/** Object form of MCP server entries the SDK driver passes to `Options.mcpServers`. */
+export type McpServersObject = Record<string, McpStdioEntry>;
+
 export type McpSpec =
     | { configFile: string }
     | { mock: MockMcpServerDescriptor | MockMcpServerDescriptor[] };
+
+const MCP_CONFIG_FILENAME = '.pathgrade-mcp.json';
 
 export interface McpConfigResult {
     mcpConfigPath: string | undefined;
@@ -16,7 +33,7 @@ export async function writeMcpConfig(
 ): Promise<McpConfigResult> {
     if (!mcp) return { mcpConfigPath: undefined };
 
-    const mcpConfigPath = '.pathgrade-mcp.json';
+    const mcpConfigPath = MCP_CONFIG_FILENAME;
 
     if ('configFile' in mcp) {
         const mcpSrc = path.resolve(mcp.configFile);
@@ -50,4 +67,23 @@ export async function writeMcpConfig(
     }
 
     return { mcpConfigPath };
+}
+
+/**
+ * Read the JSON `writeMcpConfig` writes into `<workspace>/.pathgrade-mcp.json`
+ * and return the inner `mcpServers` object the Claude SDK driver hands to
+ * `Options.mcpServers`. Returns `undefined` when the file is absent (the
+ * "no MCP" path through the driver — the fixture didn't declare an `mcp` spec).
+ *
+ * The on-disk path is preserved because the Cursor agent driver still
+ * consumes it via `mcpConfigPath` (`src/agents/cursor.ts`) — Claude moves to
+ * the object form, Cursor stays on the file.
+ */
+export async function loadMcpServersForSdk(
+    workspacePath: string,
+): Promise<McpServersObject | undefined> {
+    const configPath = path.join(workspacePath, MCP_CONFIG_FILENAME);
+    if (!(await fs.pathExists(configPath))) return undefined;
+    const parsed = (await fs.readJson(configPath)) as { mcpServers?: McpServersObject };
+    return parsed.mcpServers;
 }

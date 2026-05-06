@@ -8,7 +8,7 @@ All nine slices land on the `claude-sdk-agent-driver` branch (this branch — sa
 
 ## Overall Status
 
-- [ ] 001 - SDK Claude Turn Driver
+- [x] 001 - SDK Claude Turn Driver
 - [ ] 002 - SDK Message Projection Parity
 - [ ] 003 - Claude Token, Cost, And Error Telemetry
 - [ ] 004 - Live AskUserQuestion Happy Path
@@ -34,7 +34,7 @@ All nine slices land on the `claude-sdk-agent-driver` branch (this branch — sa
 
 | Draft | Type | Status | Blocked By | File |
 | --- | --- | --- | --- | --- |
-| 001 - SDK Claude Turn Driver | AFK | Not started | None | `001-sdk-claude-turn-driver.md` |
+| 001 - SDK Claude Turn Driver | AFK | Done | None | `001-sdk-claude-turn-driver.md` |
 | 002 - SDK Message Projection Parity | AFK | Not started | 001 | `002-sdk-message-projection-parity.md` |
 | 003 - Claude Token, Cost, And Error Telemetry | AFK | Not started | 002 | `003-claude-token-cost-error-telemetry.md` |
 | 004 - Live AskUserQuestion Happy Path | AFK | Not started | 001, 002 | `004-live-ask-userquestion-happy-path.md` |
@@ -51,9 +51,15 @@ All nine slices land on the `claude-sdk-agent-driver` branch (this branch — sa
 | 2026-05-06 | Broke the PRD into nine AFK vertical-slice issue drafts and created this tracker. |
 | 2026-05-06 | Tightened drafts after readiness review: documented merge model (single squashed PR after #009), pinned ToolEvent.arguments boundary between #002 and #004, added missing #001 acceptance items (SDK pin, CLAUDE_CONFIG_DIR, env layering, autoMemoryEnabled), declared interim behavior between sequential slices, locked snapshot back-compat to read-only, and added module-decomposition pointers to each slice. |
 | 2026-05-06 | Renamed branch `claude-sdk-agent-driver-prds` → `claude-sdk-agent-driver`. Implementation accumulates on this branch directly rather than on a separately-cut feature branch. |
+| 2026-05-06 | Landed #001. Modules: `src/providers/sandboxed-claude-spawn.ts`, `src/providers/mcp-config.ts` (`loadMcpServersForSdk`), `src/agents/claude/sdk-options.ts`, `src/agents/claude/can-use-tool-placeholder.ts`, plus rewritten `src/agents/claude.ts`. Tests: `tests/sandboxed-claude-spawn.test.ts`, `tests/mcp-config.test.ts` (loader block), `tests/claude-sdk-options.test.ts`, `tests/claude-can-use-tool-placeholder.test.ts`, `tests/claude-sdk-driver.test.ts` (50 new tests, all green; full suite 1083 passed / 1 skipped file / 7 skips). Removed obsolete CLI-driver tests (`tests/claude-ask-batch-emit.test.ts` deleted; ClaudeAgent describe block + Claude-specific traceOutput case stripped from `tests/agents.test.ts`). Legacy `extractClaudeStreamJsonEvents` export retained pending #002's projector that supersedes it. |
+| 2026-05-06 | **PRD deviation logged at #001 land time.** PRD §SDK option choices and the §Pre-implementation verifications block claim `Options.autoMemoryEnabled?: boolean` exists at `sdk.d.ts:4740` against SDK `0.2.100`. Against the installed SDK `0.2.117`, the field at `sdk.d.ts:4740` lives on the `Settings` interface (the on-disk `~/.claude/settings.json` shape), not on `Options` — passing `{ autoMemoryEnabled: false }` through `Options` is a TypeScript error. The hermetic-default intent (User Story #40) is upheld in #001 by two other mechanisms already wired: (a) `CLAUDE_CONFIG_DIR` is set to a per-trial scratch dir under the workspace, redirecting any auto-memory writes to disposable storage; (b) `settingSources: ['project']` excludes the `'user'` scope, so the host-level `~/.claude/settings.json`'s `autoMemoryEnabled` (and other user-scope state) does not load. The deviation is documented inline in `src/agents/claude/sdk-options.ts` and pinned in the test (`buildClaudeSdkOptions` asserts `autoMemoryEnabled` is intentionally absent from `Options`). If a future SDK release re-exposes `Options.autoMemoryEnabled`, set it to `false` there and remove the note. |
 
 ## Completion Notes
 
 Use this section to record cross-slice decisions, verification results, or follow-up issues that emerge during implementation.
 
-- No implementation started yet.
+- **#001 land notes (2026-05-06).**
+  - The deleted post-hoc `buildAskBatchFromClaudeDenials` call site in `src/agents/claude.ts` is gone, but the helper itself (`src/sdk/ask-bus/parsers.ts`) and its test (`tests/ask-batch-parity.test.ts`) remain, since the helper still parses Codex denial shapes too. PRD §Deletions tracks the full helper removal under #008.
+  - `extractClaudeStreamJsonEvents` is still exported from `src/agents/claude.ts` because `tests/tool-events.test.ts` consumes it. #002 ships the SDK message projector and replaces those tests; the legacy export should be removed in the same slice.
+  - `collectAuthEnv()` in the rewritten `claude.ts` is a no-op stub today: workspace-prep credential resolution still runs through `prepareWorkspace → resolveCredentials`, and the SDK driver does not yet receive that env. End-to-end auth pass-through into `Options.env` becomes live work for #009 (which verifies the full migrated path) — for #001 the option-builder side is unit-tested with synthetic auth env, the spawn-module side is unit-tested with both auth and host vars, and the smoke test (`tests/claude-sdk-smoke.test.ts`) already covers real-SDK auth via `APP_ANTHROPIC_*`.
+  - `autoMemoryEnabled` deviation: see Progress Log entry. Hermetic-default intent preserved via `CLAUDE_CONFIG_DIR` + `settingSources: ['project']`.
