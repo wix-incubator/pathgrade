@@ -265,4 +265,3 @@ function buildAskUserArguments(
     }
     return { ...base, answerSource: 'unknown' };
 }
-

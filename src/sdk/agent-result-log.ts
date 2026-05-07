@@ -59,4 +59,3 @@ export function buildAskBatchLogEntries(params: {
         ...(batch.lifecycle === 'live' ? { resolved: batch.resolution !== null } : {}),
     }));
 }
-
