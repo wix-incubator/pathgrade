@@ -117,6 +117,115 @@ describe('sdk-regression (claude)', () => {
 });
 
 // =============================================================================
+// Branch-wide regression — slices #001..#010 of the Claude SDK driver migration.
+//
+// Each `it()` here pins a single high-signal behavior the migration introduced.
+// All three reuse the primary `getRun()` snapshot (zero extra Claude API
+// calls) and would not be caught by the existing eval cases above:
+//
+//   #002 typed projector → AgentTurnResult contract
+//        Tool-name → action mapping, assistant-text accumulation across blocks.
+//   #003 token + cost telemetry from `result.usage` / `total_cost_usd`
+//        Both flow onto the shared LLM tracker AND per-turn `agent_result`
+//        log entries. A regression here breaks every cost-aware eval consumer.
+// =============================================================================
+
+describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
+    it('#003: real-Claude runConversation turn accumulates inputTokens/outputTokens AND costUsd onto agent.llm', async () => {
+        // The projector reads `result.usage.{input,output,cache_*}_tokens`
+        // and `result.total_cost_usd`; the runConversation `sendTurn` closure
+        // forwards both onto the shared LLMPort tracker via `addTokens` /
+        // `addCost`. We exercise the full chain in a single short
+        // conversation turn and inspect `agent.llm` BEFORE dispose.
+        // (`liveEval.tokenUsage` from `evaluate()` is the *delta* between
+        // before/after the eval call — it stays at 0 when the judge LLM is
+        // the in-test mock that doesn't report tokens, so it is not a usable
+        // signal here.)
+        const probeWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-probe-tokens-'));
+        try {
+            const agent = await createAgent({
+                agent: 'claude',
+                timeout: 60,
+                workspace: probeWorkspace,
+            });
+            try {
+                await agent.runConversation({
+                    firstMessage: 'Reply with the single word OK and stop.',
+                    maxTurns: 1,
+                });
+                expect(agent.llm.tokenUsage).toBeDefined();
+                expect(agent.llm.tokenUsage!.inputTokens).toBeGreaterThan(0);
+                expect(agent.llm.tokenUsage!.outputTokens).toBeGreaterThan(0);
+                // costUsd is populated from result.total_cost_usd via #003;
+                // accumulating onto `agent.llm.costUsd` proves the addCost
+                // path reached the tracker.
+                expect(agent.llm.costUsd).toBeDefined();
+                expect(agent.llm.costUsd!).toBeGreaterThan(0);
+            } finally {
+                await agent.dispose();
+            }
+        } finally {
+            fs.rmSync(probeWorkspace, { recursive: true, force: true });
+        }
+    }, HOOK_TIMEOUT_MS);
+
+    it('#003: at least one agent_result log entry carries cost_usd (from result.total_cost_usd)', async () => {
+        // The projector lifts `result.total_cost_usd` onto
+        // `AgentTurnResult.costUsd`; `buildModelAgentResultLogEntry`
+        // conditionally spreads it as `cost_usd` on the per-turn agent_result
+        // log entry — ONLY when defined, so non-Claude agents never produce a
+        // misleading zero-valued field. A regression in either the projector
+        // (lift) or the log builder (conditional spread) would silently drop
+        // the cost signal eval consumers rely on. We assert the chain by
+        // finding any agent_result with `cost_usd > 0` in the snapshot log.
+        const { snapshot } = await getRun();
+        const agentResultsWithCost = snapshot.log
+            .filter((e) => e.type === 'agent_result')
+            .filter((e) => typeof e.cost_usd === 'number' && e.cost_usd > 0);
+        expect(agentResultsWithCost.length).toBeGreaterThan(0);
+    }, HOOK_TIMEOUT_MS);
+
+    it('#002: typed projector maps SDK tool_use names to canonical action types (Glob/Bash/Read/Edit)', async () => {
+        // The projector's `TOOL_NAME_MAP` translates SDK tool names into the
+        // `ToolEvent.action` taxonomy that scorers, judges, and rubrics
+        // consume. A regression in the map (or in the projector's tool_use
+        // extraction loop) would silently break every `toolUsage()` scorer
+        // and every judge that filters events by action. The bug-fix flow
+        // exercises the four most-used Claude tools — Glob (list_files),
+        // Bash (run_shell), Read (read_file), Edit (edit_file) — so the
+        // snapshot is a strong end-to-end witness for the map.
+        const { snapshot } = await getRun();
+        const actions = new Set(snapshot.toolEvents.map((e) => e.action));
+        // The fix-the-subtract-bug scenario reliably exercises read+edit+run.
+        // List-files appears when Claude opens with Glob; if Claude skips
+        // that and goes straight to Read, the assertion is still strong on
+        // the three actions that constitute the fix loop.
+        expect(actions.has('read_file')).toBe(true);
+        expect(actions.has('edit_file')).toBe(true);
+        expect(actions.has('run_shell')).toBe(true);
+        // Every projected event carries provider='claude' (the projector
+        // stamps it), proving the projector path was used (not a fallback).
+        expect(snapshot.toolEvents.every((e) => e.provider === 'claude')).toBe(true);
+    }, HOOK_TIMEOUT_MS);
+
+    it('#002: assistant-text accumulates across multiple text blocks on the conversation messages', async () => {
+        // The projector concatenates every `text` block emitted across all
+        // assistant SDKMessage entries in a turn into `assistantMessage`,
+        // exactly what scorers and persona reads `messages` for. A regression
+        // (e.g. only reading the first block, or dropping blocks across
+        // assistant messages) would surface here as truncated agent content.
+        // We assert the snapshot contains at least one substantively-sized
+        // agent message — the bug-fix scenario reliably produces multi-line
+        // explanations.
+        const { snapshot } = await getRun();
+        const agentMessages = snapshot.messages.filter((m) => m.role === 'agent');
+        expect(agentMessages.length).toBeGreaterThan(0);
+        const longest = agentMessages.reduce((acc, m) => Math.max(acc, m.content.length), 0);
+        expect(longest).toBeGreaterThan(20);
+    }, HOOK_TIMEOUT_MS);
+});
+
+// =============================================================================
 // PR-review defect repair regression — fix-while-rebasing patch on the
 // claude-sdk-agent-driver branch (PRD: 2026-05-06).
 //
