@@ -80,24 +80,21 @@ export function buildClaudeSdkOptions(inputs: ClaudeSdkOptionsInputs): Options {
         cwd: inputs.workspacePath,
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         settingSources: ['project'],
+        // Disable auto-memory at the source. SDK 0.2.117 exposes the toggle
+        // through `Options.settings.autoMemoryEnabled` (the field lives on
+        // `Settings`, reachable here via the typed `Options.settings?: string
+        // | Settings` indirection), so the SDK never runs auto-memory recall,
+        // indexing, or writes during a trial. `CLAUDE_CONFIG_DIR` and
+        // `settingSources: ['project']` add defense-in-depth: the former
+        // redirects any per-trial state to a workspace-scoped scratch dir if
+        // the flag is ever ignored upstream, and the latter excludes the
+        // user-scope `~/.claude/settings.json` so a host-level
+        // `autoMemoryEnabled: true` cannot re-enable it.
+        settings: { autoMemoryEnabled: false },
         permissionMode: 'default',
         spawnClaudeCodeProcess: inputs.spawnClaudeCodeProcess,
         canUseTool: inputs.canUseTool,
     };
-    // Note on auto-memory hermeticity: the installed SDK has no typed
-    // `Options.autoMemoryEnabled` field. The hermetic-default intent ("eval
-    // results are not contaminated by personal machine state") is upheld by:
-    //
-    //   1. `CLAUDE_CONFIG_DIR` is set to a per-trial scratch directory under
-    //      the workspace, so any auto-memory writes that *do* happen target
-    //      `<workspace>/.pathgrade-claude-config/projects/<sanitized-cwd>/memory/`,
-    //      which is torn down with the workspace.
-    //   2. `settingSources: ['project']` excludes the `'user'` scope, so the
-    //      host-level `~/.claude/settings.json`'s `autoMemoryEnabled` (and any
-    //      other user-scope state) does not load into the run.
-    //
-    // If a future SDK release reintroduces `Options.autoMemoryEnabled`, set
-    // it to `false` here and remove this note.
     if (inputs.model !== undefined) opts.model = inputs.model;
     if (inputs.claudeCodeExecutable !== undefined) {
         opts.pathToClaudeCodeExecutable = inputs.claudeCodeExecutable;

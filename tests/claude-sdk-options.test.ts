@@ -44,21 +44,24 @@ describe('buildClaudeSdkOptions — base options (TB4)', () => {
         expect(opts.settingSources).toEqual(['project']);
     });
 
-    it('keeps auto-memory state out of the SDK Options object', () => {
-        // The installed SDK has no typed `Options.autoMemoryEnabled` field
-        // — that lives on `Settings`, and writing it through `Options` is a
-        // TS error. The hermetic-default intent is upheld via two other
-        // mechanisms:
+    it('disables auto-memory at the source via Options.settings.autoMemoryEnabled', () => {
+        // SDK 0.2.117 exposes `Options.settings?: string | Settings` and
+        // `Settings.autoMemoryEnabled?: boolean`. That is the typed disable
+        // path for the auto-memory feature, and the driver uses it directly
+        // so the SDK does not run auto-memory at all (recall, indexing,
+        // writes — all gated off) rather than merely redirecting writes.
         //
-        //   - `CLAUDE_CONFIG_DIR` is set to a per-trial scratch dir below
-        //     (TB5), so memory writes never touch the host filesystem.
-        //   - `settingSources: ['project']` excludes the `'user'` scope, so
-        //     host `~/.claude/settings.json` (where the user-scope memory
-        //     toggle lives) is not loaded.
-        //
-        // The builder must therefore NOT carry an `autoMemoryEnabled` key
-        // on Options — keeping it absent is the correct contract.
+        // Defense-in-depth (TB5 + settingSources) still applies on top:
+        //   - `CLAUDE_CONFIG_DIR` redirects any per-trial state to a scratch
+        //     dir, so even an SDK regression that ignored the flag could not
+        //     pollute the host.
+        //   - `settingSources: ['project']` excludes the user-scope
+        //     `~/.claude/settings.json`, so a user-level `autoMemoryEnabled`
+        //     cannot override the driver's disable.
         const opts = buildClaudeSdkOptions(baseInputs());
+        expect(opts.settings).toEqual({ autoMemoryEnabled: false });
+        // `autoMemoryEnabled` lives on `Options.settings`, not directly on
+        // `Options` — the top-level key must remain absent.
         expect('autoMemoryEnabled' in opts).toBe(false);
     });
 
