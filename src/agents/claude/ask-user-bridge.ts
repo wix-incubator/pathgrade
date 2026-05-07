@@ -1,15 +1,12 @@
 /**
  * Ask-user bridge — `canUseTool` callback expressed as a pure factory over
- * `(askBus, getTurnNumber, answerStore)`. Issues #004 and #006.
- *
- * Replaces the placeholder deny installed by #001. PRD §Module decomposition
- * spells out the contract; the short version:
+ * `(askBus, getTurnNumber, answerStore)`.
  *
  *   - For every tool name that is NOT `AskUserQuestion`, the bridge returns
  *     `{ behavior: 'allow', updatedInput: input }`. That matches the
- *     `permissionMode: 'default'` PRD choice — every tool decision still
- *     routes through this callback, but only `AskUserQuestion` actually
- *     blocks on the ask-bus.
+ *     `permissionMode: 'default'` choice — every tool decision still routes
+ *     through this callback, but only `AskUserQuestion` actually blocks on
+ *     the ask-bus.
  *   - For `AskUserQuestion`, the bridge constructs a live `AskBatch` from
  *     the SDK's already-typed `AskUserQuestionInput`, emits it onto the bus,
  *     awaits resolution, and returns the SDK's documented `answers` shape
@@ -57,9 +54,9 @@ export interface AskUserBridgeDeps {
  *   - `clearLastError()` resets the field — called at the top of each turn
  *     so a stale error from a prior turn never triggers a spurious throw.
  *
- * Issue #006. Encoded as attached function properties so #004's existing
- * call sites (`const canUseTool = createAskUserBridge(...); canUseTool(...)`)
- * keep working unchanged.
+ * Encoded as attached function properties so existing call sites
+ * (`const canUseTool = createAskUserBridge(...); canUseTool(...)`) keep
+ * working unchanged.
  */
 export type AskUserBridge = CanUseTool & {
     lastError(): Error | null;
@@ -101,7 +98,7 @@ export function createAskUserBridge(deps: AskUserBridgeDeps): AskUserBridge {
         try {
             resolution = await handle.resolution;
         } catch (err) {
-            // #006: ask-bus timeouts and other rejections deny the SDK with
+            // Ask-bus timeouts and other rejections deny the SDK with
             // the underlying error message AND surface on `lastError()` so
             // the driver re-throws after the turn ends. The conversation
             // runner's catch reports `completionReason: 'error'` with the
@@ -124,7 +121,7 @@ export function createAskUserBridge(deps: AskUserBridgeDeps): AskUserBridge {
         const source = pickAnswerSource(resolution.answers);
         answerStore.record(options.toolUseID, { answers, source });
 
-        // #006: a fully-declined resolution (every answer `source: 'declined'`)
+        // A fully-declined resolution (every answer `source: 'declined'`)
         // surfaces as the SDK's documented `deny` shape. Returning an `allow`
         // with empty `answers` strings would make Claude believe the user
         // typed empty answers — strictly worse than telling the SDK the
@@ -229,9 +226,8 @@ function buildSdkAnswers(
 /**
  * Pick a single source tag for the whole batch. In the happy path every
  * question is answered by the same disposition; if mixed, the most-specific
- * source wins (`reaction` > `fallback` > `declined`). #006 will sharpen the
- * mixed-disposition behavior — for #004 the projector consumes a single tag
- * per tool event.
+ * source wins (`reaction` > `fallback` > `declined`). The projector consumes
+ * a single tag per tool event.
  */
 function pickAnswerSource(answers: readonly AskAnswer[]): AskAnswer['source'] {
     if (answers.some((a) => a.source === 'reaction')) return 'reaction';

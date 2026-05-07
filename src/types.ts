@@ -105,8 +105,8 @@ export interface LogEntry {
     judge_tool_call?: JudgeToolCallLogData;
     /**
      * @deprecated Read-only compatibility for snapshots predating the
-     * blocked-prompt synthesis deletion (issue #008). New writers never emit
-     * any of the `blocked_prompt_*` / `synthetic_blocked_prompt` fields, but
+     * blocked-prompt synthesis deletion. New writers never emit any of the
+     * `blocked_prompt_*` / `synthetic_blocked_prompt` fields, but
      * `loadRunSnapshot` still parses them so historical run-snapshots load.
      * Do not set these fields from new code paths.
      */
@@ -127,7 +127,6 @@ export interface LogEntry {
      * Claude Agent SDK populates `total_cost_usd` on result messages).
      * Written by `buildModelAgentResultLogEntry` only when the turn result
      * carries a `costUsd` value; absent for agents that do not expose cost.
-     * PRD §Token and cost telemetry; issue #003 criterion 4.
      */
     cost_usd?: number;
     completion_reason?: string;
@@ -168,10 +167,9 @@ export interface TrialResult {
     conversation_output_tokens?: number;
     /**
      * Sum of agent-turn `costUsd` values accumulated during the
-     * conversation, attributed at evaluation time (PRD §Token and cost
-     * telemetry). Today only the Claude SDK driver populates per-turn
-     * cost, so this field is set on Claude trials and absent on
-     * Codex / Cursor trials. Issue #003.
+     * conversation, attributed at evaluation time. Today only the Claude
+     * SDK driver populates per-turn cost, so this field is set on Claude
+     * trials and absent on Codex / Cursor trials.
      */
     conversation_cost_usd?: number;
     /**
@@ -179,7 +177,7 @@ export interface TrialResult {
      * Conservative — emitted ONLY when every included component has a
      * known cost. Today judge LLM providers do not expose cost, so this
      * field is never emitted; `conversation_cost_usd` is the only
-     * guaranteed cost surface until that changes. Issue #003.
+     * guaranteed cost surface until that changes.
      */
     total_cost_usd?: number;
     session_log: LogEntry[];
@@ -308,7 +306,7 @@ export interface AgentTurnResult {
      * Optional cache-token breakdown sourced from the Claude Agent SDK's
      * `cache_creation_input_tokens` field. Additive only — `inputTokens`
      * still includes cache-creation volume, matching pathgrade's existing
-     * convention (PRD §Token and cost telemetry; issue #003 criterion 8).
+     * convention.
      */
     cacheCreationInputTokens?: number;
     /**
@@ -322,13 +320,12 @@ export interface AgentTurnResult {
      * pricing. The Claude Agent SDK populates this from the result
      * message's `total_cost_usd`. Other drivers (Codex, Cursor) leave it
      * undefined until their providers expose comparable metadata.
-     * PRD §Token and cost telemetry; issue #003 User Story 18.
      */
     costUsd?: number;
     /**
      * Typed error subtype set when the turn ended in error; absent on success.
      * Lets eval consumers triage failures correctly without regex on the
-     * result text. PRD §Token and cost telemetry; issue #003 User Story 19.
+     * result text.
      *
      * The `error_*` values are SDK-reported result subtypes (`SDKResultError`
      * per `sdk.d.ts`). `'bus_rejection'` is driver-synthesized: when the live

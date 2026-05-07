@@ -226,8 +226,8 @@ async function getShowcaseRun(): Promise<ShowcaseRun> {
         const preview = previewReactions(snapshot.messages, REACTIONS);
 
         const snapshotReplay = await evaluate.fromSnapshot(snapshotPath, [
-            // Slice #004 flipped Claude to `interactiveQuestionTransport: 'reliable'`
-            // and `planRuntimePolicies('claude')` returns `[]`, so the legacy
+            // Claude's `interactiveQuestionTransport` is `'reliable'` and
+            // `planRuntimePolicies('claude')` returns `[]`, so the legacy
             // noninteractive-user-question policy must NEVER appear on the
             // Claude path. Codex/Cursor still emit it; this scorer is the
             // Claude-specific inverse.
@@ -313,7 +313,7 @@ describe('sdk-showcase (claude): shared bugfix flow', () => {
         expect(snapshot.turnTimings.length).toBe(conversation.turns);
         expect(snapshot.conversationResult.turns).toBe(conversation.turns);
         expect(snapshot.conversationResult.completionReason).toBe(conversation.completionReason);
-        // Reliable transport (post-#004) — no runtime policy emitted.
+        // Reliable transport — no runtime policy emitted.
         expect(
             snapshot.log.some((entry) =>
                 entry.runtime_policies_applied?.some(

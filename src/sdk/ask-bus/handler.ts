@@ -28,7 +28,6 @@ export interface AskUserUnmatchedSignal {
      * signal — populated whether the trigger is `'error'` outright or a
      * `'first-option'` degradation (free-text / isSecret). Consumers compose
      * the user-facing completion detail from at least the first entry.
-     * Issue #006 / User Story #8.
      */
     questionTexts: string[];
 }

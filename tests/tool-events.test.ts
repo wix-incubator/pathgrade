@@ -7,7 +7,7 @@ import type { ToolEvent } from '../src/tool-events.js';
 // that used to live here (~180 lines) has been removed. The SDK driver no
 // longer scrapes NDJSON; tool events are projected from the typed
 // `SDKMessage` stream by `projectSdkMessages`. The replacement tests live
-// in `tests/claude-sdk-projector.test.ts`. See issue #002.
+// in `tests/claude-sdk-projector.test.ts`.
 
 describe('extractCodexToolEvents', () => {
   it('normalizes Codex shell and file-read traces', () => {

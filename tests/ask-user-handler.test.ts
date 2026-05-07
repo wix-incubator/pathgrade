@@ -165,10 +165,10 @@ describe('createAskUserHandler — live batches', () => {
         });
     });
 
-    it('unmatched signal carries every question text on the live batch (#006)', async () => {
-        // Per User Story #8: structured unmatched signals must include the
-        // question text(s) so completion details and downstream tooling can
-        // surface what the agent actually asked, not just the batch id.
+    it('unmatched signal carries every question text on the live batch', async () => {
+        // Structured unmatched signals must include the question text(s) so
+        // completion details and downstream tooling can surface what the
+        // agent actually asked, not just the batch id.
         const bus = createAskBus({ askUserTimeoutMs: 1000 });
         const api = createAskUserHandler({ reactions: [], onUnmatchedAskUser: 'error', firedOnce: new Set() });
         bus.onAsk(api.handler);

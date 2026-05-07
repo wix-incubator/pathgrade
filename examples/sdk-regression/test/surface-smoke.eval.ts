@@ -59,9 +59,9 @@ describe('sdk-regression surface smoke (offline)', () => {
     });
 
     it('exposes agent capabilities and transport resolution', () => {
-        // Claude flipped to 'reliable' in slice #004 once the live ask-user
-        // bridge replaced the prompt-prepend workaround. Cursor stays
-        // 'noninteractive' until its driver gains a live transport.
+        // Claude is 'reliable' — the live ask-user bridge replaces the
+        // prompt-prepend workaround. Cursor stays 'noninteractive' until
+        // its driver gains a live transport.
         expect(getAgentCapabilities('claude').interactiveQuestionTransport).toBe('reliable');
         expect(getAgentCapabilities('cursor').interactiveQuestionTransport).toBe('noninteractive');
         expect(getAgentCapabilities('codex', 'app-server').interactiveQuestionTransport).toBe('reliable');

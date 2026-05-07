@@ -2,9 +2,8 @@
  * Tests for src/providers/sandboxed-claude-spawn.ts.
  *
  * Module is the SDK's `spawnClaudeCodeProcess` hook, expressed as a pure
- * function that knows nothing about Claude, the SDK, or evals (PRD §Module
- * decomposition → Sandboxed-claude-spawn module). It owns two enforcement
- * points:
+ * function that knows nothing about Claude, the SDK, or evals. It owns two
+ * enforcement points:
  *
  *   1. Subprocess env construction. The SDK forwards `Options.env` into the
  *      `SpawnOptions.env` we receive; we intersect the *host process* env
@@ -15,8 +14,8 @@
  *   2. Argv shape. macOS optionally wraps argv with `sandbox-exec -p <profile>
  *      --` when a profile is supplied; non-darwin always passes through.
  *      Today no profile is staged, so production usage is passthrough on all
- *      platforms — the seam exists for the macOS sandbox-exec wrap that PRD
- *      §Architecture promises to preserve from "today's behavior."
+ *      platforms — the seam exists for the macOS sandbox-exec wrap preserved
+ *      from the pre-SDK driver.
  *
  * All tests inject a fake spawn delegate so no real subprocess runs.
  */

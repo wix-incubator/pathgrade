@@ -381,10 +381,10 @@ describe('CursorAgent runTurn', () => {
     expect(out).toContain('hello from cursor');
   });
 
-  it('prepends the non-interactive runtime policy to the first-turn prompt and skips it on resumed turns (#007)', async () => {
+  it('prepends the non-interactive runtime policy to the first-turn prompt and skips it on resumed turns', async () => {
     // Cursor's `interactiveQuestionTransport` is `'noninteractive'`, so
     // `planRuntimePolicies('cursor')` still returns the workaround policy.
-    // #007 deletes the workaround on the *Claude* path; this test locks in
+    // The Claude path no longer uses the workaround; this test locks in
     // that Cursor's existing behavior is unchanged: the rendered policy
     // text shows up in the first-turn prompt (verified via the base64-
     // encoded tempfile write that precedes the `cursor-agent` invocation),

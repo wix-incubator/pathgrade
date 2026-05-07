@@ -8,15 +8,12 @@
  * `session_id` the orchestrator threads into the next turn's
  * `Options.resume`.
  *
- * PRD reference: docs/prds/2026-05-05-claude-sdk-agent-driver.md
- *   §Module decomposition / SDK-message-projector
- *
- * Boundary with #004 (live ask-user bridge): for an `AskUserQuestion`
+ * Boundary with the live ask-user bridge: for an `AskUserQuestion`
  * tool-use block the projector emits a `ToolEvent` whose `arguments` shape
  * is the structured `AskUserQuestionInput` (questions / headers / options /
- * multiSelect) plus `answerSource: 'unknown'`. The bridge in #004 attaches
- * the answer values and the `'reaction' | 'fallback' | 'declined'` source
- * tag onto the same envelope; the projector itself never mints them.
+ * multiSelect) plus `answerSource: 'unknown'`. The bridge attaches the
+ * answer values and the `'reaction' | 'fallback' | 'declined'` source tag
+ * onto the same envelope; the projector itself never mints them.
  */
 
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -41,7 +38,7 @@ export interface ProjectTurnInput {
     /** First user message of the turn — used for slash-command skill detection. */
     firstMessage?: string;
     /**
-     * Optional per-turn answer store written by the ask-user-bridge (#004).
+     * Optional per-turn answer store written by the ask-user-bridge.
      * When present, the projector merges `answers` + `answerSource` from the
      * store onto each `AskUserQuestion` ToolEvent envelope using the SDK's
      * `toolUseID` (the tool-use block `id`) as the join key. When absent or
@@ -120,25 +117,25 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
                         + (r.usage.cache_creation_input_tokens ?? 0)
                         + (r.usage.cache_read_input_tokens ?? 0);
                     outputTokens = r.usage.output_tokens;
-                    // #003: additive cache-token breakdown. `inputTokens`
-                    // above keeps the existing pathgrade convention of
-                    // including cache volume — these fields just expose the
-                    // SDK's own breakdown for consumers that want to reason
-                    // about cache hits/creation separately.
+                    // Additive cache-token breakdown. `inputTokens` above
+                    // keeps the existing pathgrade convention of including
+                    // cache volume — these fields just expose the SDK's own
+                    // breakdown for consumers that want to reason about cache
+                    // hits/creation separately.
                     cacheCreationInputTokens = r.usage.cache_creation_input_tokens;
                     cacheReadInputTokens = r.usage.cache_read_input_tokens;
                 }
-                // #003 User Story 18: surface SDK-reported turn cost on
-                // success and error result subtypes alike. The driver
-                // accumulates these into the conversation cost downstream.
+                // Surface SDK-reported turn cost on success and error result
+                // subtypes alike. The driver accumulates these into the
+                // conversation cost downstream.
                 if (typeof r.total_cost_usd === 'number') {
                     costUsd = r.total_cost_usd;
                 }
                 if (r.is_error || (r.subtype && r.subtype !== 'success')) {
                     isError = true;
                     exitCode = 1;
-                    // #003 User Story 19: surface the SDK's typed error
-                    // subtype so consumers can triage without regex on text.
+                    // Surface the SDK's typed error subtype so consumers can
+                    // triage without regex on text.
                     if (r.subtype && (SDK_ERROR_SUBTYPES as readonly string[]).includes(r.subtype)) {
                         errorSubtype = r.subtype as SdkErrorSubtype;
                     }
@@ -242,17 +239,17 @@ function buildToolEvent(
 }
 
 /**
- * Boundary with #004 (PRD §Module decomposition).
+ * Boundary with the ask-user bridge.
  *
  * The projector emits the structured `AskUserQuestionInput` (questions /
  * headers / options / multiSelect) plus `answerSource: 'unknown'`. The
- * ask-user-bridge in #004 attaches the answer values and the
+ * ask-user-bridge attaches the answer values and the
  * `'reaction' | 'fallback' | 'declined'` source tag onto this same envelope.
  *
  * The projector itself never mints answer values, never mints a non-`unknown`
  * source, and never reaches into the bus — it just stamps the boundary so a
- * pre-#004 turn that produces an AskUserQuestion event still has a
- * snapshot-stable shape for scorers and reporters.
+ * turn that produces an AskUserQuestion event without a bridge entry still
+ * has a snapshot-stable shape for scorers and reporters.
  */
 function buildAskUserArguments(
     input: Record<string, unknown> | undefined,

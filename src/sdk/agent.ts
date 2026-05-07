@@ -240,8 +240,8 @@ class AgentImpl implements Agent {
             if (turnResult.inputTokens || turnResult.outputTokens) {
                 this.llm.addTokens?.(turnResult.inputTokens ?? 0, turnResult.outputTokens ?? 0);
             }
-            // #003: accumulate agent turn cost on the same shared tracker
-            // when the upstream provider reports it (Claude SDK populates
+            // Accumulate agent turn cost on the same shared tracker when
+            // the upstream provider reports it (Claude SDK populates
             // `costUsd` from `total_cost_usd`; Codex/Cursor leave it
             // undefined, in which case this is a no-op).
             if (turnResult.costUsd !== undefined) {

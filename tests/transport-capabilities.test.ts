@@ -16,9 +16,9 @@ describe('getAgentCapabilities', () => {
         expect(getAgentCapabilities('codex', 'app-server').interactiveQuestionTransport).toBe('reliable');
     });
 
-    it('returns reliable ask-user transport for claude regardless of transport (PRD §Capabilities — flipped in #004)', () => {
-        // The Claude SDK driver routes AskUserQuestion through the live ask-user
-        // bridge (issue #004), which is the same `'reliable'` tier Codex
+    it('returns reliable ask-user transport for claude regardless of transport', () => {
+        // The Claude SDK driver routes AskUserQuestion through the live
+        // ask-user bridge, which is the same `'reliable'` tier Codex
         // app-server occupies. The transport hint is Codex-specific so it has
         // no effect on Claude's capability — every transport variant resolves
         // to `'reliable'` for Claude.
@@ -50,11 +50,10 @@ describe('planRuntimePolicies transport-aware', () => {
         expect(planRuntimePolicies('codex', 'app-server')).toEqual([]);
     });
 
-    it('plans no runtime policy for claude — capability flipped to reliable in #004', () => {
-        // Claude's interactive-question transport is `'reliable'` post-#004
-        // (the live ask-user bridge replaces the synthesis workaround the
-        // policy was wallpapering). #007 cleans up any remaining policy
-        // call-sites; the plan-side change falls out of the capability flip
+    it('plans no runtime policy for claude — capability is reliable', () => {
+        // Claude's interactive-question transport is `'reliable'` (the live
+        // ask-user bridge replaces the synthesis workaround the policy was
+        // wallpapering). The plan-side behavior falls out of the capability
         // because `planRuntimePolicies` is purely capability-driven.
         expect(planRuntimePolicies('claude')).toEqual([]);
         expect(planRuntimePolicies('claude', 'app-server')).toEqual([]);

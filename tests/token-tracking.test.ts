@@ -307,7 +307,7 @@ describe('token tracking in evaluation results', () => {
         expect(result.trial!.output_tokens).toBe(100);
     });
 
-    it('11a: conversation_cost_usd is populated from the pre-evaluate cost snapshot (#003)', async () => {
+    it('11a: conversation_cost_usd is populated from the pre-evaluate cost snapshot', async () => {
         // Mirrors test 6 (conversation_input_tokens / conversation_output_tokens),
         // for cost. AgentImpl's `sendTurn` calls `addCost` per turn; the cost
         // accumulated before `evaluate()` runs is attributed to the trial as
@@ -368,9 +368,9 @@ describe('token tracking in evaluation results', () => {
         expect(result.trial).not.toHaveProperty('conversation_cost_usd');
     });
 
-    it('11c: total_cost_usd is omitted while judge providers do not expose cost (#003 conservative gate)', async () => {
-        // PRD §Token and cost telemetry: `total_cost_usd` is emitted only
-        // when *all* included components have known cost. Today judge LLM
+    it('11c: total_cost_usd is omitted while judge providers do not expose cost (conservative gate)', async () => {
+        // `total_cost_usd` is emitted only when *all* included components
+        // have known cost. Today judge LLM
         // providers do not expose cost, so this field is never emitted —
         // even when the conversation cost is known. Adding judge cost in a
         // future change is what unlocks this field.

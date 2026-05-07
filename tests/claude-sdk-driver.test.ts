@@ -1,5 +1,5 @@
 /**
- * Tests for the Claude SDK driver's orchestration shell (issue #001).
+ * Tests for the Claude SDK driver's orchestration shell.
  *
  * The driver runs a Claude session through `@anthropic-ai/claude-agent-sdk`'s
  * `query()` instead of the old CLI scrape. This file exercises the
@@ -12,9 +12,9 @@
  *     way they did under the CLI driver.
  *
  * The full SDK message projection (assistant text, tool events, typed errors,
- * cache tokens, `cost_usd`) lands in issue #002. Here we assert only what
- * the shell needs: session-id flow, per-turn options, and a non-zero shape
- * for `AgentTurnResult` so consumers don't trip on a half-built object.
+ * cache tokens, `cost_usd`) lives in the projector tests. Here we assert only
+ * what the shell needs: session-id flow, per-turn options, and a non-zero
+ * shape for `AgentTurnResult` so consumers don't trip on a half-built object.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -115,7 +115,7 @@ function makeResultSuccess(sessionId: string, text: string): SDKMessage {
 describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
     it('fails fast when no askBus is supplied (live batches require a real subscriber)', async () => {
         // The SDK driver emits `lifecycle: 'live'` ask-user batches via the
-        // canUseTool callback (#004). Silently resolving to `null` or an empty
+        // canUseTool callback. Silently resolving to `null` or an empty
         // answer map would send an empty answer back to Claude on the wire,
         // which is a worse failure mode than refusing to start. Match the
         // shared `requireAskBusForLiveBatches` contract.
@@ -214,9 +214,9 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         // specific keys. It spreads the curated runtime env wholesale onto
         // `Options.env` so all three contracts — ANTHROPIC_* auth, sandbox
         // isolation env, and documented `createAgent({ env })` injection —
-        // flow through the same path. The PRD's pre-fix `collectAuthEnv`
-        // helper that picked only ANTHROPIC_* keys was a regression vs the
-        // legacy CLI driver; this test pins the corrected behavior.
+        // flow through the same path. Picking only ANTHROPIC_* keys would
+        // be a regression vs the legacy CLI driver; this test pins the
+        // wholesale behavior.
         const fake = makeFakeQuery([
             [makeInitMessage('s'), makeResultSuccess('s', 'ok')],
         ]);
@@ -313,13 +313,14 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         const result = await session.start({ message: 'ping' });
         // Internal session id flows back to the orchestrator (asserted via the
         // resume behavior of the next test). The public result type does not
-        // expose sessionId — full projection is #002 — but the shell must at
-        // least return a structurally-valid `AgentTurnResult`.
+        // expose sessionId — full projection lives in the projector — but
+        // the shell must at least return a structurally-valid
+        // `AgentTurnResult`.
         expect(result.exitCode).toBe(0);
         expect(Array.isArray(result.toolEvents)).toBe(true);
     });
 
-    it('routes AskUserQuestion through the live ask-user bridge (#004)', async () => {
+    it('routes AskUserQuestion through the live ask-user bridge', async () => {
         // Drives a single mocked SDK turn where Claude emits an AskUserQuestion
         // tool_use, the bridge resolves it through a reaction-style ask-bus
         // subscriber, and the assistant continues the same turn with text
@@ -435,7 +436,7 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         });
     });
 
-    it('returns a bus_rejection AgentTurnResult carrying the partial trace when the ask-bus rejects (#006)', async () => {
+    it('returns a bus_rejection AgentTurnResult carrying the partial trace when the ask-bus rejects', async () => {
         // No subscriber installed — the bus' 0ms timeout fires when the
         // bridge awaits resolution. The bridge denies to the SDK with the
         // error message AND records on `lastError()`; the driver returns an
@@ -640,16 +641,15 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         expect(calls[1].options!.resume).toBe('rejected-turn-session-id');
     });
 
-    it('does NOT prepend the non-interactive runtime-policy text to the SDK prompt even when sessionOptions carries it (#007)', async () => {
-        // Pre-#004, the legacy Claude CLI driver prepended the
-        // `noninteractive-user-question` policy text in front of the
-        // user's message on first turn to wallpaper the missing live
-        // ask-user transport. Post-#004 the policy infrastructure is
-        // intentionally never consulted on the Claude path — capability
-        // flipped to `'reliable'`, planRuntimePolicies('claude') === [].
-        // #007 locks this in: even if a caller hands the SDK driver an
-        // AgentSessionOptions with `runtimePolicies` populated, the SDK
-        // `query()` must see the bare user message, not a prepend.
+    it('does NOT prepend the non-interactive runtime-policy text to the SDK prompt even when sessionOptions carries it', async () => {
+        // The legacy Claude CLI driver prepended the
+        // `noninteractive-user-question` policy text in front of the user's
+        // message on first turn to wallpaper the missing live ask-user
+        // transport. The SDK driver never consults the policy infrastructure
+        // — capability is `'reliable'`, planRuntimePolicies('claude') === [].
+        // Even if a caller hands the SDK driver an AgentSessionOptions with
+        // `runtimePolicies` populated, the SDK `query()` must see the bare
+        // user message, not a prepend.
         const fake = makeFakeQuery([
             [
                 makeInitMessage('sess-policy'),
@@ -672,7 +672,7 @@ describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
         expect(String(fake.calls[0].prompt)).not.toContain(renderedPolicy);
     });
 
-    it('returns runtimePoliciesApplied as an empty array even when sessionOptions carries policies (#007)', async () => {
+    it('returns runtimePoliciesApplied as an empty array even when sessionOptions carries policies', async () => {
         // Mirrors the projector-level invariant exercised by
         // tests/claude-sdk-projector.test.ts but at the driver shell so a
         // future refactor that re-introduces a policy-application path

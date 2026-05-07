@@ -15,8 +15,8 @@
  *   2. Argv. macOS optionally wraps with `sandbox-exec -p <profile> --` when
  *      a profile is supplied; non-darwin always passes through. Today no
  *      profile is staged, so production usage is passthrough on every
- *      platform — the seam exists for the wrap that PRD §Architecture
- *      preserves from the pre-SDK driver.
+ *      platform — the seam exists for the wrap preserved from the pre-SDK
+ *      driver.
  */
 import { spawn as nodeSpawn } from 'child_process';
 import type {

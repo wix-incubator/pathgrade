@@ -3,7 +3,7 @@
  *
  * Replaces the previous CLI-scraping driver with one built on
  * `@anthropic-ai/claude-agent-sdk`. The driver class is just orchestration
- * over five deep modules (PRD §Module decomposition):
+ * over five deep modules:
  *
  *   - `sandboxedClaudeSpawn`      — `Options.spawnClaudeCodeProcess` adapter
  *                                   that filters env and (optionally) wraps
@@ -11,16 +11,15 @@
  *   - `loadMcpServersForSdk`      — reads pathgrade's MCP config JSON into
  *                                   the SDK's `Options.mcpServers` shape.
  *   - `buildClaudeSdkOptions`     — pure builder for the per-turn `Options`.
- *   - `createAskUserBridge`       — live `canUseTool` (issue #004) that
- *                                   auto-allows non-`AskUserQuestion` tools
- *                                   and resolves `AskUserQuestion` through
- *                                   the ask-bus, returning the SDK's
- *                                   documented `answers` map shape on
- *                                   `updatedInput`. Per-turn answer store
- *                                   feeds the projector.
+ *   - `createAskUserBridge`       — live `canUseTool` that auto-allows
+ *                                   non-`AskUserQuestion` tools and resolves
+ *                                   `AskUserQuestion` through the ask-bus,
+ *                                   returning the SDK's documented `answers`
+ *                                   map shape on `updatedInput`. Per-turn
+ *                                   answer store feeds the projector.
  *   - `projectSdkMessages`        — pure typed-message → `AgentTurnResult`
- *                                   projector (issue #002). Replaces the
- *                                   legacy NDJSON parser wholesale.
+ *                                   projector. Replaces the legacy NDJSON
+ *                                   parser wholesale.
  */
 import {
     query as sdkQuery,
@@ -72,7 +71,7 @@ export interface ClaudeAgentOptions {
     /**
      * Path to a Claude binary that overrides the SDK's bundled per-platform
      * default. Run-level (set on the agent constructor); per-fixture override
-     * is intentionally out of scope (PRD §Out of Scope).
+     * is intentionally out of scope.
      */
     claudeCodeExecutable?: string;
 }
@@ -92,7 +91,7 @@ export class ClaudeAgent extends BaseAgent {
     ): Promise<AgentSession> {
         // Live ask-user batches require a real subscriber. Fail fast at session
         // construction rather than silently sending an empty answer back to
-        // Claude on the wire when the bus is missing. PRD §Module decomposition.
+        // Claude on the wire when the bus is missing.
         const askBus = requireAskBusForLiveBatches(sessionOptions, 'ClaudeSdkAgent');
         const workspacePath = getWorkspacePath(runtime);
         const queryFn: ClaudeSdkQueryFn = this.deps.query ?? (sdkQuery as unknown as ClaudeSdkQueryFn);
@@ -113,12 +112,12 @@ export class ClaudeAgent extends BaseAgent {
 
         let priorSessionId: string | undefined;
         let turnNumber = 0;
-        // The live ask-user bridge replaces the #001 placeholder canUseTool.
-        // The bridge resolves AskUserQuestion through the bus and writes the
-        // resulting answers + source into the per-turn answer store; the
-        // projector merges those onto the AskUserQuestion ToolEvent envelope.
-        // The store is rebuilt per turn so a question on turn 2 cannot read
-        // a stale answer from turn 1 even on toolUseID collisions.
+        // The live ask-user bridge resolves AskUserQuestion through the bus
+        // and writes the resulting answers + source into the per-turn answer
+        // store; the projector merges those onto the AskUserQuestion
+        // ToolEvent envelope. The store is rebuilt per turn so a question on
+        // turn 2 cannot read a stale answer from turn 1 even on toolUseID
+        // collisions.
         let answerStore = createAskUserAnswerStore();
         const bridge = createAskUserBridge({
             askBus,
@@ -129,7 +128,7 @@ export class ClaudeAgent extends BaseAgent {
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
             turnNumber += 1;
             answerStore = createAskUserAnswerStore();
-            // #006: clear any ask-bus rejection captured on a prior turn so a
+            // Clear any ask-bus rejection captured on a prior turn so a
             // stale error never causes a spurious result on this turn.
             bridge.clearLastError();
             const sdkOptions = buildClaudeSdkOptions({
@@ -168,7 +167,7 @@ export class ClaudeAgent extends BaseAgent {
             // turn's session even when the turn ended in an ask-bus error.
             if (projected.sessionId) priorSessionId = projected.sessionId;
 
-            // #006: an ask-bus rejection (timeout, missing subscriber, handler
+            // An ask-bus rejection (timeout, missing subscriber, handler
             // throw) produced an SDK deny mid-turn AND captured the underlying
             // error on the bridge. Returning an error `AgentTurnResult` rather
             // than throwing lets the conversation runner project the partial

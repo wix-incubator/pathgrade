@@ -2,15 +2,15 @@
  * SDK regression (Claude) — runs the full regression scenario against Claude.
  * See test/shared.ts for the feature matrix.
  *
- * Also pins the four PR-review defect repairs landed in the
+ * Also pins the PR-review defect repairs from the
  * `claude-sdk-agent-driver` branch's fix-while-rebasing patch:
- *   F1  workspace runtime env spreads wholesale onto Options.env
- *   F1b driver-owned CLAUDE_CONFIG_DIR overrides any user-supplied collision
- *   F2  ClaudeAgent.run() falls through to BaseAgent's diagnostic
- *   F3  slash-command `use_skill` synthesizes once across multi-turn runs
- *   F4  ask-bus rejection returns an error AgentTurnResult with partial trace
- *   F5  `runConversation` projects the failed turn before propagating
- *   F6  resumed sessions point at the rejected turn's session_id
+ *   - workspace runtime env spreads wholesale onto Options.env
+ *   - driver-owned CLAUDE_CONFIG_DIR overrides any user-supplied collision
+ *   - ClaudeAgent.run() falls through to BaseAgent's diagnostic
+ *   - slash-command `use_skill` synthesizes once across multi-turn runs
+ *   - ask-bus rejection returns an error AgentTurnResult with partial trace
+ *   - `runConversation` projects the failed turn before propagating
+ *   - resumed sessions point at the rejected turn's session_id
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -77,13 +77,13 @@ describe('sdk-regression (claude)', () => {
     }, HOOK_TIMEOUT_MS);
 
     it('uses the reliable AskUser transport (no noninteractive runtime policy)', async () => {
-        // Slice #004 flipped Claude's transport from 'noninteractive' →
-        // 'reliable' once the live ask-user bridge replaced the prompt-prepend
-        // workaround. `planRuntimePolicies('claude')` therefore returns `[]`
-        // and the legacy `noninteractive-user-question` policy must never
-        // appear in the log. Any AskUserQuestion that fires must have been
-        // resolved by the bridge (source: 'reaction' or 'fallback'), never
-        // the projector's pre-bridge `'unknown'` placeholder.
+        // Claude's transport is `'reliable'` — the live ask-user bridge
+        // replaces the prompt-prepend workaround.
+        // `planRuntimePolicies('claude')` therefore returns `[]` and the
+        // legacy `noninteractive-user-question` policy must never appear in
+        // the log. Any AskUserQuestion that fires must have been resolved by
+        // the bridge (source: 'reaction' or 'fallback'), never the projector's
+        // pre-bridge `'unknown'` placeholder.
         const { snapshot } = await getRun();
         expect(getAgentCapabilities(AGENT).interactiveQuestionTransport).toBe('reliable');
         expect(
@@ -117,21 +117,22 @@ describe('sdk-regression (claude)', () => {
 });
 
 // =============================================================================
-// Branch-wide regression — slices #001..#010 of the Claude SDK driver migration.
+// Branch-wide regression — high-signal behaviors the Claude SDK driver
+// migration introduced.
 //
-// Each `it()` here pins a single high-signal behavior the migration introduced.
-// All three reuse the primary `getRun()` snapshot (zero extra Claude API
-// calls) and would not be caught by the existing eval cases above:
+// Each `it()` here pins a single behavior. All reuse the primary `getRun()`
+// snapshot (zero extra Claude API calls) and would not be caught by the
+// existing eval cases above:
 //
-//   #002 typed projector → AgentTurnResult contract
-//        Tool-name → action mapping, assistant-text accumulation across blocks.
-//   #003 token + cost telemetry from `result.usage` / `total_cost_usd`
-//        Both flow onto the shared LLM tracker AND per-turn `agent_result`
-//        log entries. A regression here breaks every cost-aware eval consumer.
+//   - Typed projector → AgentTurnResult contract: tool-name → action mapping,
+//     assistant-text accumulation across blocks.
+//   - Token + cost telemetry from `result.usage` / `total_cost_usd`: both
+//     flow onto the shared LLM tracker AND per-turn `agent_result` log
+//     entries. A regression here breaks every cost-aware eval consumer.
 // =============================================================================
 
 describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
-    it('#003: real-Claude runConversation turn accumulates inputTokens/outputTokens AND costUsd onto agent.llm', async () => {
+    it('real-Claude runConversation turn accumulates inputTokens/outputTokens AND costUsd onto agent.llm', async () => {
         // The projector reads `result.usage.{input,output,cache_*}_tokens`
         // and `result.total_cost_usd`; the runConversation `sendTurn` closure
         // forwards both onto the shared LLMPort tracker via `addTokens` /
@@ -156,7 +157,7 @@ describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
                 expect(agent.llm.tokenUsage).toBeDefined();
                 expect(agent.llm.tokenUsage!.inputTokens).toBeGreaterThan(0);
                 expect(agent.llm.tokenUsage!.outputTokens).toBeGreaterThan(0);
-                // costUsd is populated from result.total_cost_usd via #003;
+                // costUsd is populated from result.total_cost_usd;
                 // accumulating onto `agent.llm.costUsd` proves the addCost
                 // path reached the tracker.
                 expect(agent.llm.costUsd).toBeDefined();
@@ -169,7 +170,7 @@ describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
         }
     }, HOOK_TIMEOUT_MS);
 
-    it('#003: at least one agent_result log entry carries cost_usd (from result.total_cost_usd)', async () => {
+    it('at least one agent_result log entry carries cost_usd (from result.total_cost_usd)', async () => {
         // The projector lifts `result.total_cost_usd` onto
         // `AgentTurnResult.costUsd`; `buildModelAgentResultLogEntry`
         // conditionally spreads it as `cost_usd` on the per-turn agent_result
@@ -185,7 +186,7 @@ describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
         expect(agentResultsWithCost.length).toBeGreaterThan(0);
     }, HOOK_TIMEOUT_MS);
 
-    it('#002: typed projector maps SDK tool_use names to canonical action types (Glob/Bash/Read/Edit)', async () => {
+    it('typed projector maps SDK tool_use names to canonical action types (Glob/Bash/Read/Edit)', async () => {
         // The projector's `TOOL_NAME_MAP` translates SDK tool names into the
         // `ToolEvent.action` taxonomy that scorers, judges, and rubrics
         // consume. A regression in the map (or in the projector's tool_use
@@ -208,7 +209,7 @@ describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
         expect(snapshot.toolEvents.every((e) => e.provider === 'claude')).toBe(true);
     }, HOOK_TIMEOUT_MS);
 
-    it('#002: assistant-text accumulates across multiple text blocks on the conversation messages', async () => {
+    it('assistant-text accumulates across multiple text blocks on the conversation messages', async () => {
         // The projector concatenates every `text` block emitted across all
         // assistant SDKMessage entries in a turn into `assistantMessage`,
         // exactly what scorers and persona reads `messages` for. A regression
@@ -226,20 +227,19 @@ describe('claude-sdk-agent-driver — branch-wide critical behaviors', () => {
 });
 
 // =============================================================================
-// PR-review defect repair regression — fix-while-rebasing patch on the
-// claude-sdk-agent-driver branch (PRD: 2026-05-06).
+// PR-review defect repair regression for the claude-sdk-agent-driver branch.
 //
-// These exercises focus tightly on the four regressions the squashed migration
-// would otherwise have shipped. F1/F1b/F3 drive a real Claude run because the
-// observable surface lives at the Bash/`printenv` tool layer the agent invokes
-// from inside its sandbox. F2 and F4–F6 exercise the driver directly: their
-// boundaries (the override of `run()`, the ask-bus rejection contract) sit
-// below the `Agent` interface that `createAgent` exposes, so the driver class
-// is the smallest scope where the behavior actually lives.
+// These exercises focus tightly on the four regressions the migration would
+// otherwise have shipped. The first three drive a real Claude run because
+// the observable surface lives at the Bash/`printenv` tool layer the agent
+// invokes from inside its sandbox. The remainder exercise the driver
+// directly: their boundaries (the override of `run()`, the ask-bus rejection
+// contract) sit below the `Agent` interface that `createAgent` exposes, so
+// the driver class is the smallest scope where the behavior actually lives.
 // =============================================================================
 
 describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
-    it('F1+F1b: createAgent({ env }) reaches the SDK subprocess and CLAUDE_CONFIG_DIR is overridden', async () => {
+    it('createAgent({ env }) reaches the SDK subprocess and CLAUDE_CONFIG_DIR is overridden', async () => {
         // The pre-fix driver plucked only ANTHROPIC_* keys out of the workspace
         // env, dropping documented `createAgent({ env })` injection AND
         // sandbox HOME/TMPDIR. The fix spreads the workspace runtime env
@@ -265,10 +265,10 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
                     'Then in your reply, quote the two values verbatim, one per line, with no extra commentary.',
                 );
 
-                // F1 — wholesale env spread carries the user-supplied probe.
+                // Wholesale env spread carries the user-supplied probe.
                 expect(reply).toContain('env-spread-works-2026');
-                // F1b — driver-owned CLAUDE_CONFIG_DIR per-trial path wins on
-                // the collision; the user-supplied value never reaches the
+                // Driver-owned CLAUDE_CONFIG_DIR per-trial path wins on the
+                // collision; the user-supplied value never reaches the
                 // subprocess.
                 expect(reply).toContain('.pathgrade-claude-config');
                 expect(reply).not.toContain('/should/be/overridden');
@@ -280,7 +280,7 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
         }
     }, HOOK_TIMEOUT_MS);
 
-    it('F2: ClaudeAgent.run() throws BaseAgent\'s "must implement createSession() or run()" diagnostic', () => {
+    it('ClaudeAgent.run() throws BaseAgent\'s "must implement createSession() or run()" diagnostic', () => {
         // The pre-fix driver overrode `run()` to call `createSession` with no
         // session options; the bridge then threw "askBus required" — a
         // misleading error suggesting the caller could supply a missing
@@ -295,7 +295,7 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
         ).toThrow('Agent must implement createSession() or run()');
     });
 
-    it('F3: a multi-turn slash-command conversation synthesizes use_skill exactly once', async () => {
+    it('a multi-turn slash-command conversation synthesizes use_skill exactly once', async () => {
         // The pre-fix driver cached the conversation's first user message and
         // passed it to the projector on every turn. Combined with the SDK
         // emitting a fresh `init` system message (carrying `skills`) per
@@ -361,7 +361,7 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
         }
     }, HOOK_TIMEOUT_MS);
 
-    describe('F4–F6: ask-bus rejection contract', () => {
+    describe('ask-bus rejection contract', () => {
         // The pre-fix driver threw the bridge's captured error mid-turn,
         // skipping projection and dropping five log surfaces (priorSessionId
         // for resume, toolEvents, model_agent_result, ask_batch entries, and
@@ -426,7 +426,7 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
             ],
         };
 
-        it('F4: bus rejection returns AgentTurnResult { exitCode:1, errorSubtype:"bus_rejection" } with partial trace', async () => {
+        it('bus rejection returns AgentTurnResult { exitCode:1, errorSubtype:"bus_rejection" } with partial trace', async () => {
             const askToolUseId = 'toolu-ask-eval';
             const fakeQuery = (args: { prompt: string | unknown; options?: SdkOptions }): SdkQuery => {
                 return (async function* () {
@@ -470,7 +470,7 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
             expect(result.traceOutput).toContain('sess-rejected');
         });
 
-        it('F5: runConversation projects the failed turn (model_agent_result + ask_batch) before the throw propagates', async () => {
+        it('runConversation projects the failed turn (model_agent_result + ask_batch) before the throw propagates', async () => {
             // Mirrors `tests/converse.test.ts:29` at the eval layer so a
             // regression at the log-then-throw ordering breaks this suite
             // alongside the unit suite. Drives `runConversation` with a
@@ -532,7 +532,7 @@ describe('claude-sdk-agent-driver — PR-review defect repairs', () => {
             expect(result.completionDetail).toContain('did not resolve within 0ms');
         });
 
-        it('F6: turn 2 resumes from the rejected turn\'s session_id', async () => {
+        it('turn 2 resumes from the rejected turn\'s session_id', async () => {
             const askToolUseId = 'toolu-resume-eval';
             let callIdx = 0;
             const captured: Array<{ resume?: string }> = [];

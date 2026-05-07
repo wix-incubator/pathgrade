@@ -114,7 +114,6 @@ export function createLLMClient(
             // Defensive: ignore non-finite or negative deltas. The SDK
             // reports a non-negative finite total_cost_usd in practice;
             // anything else is corrupt and should not poison the tracker.
-            // Issue #003.
             if (!Number.isFinite(usd) || usd < 0) return;
             costUsd += usd;
         },

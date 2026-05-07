@@ -1,7 +1,7 @@
 /**
- * End-to-end integration test for the Claude SDK driver migration (#009).
+ * End-to-end integration test for the Claude SDK driver migration.
  *
- * The slice-level tests cover each PRD-decomposed module in isolation
+ * The slice-level tests cover each module in isolation
  * (`tests/sandboxed-claude-spawn.test.ts`, `tests/claude-sdk-options.test.ts`,
  * `tests/claude-ask-user-bridge.test.ts`, `tests/claude-sdk-projector.test.ts`,
  * `tests/claude-sdk-driver.test.ts`). This file is the single composition
@@ -13,9 +13,9 @@
  *
  * Real components exercised:
  *   - `ClaudeAgent.createSession` (with a fake `query` from the SDK seam)
- *   - The live `canUseTool` ask-user bridge (#004) over a real `AskBus`
- *   - The SDK-message projector (#002) totalizing tokens, cache breakdowns,
- *     and `costUsd` from the typed result message (#003)
+ *   - The live `canUseTool` ask-user bridge over a real `AskBus`
+ *   - The SDK-message projector totalizing tokens, cache breakdowns, and
+ *     `costUsd` from the typed result message
  *   - The conversation runner's reaction loop (`createAskUserHandler` →
  *     `tryReactionsForQuestion` → bridge response)
  *   - The agent-result log writer (`buildModelAgentResultLogEntry`) emitting
@@ -123,7 +123,7 @@ function makeResultSuccess(
     } as unknown as SDKMessage;
 }
 
-describe('Claude SDK driver — end-to-end mocked composition (#009)', () => {
+describe('Claude SDK driver — end-to-end mocked composition', () => {
     it('drives an ask-user round trip across two turns through runConversation', async () => {
         // ── Scripted SDK stream. The fake `query()` is passed the same
         //    `canUseTool` the driver wires up for production, so the bridge

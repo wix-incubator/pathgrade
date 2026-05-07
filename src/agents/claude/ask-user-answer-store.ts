@@ -1,6 +1,6 @@
 /**
  * Per-turn answer store shared by the ask-user-bridge (writer) and the
- * SDK-message-projector (reader). Issue #004.
+ * SDK-message-projector (reader).
  *
  * The bridge resolves an `AskUserQuestion` ask-bus batch synchronously inside
  * its `canUseTool` callback and writes the resulting `answers` map plus the

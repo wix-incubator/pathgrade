@@ -111,9 +111,9 @@ describe('LLMPort — token accumulation', () => {
         expect(typeof withTools.callWithTools).toBe('function');
     });
 
-    it('costUsd accumulates across addCost calls and surfaces zero before any addCost (#003)', async () => {
-        // PRD §Token and cost telemetry: agent-turn costs are accumulated
-        // onto the agent's shared telemetry object alongside token usage.
+    it('costUsd accumulates across addCost calls and surfaces zero before any addCost', async () => {
+        // Agent-turn costs are accumulated onto the agent's shared telemetry
+        // object alongside token usage.
         // The Claude SDK driver feeds turn `costUsd` into `addCost` exactly
         // as it feeds `inputTokens`/`outputTokens` into `addTokens` today.
         const llm = createLLMClient({ adapters: [fakeAdapter({ name: 'cli' })] });

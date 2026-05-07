@@ -123,8 +123,8 @@ export async function runConversation(
         if (!askUserHandlerApi) return null;
         const err = askUserHandlerApi.getUnmatchedError();
         if (!err) return null;
-        // #006: include the first question text so the surfaced detail
-        // names *what* the agent asked, not just that some batch on some
+        // Include the first question text so the surfaced detail names
+        // *what* the agent asked, not just that some batch on some
         // turn failed. Multi-question batches list only the first to keep
         // detail strings bounded — full list ships on the structured
         // signal for any tooling that needs it.
@@ -278,8 +278,8 @@ export async function runConversation(
                 // Subprocess crashes bypass retries regardless of transport —
                 // the error itself is the signal that replay is unsafe.
                 if (err instanceof AgentCrashError) throw err;
-                // #006: ask-bus rejections (no subscriber, slow subscriber)
-                // do not recover on retry — retrying just burns the retry
+                // Ask-bus rejections (no subscriber, slow subscriber) do
+                // not recover on retry — retrying just burns the retry
                 // window before the same `error` completion. Surface the
                 // bus error immediately.
                 if (err instanceof AskBusTimeoutError) throw err;

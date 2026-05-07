@@ -85,10 +85,10 @@ function makeEvaluateAgent() {
 
         // Snapshot conversation tokens BEFORE running scorers, for first-eval attribution.
         const before = trackedLLM.tokenUsage ?? { inputTokens: 0, outputTokens: 0 };
-        // #003: snapshot conversation cost too. AgentImpl's `sendTurn`
-        // accumulates per-turn `costUsd` onto `trackedLLM` via `addCost`, so
-        // by the time `evaluate()` runs the pre-evaluate cost is the
-        // conversation's accumulated agent-turn cost.
+        // Snapshot conversation cost too. AgentImpl's `sendTurn` accumulates
+        // per-turn `costUsd` onto `trackedLLM` via `addCost`, so by the time
+        // `evaluate()` runs the pre-evaluate cost is the conversation's
+        // accumulated agent-turn cost.
         const beforeCostUsd = trackedLLM.costUsd ?? 0;
 
         // measure() returns the delta consumed by this evaluate call.
@@ -104,8 +104,8 @@ function makeEvaluateAgent() {
         const conversationTokens = isFirstEval && (before.inputTokens > 0 || before.outputTokens > 0)
             ? { conversation_input_tokens: before.inputTokens, conversation_output_tokens: before.outputTokens }
             : undefined;
-        // #003: same first-eval attribution rule for cost. Omitted entirely
-        // when no conversation cost was captured (Codex / Cursor today).
+        // Same first-eval attribution rule for cost. Omitted entirely when
+        // no conversation cost was captured (Codex / Cursor today).
         const conversationCost = isFirstEval && beforeCostUsd > 0
             ? { conversation_cost_usd: beforeCostUsd }
             : undefined;
@@ -341,13 +341,12 @@ function buildTrialResult(
         input_tokens: result.tokenUsage?.inputTokens ?? 0,
         output_tokens: result.tokenUsage?.outputTokens ?? 0,
         ...conversationTokens,
-        // #003: `total_cost_usd` is intentionally NOT emitted here. Per
-        // PRD §Token and cost telemetry, total cost is conservative —
-        // emitted only when every included component has a known cost.
-        // Today judge LLM providers expose no cost, so a partial total
-        // would mislead consumers. `conversation_cost_usd` is the only
-        // guaranteed cost surface; future judge-cost work unlocks the
-        // total field.
+        // `total_cost_usd` is intentionally NOT emitted here: total cost is
+        // conservative — emitted only when every included component has a
+        // known cost. Today judge LLM providers expose no cost, so a partial
+        // total would mislead consumers. `conversation_cost_usd` is the only
+        // guaranteed cost surface; future judge-cost work unlocks the total
+        // field.
         ...conversationCost,
         session_log: [...log],
         ...(skills.length > 0 ? { skills_used: skills } : {}),

@@ -61,8 +61,7 @@ describe('traceOutput', () => {
   // The Claude-specific NDJSON traceOutput test that lived here covered the
   // pre-SDK CLI driver's stream-json scrape. The SDK driver consumes typed
   // messages instead, so traceOutput is no longer the projection surface for
-  // tool extraction. Coverage moves to the SDK message projector tests in
-  // issue #002 (`tests/claude-sdk-projector.test.ts`).
+  // tool extraction. Coverage lives in `tests/claude-sdk-projector.test.ts`.
 });
 
 describe('CodexAgent', () => {

@@ -1,10 +1,8 @@
 /**
  * Smoke test for `@anthropic-ai/claude-agent-sdk`.
  *
- * Pre-implementation check for the Claude SDK driver PRD
- * (docs/prds/2026-05-05-claude-sdk-agent-driver.md). Confirms the SDK can
- * complete one turn end-to-end against each of the two auth modes pathgrade
- * needs to support before we replace the CLI-scraping driver:
+ * Confirms the SDK can complete one turn end-to-end against each of the two
+ * auth modes pathgrade needs to support:
  *
  *   1. OAuth — local `claude login` keychain credentials. Run with
  *      `ANTHROPIC_*` env vars stripped so the bundled binary falls back to
@@ -17,8 +15,8 @@
  *      per-call `env` option. Gated on `APP_ANTHROPIC_API_KEY` being set.
  *
  * Each turn uses `permissionMode: 'default'` plus an auto-allow `canUseTool`
- * — the exact pairing the driver will install — so the smoke test also
- * exercises the callback path that the PRD's verification spike calls out.
+ * — the exact pairing the driver installs — so the smoke test also
+ * exercises the callback path.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -152,11 +150,10 @@ describe('Claude Agent SDK smoke test', () => {
     );
 
     /**
-     * PRD spike (User Story #37): confirm that `permissionMode: 'default'`
-     * + an auto-allowing `canUseTool` actually causes `AskUserQuestion` to
-     * reach the callback. The driver design depends on this; if it ever
-     * regresses to no-handshake, the new driver would silently fall back
-     * to today's broken behavior.
+     * Confirm that `permissionMode: 'default'` + an auto-allowing `canUseTool`
+     * causes `AskUserQuestion` to reach the callback. The driver design
+     * depends on this; if it ever regresses to no-handshake, the driver would
+     * silently fall back to broken behavior.
      *
      * Strategy: prompt Claude with an instruction that forces a single
      * `AskUserQuestion` call, record every (toolName, input) the callback
@@ -169,7 +166,7 @@ describe('Claude Agent SDK smoke test', () => {
         looksLikeOAuthIsConfigured() || !!process.env.APP_ANTHROPIC_API_KEY;
 
     describe.runIf(hasAnyAuth)(
-        'AskUserQuestion routes through canUseTool (PRD spike #37)',
+        'AskUserQuestion routes through canUseTool',
         () => {
             it('observes the AskUserQuestion tool call with structured input', async () => {
                 const observed: Array<{
@@ -456,15 +453,13 @@ describe('Claude Agent SDK smoke test', () => {
     );
 
     /**
-     * Pre-implementation check (PRD's owed verification spike): confirm that
-     * with `settingSources: ['project']` a fixture-staged
+     * Confirm that with `settingSources: ['project']` a fixture-staged
      * `<cwd>/.claude/skills/<name>/SKILL.md` is auto-discovered and surfaces
      * in the init message's `skills` array, AND that the `Skill` tool name
-     * appears in the init message's `tools` array. The PRD calls out that
-     * `Skill` is runtime-only (not in `.d.ts`), so this is the only proof the
-     * tool name pathgrade matches against actually exists. Using the init
-     * message (rather than waiting for Claude to invoke the skill) makes the
-     * check deterministic.
+     * appears in the init message's `tools` array. `Skill` is runtime-only
+     * (not in `.d.ts`), so this is the only proof the tool name pathgrade
+     * matches against actually exists. Using the init message (rather than
+     * waiting for Claude to invoke the skill) makes the check deterministic.
      */
     describe.runIf(hasAnyAuth)(
         'project-staged skill is discovered and Skill tool name surfaces',

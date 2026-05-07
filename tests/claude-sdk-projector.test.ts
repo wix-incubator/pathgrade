@@ -1,5 +1,5 @@
 /**
- * Tests for the SDK-message-projector module (issue #002).
+ * Tests for the SDK-message-projector module.
  *
  * The projector is a pure function over the typed SDK message stream that
  * produces an `AgentTurnResult` plus the session id the orchestrator uses for
@@ -9,13 +9,12 @@
  * skill detection, init/result metadata — is now driven by typed
  * `SDKMessage` values instead of stringified NDJSON.
  *
- * Boundary with #004 (live ask-user bridge): the projector emits an
+ * Boundary with the live ask-user bridge: the projector emits an
  * `AskUserQuestion` ToolEvent whose `arguments` carry the structured
  * `AskUserQuestionInput` (questions/headers/options/multiSelect) plus
  * `answerSource: 'unknown'`. The actual answer values and the
  * `'reaction' | 'fallback' | 'declined'` source tag are attached on the same
- * envelope by the ask-user-bridge in #004; the projector itself never
- * mints them.
+ * envelope by the ask-user-bridge; the projector itself never mints them.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -224,10 +223,9 @@ describe('projectSdkMessages — usage and exit code', () => {
     it('totalizes inputTokens as input + cache_creation + cache_read (matches existing pathgrade convention)', () => {
         // The convention pre-existed under the NDJSON parser at
         // src/agents/claude.ts:223-227; test fixtures elsewhere already treat
-        // cache tokens as billable input volume. PRD §Token-and-cost telemetry
-        // is explicit that the projector must preserve this total. #003
-        // criterion 8 anchors this as a regression gate — `inputTokens` keeps
-        // including cache tokens; the new cache breakdown fields are additive.
+        // cache tokens as billable input volume. The projector preserves this
+        // total — `inputTokens` keeps including cache tokens, and the new
+        // cache breakdown fields are additive on top.
         const projected = projectSdkMessages({
             messages: [
                 resultSuccess({
@@ -242,9 +240,9 @@ describe('projectSdkMessages — usage and exit code', () => {
         expect(projected.result.outputTokens).toBe(25);
     });
 
-    it('exposes cacheCreationInputTokens and cacheReadInputTokens as additive breakdown fields (#003)', () => {
-        // PRD §Token and cost telemetry: the projector also populates the new
-        // optional breakdown fields sourced from the SDK's
+    it('exposes cacheCreationInputTokens and cacheReadInputTokens as additive breakdown fields', () => {
+        // The projector also populates the new optional breakdown fields
+        // sourced from the SDK's
         // `cache_creation_input_tokens` / `cache_read_input_tokens` so consumers
         // can reason about cache volume separately from the totalized
         // `inputTokens` figure. The total above is still the canonical
@@ -263,9 +261,9 @@ describe('projectSdkMessages — usage and exit code', () => {
         expect(projected.result.cacheReadInputTokens).toBe(70);
     });
 
-    it('exposes costUsd from a successful result message (#003 / User Story 18)', () => {
-        // PRD §Token and cost telemetry: the projector populates
-        // `AgentTurnResult.costUsd` from the SDK's `total_cost_usd` so
+    it('exposes costUsd from a successful result message', () => {
+        // The projector populates `AgentTurnResult.costUsd` from the SDK's
+        // `total_cost_usd` so
         // consumers can budget runs against expensive models. Non-zero costs
         // round-trip without modification — pathgrade does not impose its
         // own pricing model on top of what the SDK reports.
@@ -275,9 +273,9 @@ describe('projectSdkMessages — usage and exit code', () => {
         expect(projected.result.costUsd).toBe(0.0125);
     });
 
-    it('exposes costUsd from an error result message even when the turn failed (#003)', () => {
-        // PRD §Token and cost telemetry: cost projection covers both
-        // SDKResultSuccess.total_cost_usd and SDKResultError.total_cost_usd.
+    it('exposes costUsd from an error result message even when the turn failed', () => {
+        // Cost projection covers both SDKResultSuccess.total_cost_usd and
+        // SDKResultError.total_cost_usd.
         // A turn that errored mid-execution still consumed tokens and money;
         // surfacing that lets the run-level total reflect the real spend
         // rather than implicitly rounding error turns to zero.
@@ -401,7 +399,7 @@ describe('projectSdkMessages — usage and exit code', () => {
         }
     });
 
-    it('exposes the typed errorSubtype for each documented SDKResultError variant (#003 / User Story 19)', () => {
+    it('exposes the typed errorSubtype for each documented SDKResultError variant', () => {
         // The legacy CLI driver scraped the result text with a regex to
         // distinguish error categories. The SDK projector reads the typed
         // `subtype` field and surfaces it directly so consumers can triage
@@ -630,12 +628,10 @@ describe('projectSdkMessages — slash-command skill synthesis', () => {
     });
 });
 
-describe('projectSdkMessages — AskUserQuestion projection (boundary with #004)', () => {
+describe('projectSdkMessages — AskUserQuestion projection (boundary with the bridge)', () => {
     // The projector emits a structurally-stable ask_user envelope from the
-    // typed AskUserQuestion tool input. The bridge in #004 reuses the same
-    // envelope and adds the answer values + 'reaction' | 'fallback' |
-    // 'declined' source — see PRD §Module decomposition / SDK-message-projector
-    // for the boundary.
+    // typed AskUserQuestion tool input. The bridge reuses the same envelope
+    // and adds the answer values + 'reaction' | 'fallback' | 'declined' source.
     const askInput = {
         questions: [
             {
@@ -662,25 +658,25 @@ describe('projectSdkMessages — AskUserQuestion projection (boundary with #004)
         expect(ev.arguments?.questions).toEqual(askInput.questions);
     });
 
-    it('tags the ask_user envelope with answerSource: "unknown" for #004 to fill in', () => {
+    it('tags the ask_user envelope with answerSource: "unknown" for the bridge to fill in', () => {
         const projected = projectSdkMessages({
             messages: [assistantToolUse('AskUserQuestion', askInput)],
         });
         expect(projected.result.toolEvents[0].arguments?.answerSource).toBe('unknown');
     });
 
-    it('does NOT attach answer values or a reaction/fallback/declined source — that is #004', () => {
+    it('does NOT attach answer values or a reaction/fallback/declined source — that is the bridge', () => {
         const projected = projectSdkMessages({
             messages: [assistantToolUse('AskUserQuestion', askInput)],
         });
         const args = projected.result.toolEvents[0].arguments;
-        // No legacy answer fields anywhere (the #004 bridge will add them).
+        // No legacy answer fields anywhere (the bridge will add them).
         expect(JSON.stringify(args)).not.toMatch(/"reaction"|"fallback"|"declined"/);
         expect(args).not.toHaveProperty('answers');
     });
 
     it('merges bridge-supplied answers + answerSource onto the ask_user envelope when supplied', () => {
-        // #004: the live ask-user bridge resolves the AskUserQuestion through
+        // The live ask-user bridge resolves the AskUserQuestion through
         // the bus and writes the SDK-shape `answers` map plus the source tag
         // into a per-turn `AskUserAnswerStore` keyed by `toolUseID`. The
         // projector consumes that store while building the ToolEvent so the
@@ -731,7 +727,7 @@ describe('projectSdkMessages — AskUserQuestion projection (boundary with #004)
 });
 
 describe('projectSdkMessages — runtime policies and trace output', () => {
-    it('always returns runtimePoliciesApplied as an empty array (PRD §Capabilities and runtime policies)', () => {
+    it('always returns runtimePoliciesApplied as an empty array', () => {
         // Claude's interactive-question transport is "reliable" post-migration,
         // so the non-interactive runtime policy is removed and the projector's
         // contract is to surface an empty applied-policies list.
@@ -755,8 +751,8 @@ describe('projectSdkMessages — runtime policies and trace output', () => {
     it('populates traceOutput with an NDJSON serialization of the typed message stream', () => {
         // traceOutput is a debugging surface (no scorer keys on it for Claude
         // post-migration; see tests/agents.test.ts:60-64 comment), but the
-        // PRD's projector contract is that it is sourced from typed messages,
-        // not from a CLI scrape. NDJSON keeps the per-line shape historical
+        // projector contract is that it is sourced from typed messages, not
+        // from a CLI scrape. NDJSON keeps the per-line shape historical
         // diagnostic tooling expects without resurrecting the legacy parser.
         const projected = projectSdkMessages({
             messages: [

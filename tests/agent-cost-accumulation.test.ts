@@ -1,6 +1,6 @@
 /**
  * Tests for per-turn cost accumulation through the AgentImpl runConversation
- * path (issue #003).
+ * path.
  *
  * The Claude SDK projector populates `AgentTurnResult.costUsd` from the SDK's
  * `total_cost_usd`. AgentImpl's `sendTurn` accumulates that onto the agent's
@@ -60,7 +60,7 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-describe('AgentImpl runConversation — cost accumulation (#003)', () => {
+describe('AgentImpl runConversation — cost accumulation', () => {
     it('adds turn costUsd to the shared LLM tracker via addCost', async () => {
         prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
         const turn1 = makeTurnResult({ costUsd: 0.0125 });
@@ -94,8 +94,8 @@ describe('AgentImpl runConversation — cost accumulation (#003)', () => {
     });
 
     it('does not call addCost when the turn result has no costUsd (Codex / Cursor today)', async () => {
-        // Per PRD §Token and cost telemetry, drivers that don't expose
-        // turn cost leave `costUsd` undefined. The accumulator must stay
+        // Drivers that don't expose turn cost leave `costUsd` undefined,
+        // and the accumulator must stay
         // at zero — never default an undefined-cost turn to a zero-cost
         // turn, because that would falsely imply "free" in run reports.
         prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
@@ -119,9 +119,8 @@ describe('AgentImpl runConversation — cost accumulation (#003)', () => {
 
     it('still accumulates tokens when costUsd is set (regression: addTokens path unchanged)', async () => {
         // Anchor: the new addCost call must not displace or short-circuit
-        // the existing addTokens accumulation. PRD §Token and cost
-        // telemetry says cost is *additive* alongside tokens; the cost
-        // path must not gate the token path.
+        // the existing addTokens accumulation. Cost is *additive* alongside
+        // tokens; the cost path must not gate the token path.
         prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
         const turn = makeTurnResult({
             inputTokens: 100,

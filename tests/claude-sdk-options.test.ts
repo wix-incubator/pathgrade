@@ -1,8 +1,7 @@
 /**
  * Tests for src/agents/claude/sdk-options.ts — pure builder that turns
  * pathgrade's per-turn session inputs into the Claude Agent SDK's `Options`
- * object passed to `query()`. PRD §SDK option choices is the source of truth
- * for every default this asserts.
+ * object passed to `query()`.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -45,11 +44,11 @@ describe('buildClaudeSdkOptions — base options (TB4)', () => {
         expect(opts.settingSources).toEqual(['project']);
     });
 
-    it('keeps auto-memory state out of the SDK Options object (deviation from PRD)', () => {
-        // PRD assumed `Options.autoMemoryEnabled?: boolean` existed against
-        // SDK 0.2.100; against installed 0.2.117 the field lives on `Settings`,
-        // not `Options`, and writing it through `Options` is a TS error. The
-        // hermetic-default intent is upheld via two other mechanisms:
+    it('keeps auto-memory state out of the SDK Options object', () => {
+        // The installed SDK has no typed `Options.autoMemoryEnabled` field
+        // — that lives on `Settings`, and writing it through `Options` is a
+        // TS error. The hermetic-default intent is upheld via two other
+        // mechanisms:
         //
         //   - `CLAUDE_CONFIG_DIR` is set to a per-trial scratch dir below
         //     (TB5), so memory writes never touch the host filesystem.
@@ -112,9 +111,8 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
     });
 
     it('sets CLAUDE_CONFIG_DIR to a per-workspace scratch directory', () => {
-        // PRD §SDK option choices: `<workspace>/.pathgrade-claude-config/`
-        // Keeps host `~/.claude.json`, user memory, and ambient state from
-        // leaking into default CI runs.
+        // `<workspace>/.pathgrade-claude-config/` keeps host `~/.claude.json`,
+        // user memory, and ambient state from leaking into default CI runs.
         const opts = buildClaudeSdkOptions(baseInputs({
             workspacePath: '/tmp/trial-42',
             runtimeEnv: {},
@@ -148,9 +146,8 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
 
 describe('resolveClaudeCodeExecutable — override precedence (TB6)', () => {
     it('returns undefined when neither AgentOptions nor env supplies an override', () => {
-        // undefined → SDK uses the bundled per-platform `claude` binary.
-        // The PRD's whole point of dropping the PATH-search shim is that this
-        // is the desired default for reproducible eval runs.
+        // undefined → SDK uses the bundled per-platform `claude` binary,
+        // which is the desired default for reproducible eval runs.
         const exe = resolveClaudeCodeExecutable({
             agentOptionsExecutable: undefined,
             envExecutable: undefined,

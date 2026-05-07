@@ -2,10 +2,7 @@
  * Pure builder that turns pathgrade's per-turn session inputs into the Claude
  * Agent SDK's `Options` object passed to `query()`. The driver class is just
  * orchestration over this builder, the sandboxed-spawn module, the live
- * ask-user bridge (#004), and the SDK message projector (#002).
- *
- * PRD reference: docs/prds/2026-05-05-claude-sdk-agent-driver.md
- *   §SDK option choices — every default in this file is dictated there.
+ * ask-user bridge, and the SDK message projector.
  */
 import * as path from 'path';
 import type {
@@ -19,7 +16,7 @@ import type { McpServersObject } from '../../providers/mcp-config.js';
 /**
  * Per-workspace Claude config/home dir. Set via `Options.env.CLAUDE_CONFIG_DIR`
  * so the bundled subprocess does not read host `~/.claude.json`, user memory,
- * or ambient state. PRD §SDK option choices.
+ * or ambient state.
  */
 const CLAUDE_CONFIG_SUBDIR = '.pathgrade-claude-config';
 
@@ -28,7 +25,7 @@ export interface ClaudeSdkOptionsInputs {
     workspacePath: string;
     /** Custom spawn hook from the sandboxed-claude-spawn module. */
     spawnClaudeCodeProcess: (opts: SdkSpawnOptions) => SpawnedProcess;
-    /** Custom tool-permission callback — the live ask-user bridge (#004). */
+    /** Custom tool-permission callback — the live ask-user bridge. */
     canUseTool: CanUseTool;
     /**
      * The curated workspace runtime env, spread wholesale onto `Options.env`.
@@ -67,7 +64,7 @@ export interface ClaudeSdkOptionsInputs {
  *
  * `undefined` is intentional, not "missing": it tells `buildClaudeSdkOptions`
  * to omit `Options.pathToClaudeCodeExecutable` so the SDK uses its bundled
- * default. PRD §SDK option choices.
+ * default.
  */
 export function resolveClaudeCodeExecutable(args: {
     agentOptionsExecutable?: string;
@@ -87,17 +84,9 @@ export function buildClaudeSdkOptions(inputs: ClaudeSdkOptionsInputs): Options {
         spawnClaudeCodeProcess: inputs.spawnClaudeCodeProcess,
         canUseTool: inputs.canUseTool,
     };
-    // Note on auto-memory hermeticity:
-    //
-    // The PRD's verification spike claimed `Options.autoMemoryEnabled?: boolean`
-    // existed at `sdk.d.ts:4740` against SDK `0.2.100`. Against the installed
-    // SDK `0.2.117`, that line lives inside the `Settings` interface, not on
-    // `Options` — there is no typed `Options` field for the auto-memory toggle,
-    // and setting `{ autoMemoryEnabled: false }` on `Options` is a TS error.
-    //
-    // The hermetic-default intent ("eval results are not contaminated by
-    // personal machine state", User Story #40) is upheld by two other
-    // mechanisms the builder already wires up:
+    // Note on auto-memory hermeticity: the installed SDK has no typed
+    // `Options.autoMemoryEnabled` field. The hermetic-default intent ("eval
+    // results are not contaminated by personal machine state") is upheld by:
     //
     //   1. `CLAUDE_CONFIG_DIR` is set to a per-trial scratch directory under
     //      the workspace, so any auto-memory writes that *do* happen target

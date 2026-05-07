@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { planRuntimePolicies, NONINTERACTIVE_RUNTIME_POLICY, renderRuntimePolicy } from '../src/sdk/runtime-policy.js';
 
 describe('runtime policy planning', () => {
-  it('plans no runtime policy for Claude sessions — capability flipped to reliable in #004', () => {
-    // Pre-#004 Claude was `'noninteractive'` and got the policy. The SDK
-    // driver replaces the synthesis workaround with a live ask-user bridge,
-    // so Claude's capability is now `'reliable'` and `planRuntimePolicies`
-    // returns an empty array. The renderer below still works because the
-    // policy module stays in place to serve Codex (exec) and Cursor.
+  it('plans no runtime policy for Claude sessions — capability is reliable', () => {
+    // The SDK driver replaces the synthesis workaround with a live ask-user
+    // bridge, so Claude's capability is `'reliable'` and
+    // `planRuntimePolicies` returns an empty array. The renderer below still
+    // works because the policy module stays in place to serve Codex (exec)
+    // and Cursor.
     expect(planRuntimePolicies('claude')).toEqual([]);
   });
 

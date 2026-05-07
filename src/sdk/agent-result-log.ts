@@ -26,8 +26,8 @@ export function buildModelAgentResultLogEntry(params: {
         assistant_message: assistantMessage,
         ...getTurnResultLogMetadata(params.turnResult),
         ...(params.durationMs === undefined ? {} : { duration_ms: params.durationMs }),
-        // #003 criterion 4: per-turn cost when the upstream provider
-        // reports it. Conditionally spread so agents without cost data
+        // Per-turn cost when the upstream provider reports it.
+        // Conditionally spread so agents without cost data
         // never produce a zero-valued field that could be mistaken for
         // a free turn.
         ...(params.turnResult.costUsd !== undefined ? { cost_usd: params.turnResult.costUsd } : {}),

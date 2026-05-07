@@ -1,10 +1,9 @@
 /**
- * Tests for `buildModelAgentResultLogEntry` (issue #003).
+ * Tests for `buildModelAgentResultLogEntry`.
  *
  * The Claude SDK projector populates `AgentTurnResult.costUsd` from the SDK's
  * `total_cost_usd`. The session-log writer surfaces that as a `cost_usd` field
- * on the `agent_result` log entry so per-turn cost is visible in snapshots
- * (PRD §Token and cost telemetry; issue #003 criterion 4).
+ * on the `agent_result` log entry so per-turn cost is visible in snapshots.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -23,7 +22,7 @@ function baseTurnResult(overrides: Partial<AgentTurnResult> = {}): AgentTurnResu
     };
 }
 
-describe('buildModelAgentResultLogEntry — cost_usd field (#003)', () => {
+describe('buildModelAgentResultLogEntry — cost_usd field', () => {
     it('writes cost_usd onto the agent_result log entry when the turn result has costUsd', () => {
         const entry = buildModelAgentResultLogEntry({
             timestamp: '2026-05-06T00:00:00.000Z',

@@ -188,16 +188,14 @@ describe("runConversation guard: transport 'exec' + AskUserReaction", () => {
         expect(result.completionReason).toBe('maxTurns');
     });
 
-    it('does NOT block Claude conversations with AskUserReaction — Claude transport is reliable (#007)', async () => {
-        // Pre-#004 Claude was `'noninteractive'` and the legacy CLI driver
-        // synthesized blocked-prompt envelopes from CLI denial output to
-        // approximate ask-user behavior. The preflight on `transport: 'exec'`
-        // never fired for Claude because `transport` is a Codex-only field;
-        // post-#004 + #007 the *justification* for that hands-off behavior is
-        // also right — Claude routes AskUserQuestion through the live ask-user
-        // bridge (capability `'reliable'`), so reactions are reachable.
-        // Lock in: the conversation runner does not refuse to start a Claude
-        // conversation that defines an AskUserReaction.
+    it('does NOT block Claude conversations with AskUserReaction — Claude transport is reliable', async () => {
+        // The legacy CLI driver synthesized blocked-prompt envelopes from CLI
+        // denial output to approximate ask-user behavior. The preflight on
+        // `transport: 'exec'` never fired for Claude because `transport` is a
+        // Codex-only field; today Claude routes AskUserQuestion through the
+        // live ask-user bridge (capability `'reliable'`), so reactions are
+        // reachable. Lock in: the conversation runner does not refuse to start
+        // a Claude conversation that defines an AskUserReaction.
         let sendTurnCalled = false;
         const result = await runConversation(
             {

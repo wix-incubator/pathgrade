@@ -236,11 +236,9 @@ export class CursorAgent extends BaseAgent {
     ): Promise<AgentTurnResult & { sessionId?: string }> {
         // Runtime policies are injected into the first-turn prompt only.
         // On resumed turns (sessionId set) the policy was already delivered,
-        // so we skip re-prepending. The legacy Claude CLI driver had the same
-        // pattern; the post-#007 Claude SDK driver no longer prepends runtime
-        // policies at all (its transport is `'reliable'`), so the previous
-        // "Mirrors claude.ts" reference no longer applies — Cursor and the
-        // Codex transcript agent are now the only consumers of this path.
+        // so we skip re-prepending. The Claude SDK driver does not prepend
+        // runtime policies at all (its transport is `'reliable'`), so Cursor
+        // and the Codex transcript agent are the only consumers of this path.
         const appliedRuntimePolicies = sessionId ? [] : [...(options?.runtimePolicies ?? [])];
         const effectiveInstruction = appliedRuntimePolicies.length > 0
             ? prependRuntimePolicies(instruction, appliedRuntimePolicies, { agent: 'cursor' })

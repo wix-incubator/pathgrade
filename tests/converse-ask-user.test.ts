@@ -115,10 +115,10 @@ describe('runConversation: onAsk subscription', () => {
         expect(result.completionReason).toBe('maxTurns');
     });
 
-    it('unmatched completionDetail surfaces the first question text alongside batch id and turn (#006)', async () => {
-        // User Story #8: the user-facing completion detail must explain
-        // *what* the agent asked, not just that some batch failed. Take the
-        // first questionText off `AskUserUnmatchedSignal`.
+    it('unmatched completionDetail surfaces the first question text alongside batch id and turn', async () => {
+        // The user-facing completion detail must explain *what* the agent
+        // asked, not just that some batch failed. Take the first questionText
+        // off `AskUserUnmatchedSignal`.
         const askBus = createAskBus({ askUserTimeoutMs: 1000 });
         const customBatch: AskBatch = {
             ...liveBatch,
@@ -153,7 +153,7 @@ describe('runConversation: onAsk subscription', () => {
         expect(result.completionDetail).toContain('Which region should we deploy to?');
     });
 
-    it('ask-bus rejection surfaced from sendTurn ends conversation with completionReason=error and the bus message (#006)', async () => {
+    it('ask-bus rejection surfaced from sendTurn ends conversation with completionReason=error and the bus message', async () => {
         // The Claude SDK driver throws the captured bus rejection out of
         // `runTurn` after the SDK stream ends. From the runner's perspective
         // it's just a thrown Error from `sendTurn` — caught, formatted as

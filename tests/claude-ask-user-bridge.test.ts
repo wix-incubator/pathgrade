@@ -1,22 +1,19 @@
 /**
- * Tests for src/agents/claude/ask-user-bridge.ts (issue #004).
+ * Tests for src/agents/claude/ask-user-bridge.ts.
  *
  * The bridge is a pure function over `(askBus, getTurnNumber, answerStore) →
- * CanUseTool`. It replaces the placeholder `canUseTool` deny that #001 stamped
- * for `AskUserQuestion` with a live ask-bus round-trip:
+ * CanUseTool` that handles `AskUserQuestion` via a live ask-bus round-trip:
  *
  *   - Non-`AskUserQuestion` tools auto-allow with input passthrough (the
- *     `permissionMode: 'default'` contract — see PRD §SDK option choices).
+ *     `permissionMode: 'default'` contract).
  *   - `AskUserQuestion` builds a live `AskBatch` from the structured input,
  *     emits it onto the bus, awaits resolution, and returns the SDK's
  *     `answers: { [questionText]: string }` shape on `updatedInput`. Multi-
  *     select answers are joined as a single comma-separated string per the
  *     SDK's own field comment at `sdk-tools.d.ts:2702`.
  *
- * Decline / unmatched / bus-rejection deny shapes are #006's slice — this
- * file only covers the happy path. See `docs/issues/claude-sdk-agent-driver/
- * 004-live-ask-userquestion-happy-path.md` and the boundary stamp in
- * `src/agents/claude/sdk-message-projector.ts`.
+ * Decline / unmatched / bus-rejection deny shapes are covered separately;
+ * this file covers the happy path.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -157,11 +154,11 @@ describe('ask-user-bridge canUseTool', () => {
         // The SDK's `AskUserQuestionOutput.answers` field at
         // `sdk-tools.d.ts:2702` is documented as
         //   `{ [questionText]: string; multi-select answers are comma-separated }`.
-        // The separator is the SDK's contract, not pathgrade's. Per #005
-        // criterion 3, this assertion verifies that all selected option
-        // labels are present in a single comma-separated string but does
-        // NOT pin a specific separator format (`","` vs `", "`) — the
-        // bridge follows whatever the bundled binary expects.
+        // The separator is the SDK's contract, not pathgrade's. This
+        // assertion verifies that all selected option labels are present
+        // in a single comma-separated string but does NOT pin a specific
+        // separator format (`","` vs `", "`) — the bridge follows whatever
+        // the bundled binary expects.
         const bus = createAskBus({ askUserTimeoutMs: 1000 });
         bus.onAsk((batch, respond) => {
             respond({
@@ -213,14 +210,14 @@ describe('ask-user-bridge canUseTool', () => {
     });
 });
 
-describe('ask-user-bridge canUseTool — #006 declined / bus-rejection denies', () => {
+describe('ask-user-bridge canUseTool — declined / bus-rejection denies', () => {
     it('returns SDK deny when every question resolves with source: "declined" (User Story #29)', async () => {
         // The `decline` fallback path (and the explicit declined `'error'`
         // path that ends the turn) both surface every answer with empty
         // values + `source: 'declined'`. Translating that to a bare allow
         // with empty `answers` would make Claude believe the user had
         // answered with empty strings; the SDK's documented `deny`
-        // behavior is the right shape. PRD §AskUserQuestion bridge.
+        // behavior is the right shape.
         const bus = createAskBus({ askUserTimeoutMs: 1000 });
         bus.onAsk((batch, respond) => {
             respond({
@@ -255,7 +252,7 @@ describe('ask-user-bridge canUseTool — #006 declined / bus-rejection denies', 
         // SDK's `deny` shape (so the model sees a refusal) AND records the
         // error on the bridge's `lastError()` accessor so the driver can
         // throw it after the turn ends — that's how the conversation runner
-        // sees `completionReason: 'error'`. PRD §AskUserQuestion bridge.
+        // sees `completionReason: 'error'`.
         const bus = createAskBus({ askUserTimeoutMs: 0 });
         const bridge = createAskUserBridge({
             askBus: bus,
@@ -310,7 +307,7 @@ describe('ask-user-bridge canUseTool — #006 declined / bus-rejection denies', 
     });
 });
 
-describe('ask-user-bridge canUseTool — #005 batches and free-text answers', () => {
+describe('ask-user-bridge canUseTool — batches and free-text answers', () => {
     it('emits one live batch containing every question when AskUserQuestion supplies multiple', async () => {
         // Criterion 1: a single AskUserQuestion call with multiple questions
         // emits ONE live batch containing every question. The bridge keys
