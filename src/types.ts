@@ -94,7 +94,7 @@ export interface LogEntry {
     exitCode?: number;
     output?: string;
     assistant_message?: string;
-    assistant_message_source?: VisibleAssistantMessageSource;
+    assistant_message_source?: VisibleAssistantMessageSource | 'blocked_prompt';
     raw_assistant_message?: string;
     value?: number;
     scorer_result?: ScorerResult;
@@ -103,13 +103,32 @@ export interface LogEntry {
     step_scorer_key?: string;
     tool_event?: import('./tool-events.js').ToolEvent;
     judge_tool_call?: JudgeToolCallLogData;
+    /**
+     * @deprecated Read-only compatibility for snapshots predating the
+     * blocked-prompt synthesis deletion. New writers never emit any of the
+     * `blocked_prompt_*` / `synthetic_blocked_prompt` fields, but
+     * `loadRunSnapshot` still parses them so historical run-snapshots load.
+     * Do not set these fields from new code paths.
+     */
     synthetic_blocked_prompt?: boolean;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_source_turn?: number;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_index?: number;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_count?: number;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_source_tool?: string;
+    /** @deprecated See `synthetic_blocked_prompt`. */
     blocked_prompt_tool_use_id?: string;
     runtime_policies_applied?: RuntimePolicyDescriptor[];
+    /**
+     * Per-turn agent cost in USD when the upstream provider reports it (the
+     * Claude Agent SDK populates `total_cost_usd` on result messages).
+     * Written by `buildModelAgentResultLogEntry` only when the turn result
+     * carries a `costUsd` value; absent for agents that do not expose cost.
+     */
+    cost_usd?: number;
     completion_reason?: string;
     completion_detail?: string;
     turn_timings?: Array<{ turn: number; durationMs: number }>;
@@ -146,6 +165,21 @@ export interface TrialResult {
     output_tokens: number;
     conversation_input_tokens?: number;
     conversation_output_tokens?: number;
+    /**
+     * Sum of agent-turn `costUsd` values accumulated during the
+     * conversation, attributed at evaluation time. Today only the Claude
+     * SDK driver populates per-turn cost, so this field is set on Claude
+     * trials and absent on Codex / Cursor trials.
+     */
+    conversation_cost_usd?: number;
+    /**
+     * Sum of all known cost components (conversation + judge + …).
+     * Conservative — emitted ONLY when every included component has a
+     * known cost. Today judge LLM providers do not expose cost, so this
+     * field is never emitted; `conversation_cost_usd` is the only
+     * guaranteed cost surface until that changes.
+     */
+    total_cost_usd?: number;
     session_log: LogEntry[];
     skills_used?: string[];
     diagnostics?: DiagnosticsReport;
@@ -254,21 +288,7 @@ export interface AgentTurnInput {
     continueSession?: boolean;
 }
 
-export interface BlockedInteractivePromptOption {
-    label: string;
-    description?: string;
-}
-
-export interface BlockedInteractivePrompt {
-    prompt: string;
-    header?: string;
-    options: BlockedInteractivePromptOption[];
-    sourceTool: string;
-    toolUseId?: string;
-    order: number;
-}
-
-export type VisibleAssistantMessageSource = 'assistant_message' | 'blocked_prompt';
+export type VisibleAssistantMessageSource = 'assistant_message';
 
 export interface AgentTurnResult {
     rawOutput: string;
@@ -278,19 +298,51 @@ export interface AgentTurnResult {
     exitCode: number;
     traceOutput?: string;
     timedOut?: boolean;
-    /**
-     * @deprecated Consume ask_user questions via `askBus.snapshot()` and the
-     * `AskBatchSnapshot` shape instead. This field is eagerly populated in
-     * parallel with the `AskBatch` emission for a single release-window; it
-     * will be removed once (a) no internal code references `blockedPrompts` or
-     * `blocked_prompt_*` and (b) `RUN_SNAPSHOT_VERSION` has bumped past the
-     * legacy reader. New code should read from the bus.
-     */
-    blockedPrompts: BlockedInteractivePrompt[];
     toolEvents: import('./tool-events.js').ToolEvent[];
     runtimePoliciesApplied?: RuntimePolicyDescriptor[];
     inputTokens?: number;
     outputTokens?: number;
+    /**
+     * Optional cache-token breakdown sourced from the Claude Agent SDK's
+     * `cache_creation_input_tokens` field. Additive only — `inputTokens`
+     * still includes cache-creation volume, matching pathgrade's existing
+     * convention.
+     */
+    cacheCreationInputTokens?: number;
+    /**
+     * Optional cache-token breakdown sourced from the Claude Agent SDK's
+     * `cache_read_input_tokens` field. Additive only — `inputTokens` still
+     * includes cache-read volume.
+     */
+    cacheReadInputTokens?: number;
+    /**
+     * Optional turn cost in USD reported by providers that expose exact
+     * pricing. The Claude Agent SDK populates this from the result
+     * message's `total_cost_usd`. Other drivers (Codex, Cursor) leave it
+     * undefined until their providers expose comparable metadata.
+     */
+    costUsd?: number;
+    /**
+     * Typed error subtype set when the turn ended in error; absent on success.
+     * Lets eval consumers triage failures correctly without regex on the
+     * result text.
+     *
+     * The `error_*` values are SDK-reported result subtypes (`SDKResultError`
+     * per `sdk.d.ts`). `'bus_rejection'` is driver-synthesized: when the live
+     * ask-user bridge captures a bus error (timeout, missing subscriber,
+     * subscriber throw), the Claude SDK driver constructs an error
+     * `AgentTurnResult` with this subtype rather than throwing, so the
+     * partial-turn observability pipeline (`ask_batch`, `model_agent_result`,
+     * turn timings/details) captures the rejected turn before the runner
+     * propagates the error. The naming distinction (no `error_` prefix)
+     * marks the layer of origin: SDK vs driver.
+     */
+    errorSubtype?:
+        | 'error_during_execution'
+        | 'error_max_turns'
+        | 'error_max_budget_usd'
+        | 'error_max_structured_output_retries'
+        | 'bus_rejection';
     /**
      * Populated when the agent subprocess died mid-turn under a stateful
      * transport (Codex `app-server`). Consumers should translate this into
@@ -362,7 +414,6 @@ export abstract class BaseAgent {
                 visibleAssistantMessageSource: 'assistant_message',
                 exitCode: 0,
                 traceOutput: rawOutput,
-                blockedPrompts: [],
                 toolEvents: [],
                 runtimePoliciesApplied: [],
             };

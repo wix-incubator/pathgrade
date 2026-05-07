@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentTurnResult } from '../src/types.js';
-import { buildDiagnosticsReport } from '../src/reporters/diagnostics.js';
 
 const prepareWorkspaceMock = vi.fn();
 const createManagedSessionMock = vi.fn();
@@ -29,7 +28,6 @@ function makeTurnResult(message: string): AgentTurnResult {
         visibleAssistantMessage: message,
         visibleAssistantMessageSource: 'assistant_message',
         exitCode: 0,
-        blockedPrompts: [],
         toolEvents: [],
     };
 }
@@ -198,159 +196,4 @@ describe('createAgent timeout:auto and runtime diagnostics', () => {
         });
     });
 
-    it('uses the visible blocked prompt text for both runConversation() and startChat()', async () => {
-        prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
-        createManagedSessionMock.mockReturnValue({
-            executeTurn: vi.fn().mockResolvedValue({
-                rawOutput: 'I already know what I want to do.',
-                assistantMessage: 'I already know what I want to do.',
-                visibleAssistantMessage: '**Approval**\nShould I proceed?\n- **Yes** - Continue\n- **No** - Stop',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'Should I proceed?',
-                        header: 'Approval',
-                        options: [
-                            { label: 'Yes', description: 'Continue' },
-                            { label: 'No', description: 'Stop' },
-                        ],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult),
-            send: vi.fn(),
-            remainingMs: vi.fn().mockReturnValue(300_000),
-        });
-
-        const { createAgent } = await import('../src/sdk/agent.js');
-
-        const conversationAgent = await createAgent({ timeout: 300 });
-        const conversationResult = await conversationAgent.runConversation({
-            firstMessage: 'hello',
-            until: () => true,
-        });
-
-        expect(conversationResult.turns).toBe(1);
-        expect(conversationAgent.messages[1]?.content).toBe('**Approval**\nShould I proceed?\n- **Yes** - Continue\n- **No** - Stop');
-        expect(conversationAgent.log.find((entry: any) => entry.type === 'agent_result')).toMatchObject({
-            assistant_message: '**Approval**\nShould I proceed?\n- **Yes** - Continue\n- **No** - Stop',
-        });
-
-        const chatAgent = await createAgent({ timeout: 300 });
-        const chat = await chatAgent.startChat('hello');
-
-        expect(chat.lastMessage).toBe('**Approval**\nShould I proceed?\n- **Yes** - Continue\n- **No** - Stop');
-        expect(chatAgent.messages[1]?.content).toBe('**Approval**\nShould I proceed?\n- **Yes** - Continue\n- **No** - Stop');
-    });
-
-    it('startChat() replays queued blocked prompts locally before resuming model execution', async () => {
-        const executeTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'I already know the answer.',
-                assistantMessage: 'I already know the answer.',
-                visibleAssistantMessage: 'First blocked prompt',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'First blocked prompt',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                    {
-                        prompt: 'Second blocked prompt',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 1,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce(makeTurnResult('Queue resolved'));
-        prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
-        createManagedSessionMock.mockReturnValue({
-            executeTurn,
-            send: vi.fn(),
-            remainingMs: vi.fn().mockReturnValue(300_000),
-        });
-
-        const { createAgent } = await import('../src/sdk/agent.js');
-        const agent = await createAgent({ timeout: 300 });
-
-        const chat = await agent.startChat('hello');
-        expect(chat.turn).toBe(1);
-        expect(chat.lastMessage).toBe('First blocked prompt');
-
-        await chat.reply('answer one');
-        expect(executeTurn).toHaveBeenCalledTimes(1);
-        expect(chat.turn).toBe(1);
-        expect(chat.lastMessage).toBe('Second blocked prompt');
-
-        await chat.reply('answer two');
-        expect(executeTurn).toHaveBeenCalledTimes(2);
-        expect(executeTurn.mock.calls[1]?.[0]).toBe('answer two');
-        expect(chat.turn).toBe(2);
-        expect(chat.lastMessage).toBe('Queue resolved');
-    });
-
-    it('startChat() does not count synthetic blocked prompt replays as model turns in diagnostics', async () => {
-        const executeTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'I already know the answer.',
-                assistantMessage: 'I already know the answer.',
-                visibleAssistantMessage: 'First blocked prompt',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'First blocked prompt',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                    {
-                        prompt: 'Second blocked prompt',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 1,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce(makeTurnResult('Queue resolved'));
-        prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
-        createManagedSessionMock.mockReturnValue({
-            executeTurn,
-            send: vi.fn(),
-            remainingMs: vi.fn().mockReturnValue(300_000),
-        });
-
-        const { createAgent } = await import('../src/sdk/agent.js');
-        const agent = await createAgent({ timeout: 300 });
-
-        const chat = await agent.startChat('hello');
-        await chat.reply('answer one');
-        await chat.reply('answer two');
-
-        const syntheticReplay = agent.log.find((entry: any) =>
-            entry.type === 'agent_result' && entry.assistant_message === 'Second blocked prompt',
-        );
-        expect(syntheticReplay).toMatchObject({
-            synthetic_blocked_prompt: true,
-            blocked_prompt_source_turn: 1,
-        });
-        expect(syntheticReplay).not.toHaveProperty('turn_number');
-        expect(syntheticReplay).not.toHaveProperty('duration_ms');
-
-        const diagnostics = buildDiagnosticsReport({ log: agent.log });
-        expect(diagnostics.turns).toBe(2);
-        expect(diagnostics.turnDetails).toEqual([
-            expect.objectContaining({ turn: 1 }),
-            expect.objectContaining({ turn: 2 }),
-        ]);
-    });
 });

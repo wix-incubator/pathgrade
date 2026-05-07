@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runConversation, type ConversationDeps } from '../src/sdk/converse.js';
-import { createAskBus } from '../src/sdk/ask-bus/bus.js';
+import { AskBusTimeoutError, createAskBus } from '../src/sdk/ask-bus/bus.js';
 import type { AskBatch } from '../src/sdk/ask-bus/types.js';
 import type { Message } from '../src/sdk/types.js';
 import type { LogEntry } from '../src/types.js';
@@ -113,6 +113,61 @@ describe('runConversation: onAsk subscription', () => {
         );
 
         expect(result.completionReason).toBe('maxTurns');
+    });
+
+    it('unmatched completionDetail surfaces the first question text alongside batch id and turn', async () => {
+        // The user-facing completion detail must explain *what* the agent
+        // asked, not just that some batch failed. Take the first questionText
+        // off `AskUserUnmatchedSignal`.
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const customBatch: AskBatch = {
+            ...liveBatch,
+            batchId: 'batch-text',
+            turnNumber: 1,
+            questions: [
+                { id: 'q1', question: 'Which region should we deploy to?', options: null, isOther: false, isSecret: false },
+                { id: 'q2', question: 'Which environment?', options: null, isOther: false, isSecret: false },
+            ],
+        };
+
+        let emitted = false;
+        const sendTurn = async () => {
+            if (!emitted) {
+                emitted = true;
+                const handle = askBus.emit(customBatch);
+                await handle.resolution;
+            }
+            return 'ok';
+        };
+
+        const result = await runConversation(
+            { firstMessage: 'Start', reactions: [], maxTurns: 3 },
+            makeDeps({ sendTurn, askBus }),
+        );
+
+        expect(result.completionReason).toBe('error');
+        // Preserves the existing prefix (so older `toMatch(/unmatched .../)`
+        // assertions in other tests don't regress) and appends the first
+        // unmatched question text.
+        expect(result.completionDetail).toMatch(/unmatched ask_user on turn 1: batch-text/);
+        expect(result.completionDetail).toContain('Which region should we deploy to?');
+    });
+
+    it('ask-bus rejection surfaced from sendTurn ends conversation with completionReason=error and the bus message', async () => {
+        // The Claude SDK driver throws the captured bus rejection out of
+        // `runTurn` after the SDK stream ends. From the runner's perspective
+        // it's just a thrown Error from `sendTurn` — caught, formatted as
+        // `error` with the original message.
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const sendTurn = async () => {
+            throw new AskBusTimeoutError('tu-late', 1, 5000);
+        };
+        const result = await runConversation(
+            { firstMessage: 'Start', reactions: [], maxTurns: 1 },
+            makeDeps({ sendTurn, askBus }),
+        );
+        expect(result.completionReason).toBe('error');
+        expect(result.completionDetail).toMatch(/did not resolve within 5000ms/);
     });
 
     it('post-hoc batches do NOT produce completionReason=error even with fallback=error', async () => {

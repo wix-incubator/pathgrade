@@ -213,47 +213,4 @@ describe('unified diagnostics module', () => {
         ]);
     });
 
-    it('surfaces blocked prompt provenance in diagnostics output', () => {
-        const report = buildDiagnosticsReport({
-            completionReason: 'until',
-            score: 1,
-            turnDetails: [
-                { turn: 1, durationMs: 4_000, outputLines: 2, outputChars: 120 },
-            ],
-            log: [
-                {
-                    type: 'agent_result',
-                    timestamp: '2026-01-01T00:00:00.000Z',
-                    turn_number: 1,
-                    assistant_message: 'Approval required',
-                    assistant_message_source: 'blocked_prompt',
-                    raw_assistant_message: 'I have what I need already.',
-                    blocked_prompt_index: 0,
-                    blocked_prompt_count: 2,
-                    blocked_prompt_source_tool: 'AskUserQuestion',
-                    blocked_prompt_tool_use_id: 'toolu_1',
-                },
-                {
-                    type: 'agent_result',
-                    timestamp: '2026-01-01T00:00:01.000Z',
-                    turn_number: 1,
-                    assistant_message: 'Second approval',
-                    assistant_message_source: 'blocked_prompt',
-                    synthetic_blocked_prompt: true,
-                    blocked_prompt_source_turn: 1,
-                    blocked_prompt_index: 1,
-                    blocked_prompt_count: 2,
-                    blocked_prompt_source_tool: 'AskUserQuestion',
-                    blocked_prompt_tool_use_id: 'toolu_2',
-                },
-            ],
-        });
-
-        const formatted = formatDiagnostics(report, { verbose: true });
-
-        expect(formatted).toContain('Blocked prompts:');
-        expect(formatted).toContain('Turn 1: visible turn synthesized from AskUserQuestion prompt 1/2');
-        expect(formatted).toContain('raw completion: I have what I need already.');
-        expect(formatted).toContain('Replay from turn 1: AskUserQuestion prompt 2/2');
-    });
 });

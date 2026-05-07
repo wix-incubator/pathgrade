@@ -307,6 +307,96 @@ describe('token tracking in evaluation results', () => {
         expect(result.trial!.output_tokens).toBe(100);
     });
 
+    it('11a: conversation_cost_usd is populated from the pre-evaluate cost snapshot', async () => {
+        // Mirrors test 6 (conversation_input_tokens / conversation_output_tokens),
+        // for cost. AgentImpl's `sendTurn` calls `addCost` per turn; the cost
+        // accumulated before `evaluate()` runs is attributed to the trial as
+        // `conversation_cost_usd`, separate from any future judge cost (which
+        // today is zero — judges do not yet expose cost).
+        const trackedLLM = createMockLLM({
+            responses: [
+                {
+                    text: JSON.stringify([
+                        { scorer_name: 'quality', score: 0.9, reasoning: 'good' },
+                    ]),
+                    provider: 'anthropic', model: 'test',
+                    inputTokens: 350, outputTokens: 70,
+                },
+            ],
+        });
+        const agent: Agent = {
+            ...makeAgent(),
+            llm: trackedLLM,
+        };
+
+        // Simulate two Claude SDK turns reporting cost via addCost
+        agent.llm.addCost!(0.0125);
+        agent.llm.addCost!(0.0008);
+
+        const judges: JudgeScorer[] = [
+            { type: 'judge', name: 'quality', weight: 1, rubric: 'Rate quality' },
+        ];
+        const result = await evaluate(agent, judges) as import('../src/sdk/types.js').RecordedEvalResult;
+
+        expect(result.trial!.conversation_cost_usd).toBeCloseTo(0.0133, 10);
+    });
+
+    it('11b: conversation_cost_usd is omitted when no cost was accumulated before evaluate()', async () => {
+        // Conservative shape — agents that don't expose turn cost (Codex /
+        // Cursor today) must not appear as zero-cost runs in the trial. The
+        // field stays undefined so the consumer can detect "no cost data"
+        // cleanly. Same rule as conversation_input_tokens (test 9).
+        const trackedLLM = createMockLLM({
+            responses: [{
+                text: JSON.stringify([
+                    { scorer_name: 'quality', score: 0.9, reasoning: 'good' },
+                ]),
+                provider: 'anthropic', model: 'test',
+                inputTokens: 200, outputTokens: 40,
+            }],
+        });
+        const agent: Agent = {
+            ...makeAgent(),
+            llm: trackedLLM,
+        };
+
+        const judges: JudgeScorer[] = [
+            { type: 'judge', name: 'quality', weight: 1, rubric: 'Rate quality' },
+        ];
+        const result = await evaluate(agent, judges) as import('../src/sdk/types.js').RecordedEvalResult;
+
+        expect(result.trial).not.toHaveProperty('conversation_cost_usd');
+    });
+
+    it('11c: total_cost_usd is omitted while judge providers do not expose cost (conservative gate)', async () => {
+        // `total_cost_usd` is emitted only when *all* included components
+        // have known cost. Today judge LLM
+        // providers do not expose cost, so this field is never emitted —
+        // even when the conversation cost is known. Adding judge cost in a
+        // future change is what unlocks this field.
+        const trackedLLM = createMockLLM({
+            responses: [{
+                text: JSON.stringify([
+                    { scorer_name: 'quality', score: 0.9, reasoning: 'good' },
+                ]),
+                provider: 'anthropic', model: 'test',
+                inputTokens: 200, outputTokens: 40,
+            }],
+        });
+        const agent: Agent = {
+            ...makeAgent(),
+            llm: trackedLLM,
+        };
+        agent.llm.addCost!(0.05);
+
+        const judges: JudgeScorer[] = [
+            { type: 'judge', name: 'quality', weight: 1, rubric: 'Rate quality' },
+        ];
+        const result = await evaluate(agent, judges) as import('../src/sdk/types.js').RecordedEvalResult;
+
+        expect(result.trial).not.toHaveProperty('total_cost_usd');
+    });
+
     it('11: individual judge calls aggregate token usage', async () => {
         // Two judges with different models → individual calls
         mockLLM.queueResponse({

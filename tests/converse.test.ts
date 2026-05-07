@@ -3,6 +3,7 @@ import { previewReactions, runConversation, type ConversationDeps } from '../src
 import type { AgentTurnResult } from '../src/types.js';
 import type { Message } from '../src/sdk/types.js';
 import type { LogEntry } from '../src/types.js';
+import { createAskBus } from '../src/sdk/ask-bus/bus.js';
 
 function scriptedAgent(responses: string[]) {
     let i = 0;
@@ -519,393 +520,69 @@ describe('conversation runner', () => {
         });
     });
 
-    it('21: replays blocked prompt queues in order before rerunning the model', async () => {
-        const sendTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'I know the next steps already.',
-                assistantMessage: 'I know the next steps already.',
-                visibleAssistantMessage: '**Approval**\nShould I proceed?\n- **Yes** - Continue\n- **No** - Stop',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'Should I proceed?',
-                        header: 'Approval',
-                        options: [
-                            { label: 'Yes', description: 'Continue' },
-                            { label: 'No', description: 'Stop' },
-                        ],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                    {
-                        prompt: 'Which environment should I use?',
-                        header: 'Target environment',
-                        options: [
-                            { label: 'Prod', description: 'Use production' },
-                            { label: 'Staging', description: 'Use staging' },
-                        ],
-                        sourceTool: 'AskUserQuestion',
-                        order: 1,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce({
-                rawOutput: 'All set.',
-                assistantMessage: 'All set.',
-                visibleAssistantMessage: 'All set.',
-                visibleAssistantMessageSource: 'assistant_message',
-                blockedPrompts: [],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult);
-        const until = vi.fn().mockResolvedValue(true);
 
-        const result = await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 2,
-                until,
-                reactions: [
-                    { when: /Should I proceed\?/, reply: 'Yes' },
-                    { when: /Which environment should I use\?/, reply: 'Prod' },
-                ],
-            },
-            makeDeps({ sendTurn }),
-        );
-
-        expect(sendTurn).toHaveBeenCalledTimes(2);
-        expect(sendTurn.mock.calls.map(([message]) => message)).toEqual(['Start', 'Prod']);
-        expect(result.turns).toBe(2);
-        expect(result.completionReason).toBe('until');
-    });
-
-    it('22: defers maxTurns until the blocked prompt queue is exhausted', async () => {
-        const sendTurn = vi.fn().mockResolvedValue({
-            rawOutput: 'Summary that should stay hidden.',
-            assistantMessage: 'Summary that should stay hidden.',
-            visibleAssistantMessage: 'First blocked prompt',
-            visibleAssistantMessageSource: 'blocked_prompt',
-            blockedPrompts: [
-                {
-                    prompt: 'First blocked prompt',
-                    options: [],
-                    sourceTool: 'AskUserQuestion',
-                    order: 0,
-                },
-                {
-                    prompt: 'Second blocked prompt',
-                    options: [],
-                    sourceTool: 'AskUserQuestion',
-                    order: 1,
-                },
-            ],
-            exitCode: 0,
-            toolEvents: [],
-        } satisfies AgentTurnResult);
-
-        const result = await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 1,
-                reactions: [
-                    { when: /First blocked prompt/, reply: 'one' },
-                    { when: /Second blocked prompt/, reply: 'two' },
-                ],
-            },
-            makeDeps({ sendTurn }),
-        );
-
-        expect(sendTurn).toHaveBeenCalledTimes(1);
-        expect(result.turns).toBe(1);
-        expect(result.completionReason).toBe('maxTurns');
-    });
-
-    it('23: reactions match the active blocked prompt instead of hidden completion text', async () => {
-        const sendTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'done',
-                assistantMessage: 'done',
-                visibleAssistantMessage: 'Need approval',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'Need approval',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce({
-                rawOutput: 'finished',
-                assistantMessage: 'finished',
-                visibleAssistantMessage: 'finished',
-                visibleAssistantMessageSource: 'assistant_message',
-                blockedPrompts: [],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult);
-
-        const result = await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 2,
-                until: ({ lastMessage }) => lastMessage === 'finished',
-                reactions: [
-                    { when: /done/, reply: 'Wrong reply' },
-                    { when: /approval/, reply: 'Approved' },
-                ],
-            },
-            makeDeps({ sendTurn }),
-        );
-
-        expect(sendTurn.mock.calls.map(([message]) => message)).toEqual(['Start', 'Approved']);
-        expect(result.reactionsFired).toEqual([
-            {
-                turn: 1,
-                reactionIndex: 1,
-                pattern: '/approval/',
-                reply: 'Approved',
-            },
-        ]);
-    });
-
-    it('24: persona fallback replies to the active blocked prompt', async () => {
-        const deps = makeDeps();
-        const sendTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'summary hidden from reactions',
-                assistantMessage: 'summary hidden from reactions',
-                visibleAssistantMessage: 'Which option should I pick?',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'Which option should I pick?',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce({
-                rawOutput: 'thanks',
-                assistantMessage: 'thanks',
-                visibleAssistantMessage: 'thanks',
-                visibleAssistantMessageSource: 'assistant_message',
-                blockedPrompts: [],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult);
-        const personaReply = vi.fn(async () => {
-            expect(deps.messages.at(-1)?.content).toBe('Which option should I pick?');
-            return 'Persona answer';
-        });
-
-        const result = await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 2,
-                until: ({ lastMessage }) => lastMessage === 'thanks',
-            },
-            { ...deps, sendTurn, personaReply },
-        );
-
-        expect(personaReply).toHaveBeenCalledOnce();
-        expect(sendTurn.mock.calls.map(([message]) => message)).toEqual(['Start', 'Persona answer']);
-        expect(result.completionReason).toBe('until');
-    });
-
-    it('25: logs blocked prompt provenance without inflating model turn diagnostics', async () => {
+    it('29: log-then-throw — pushModelAgentMessage runs for non-zero exit before runner throws', async () => {
+        // Latent regression repair: AgentImpl.sendTurn used to throw on
+        // `turnResult.exitCode !== 0` BEFORE pushModelAgentMessage projected
+        // the partial-turn observability surfaces (`model_agent_result`,
+        // `ask_batch`, turn timings/details). This dropped five log surfaces
+        // for any turn that ended in an ask-bus rejection. The fix moves the
+        // throw out of the closure: sendTurn returns the result regardless
+        // of exit code; runConversation throws AFTER pushModelAgentMessage
+        // runs. This test pins both halves: the partial-turn log entries
+        // ARE emitted, and the runner ultimately reports completionReason
+        // 'error' with the constructed throw's message.
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
         const log: LogEntry[] = [];
-        const sendTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'hidden completion summary',
-                assistantMessage: 'hidden completion summary',
-                visibleAssistantMessage: 'First blocked prompt',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'First blocked prompt',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        toolUseId: 'toolu_first',
-                        order: 0,
-                    },
-                    {
-                        prompt: 'Second blocked prompt',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        toolUseId: 'toolu_second',
-                        order: 1,
-                    },
+
+        const sendTurn = async (): Promise<AgentTurnResult> => {
+            // Simulate a partial-turn ask_user batch the bus saw before the
+            // turn ultimately ended in error — exactly the observability we
+            // want to preserve.
+            bus.emit({
+                batchId: 'bp-rejected',
+                turnNumber: 1,
+                source: 'claude',
+                lifecycle: 'live',
+                sourceTool: 'AskUserQuestion',
+                questions: [
+                    { id: 'q1', question: 'Pick one?', options: null, isOther: false, isSecret: false },
                 ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce({
-                rawOutput: 'done',
-                assistantMessage: 'done',
-                visibleAssistantMessage: 'done',
+            });
+            return {
+                rawOutput: 'bus rejected: did not resolve within 0ms',
+                assistantMessage: '',
+                visibleAssistantMessage: '',
                 visibleAssistantMessageSource: 'assistant_message',
-                blockedPrompts: [],
-                exitCode: 0,
+                exitCode: 1,
+                errorSubtype: 'bus_rejection',
                 toolEvents: [],
-            } satisfies AgentTurnResult);
+                runtimePoliciesApplied: [],
+                traceOutput: 'partial-trace',
+            };
+        };
 
         const result = await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 2,
-                until: ({ lastMessage }) => lastMessage === 'done',
-                reactions: [
-                    { when: /First blocked prompt/, reply: 'one' },
-                    { when: /Second blocked prompt/, reply: 'two' },
-                ],
-            },
-            makeDeps({ sendTurn, log }),
+            { firstMessage: 'go', maxTurns: 1 },
+            makeDeps({ sendTurn, log, askBus: bus }),
         );
 
-        expect(result.turnDetails).toHaveLength(2);
-
-        const blockedTurn = log.find((entry) =>
-            entry.type === 'agent_result' && entry.assistant_message === 'First blocked prompt',
-        );
-        expect(blockedTurn).toMatchObject({
-            assistant_message_source: 'blocked_prompt',
-            raw_assistant_message: 'hidden completion summary',
-            blocked_prompt_index: 0,
-            blocked_prompt_count: 2,
-            blocked_prompt_source_tool: 'AskUserQuestion',
-            blocked_prompt_tool_use_id: 'toolu_first',
+        // Both partial-turn log surfaces fired before the throw propagated.
+        expect(log.find((e) => e.type === 'agent_result')).toBeDefined();
+        const askBatchEntries = log.filter((e) => e.type === 'ask_batch');
+        expect(askBatchEntries).toHaveLength(1);
+        expect(askBatchEntries[0]).toMatchObject({
+            type: 'ask_batch',
+            turn_number: 1,
+            batch_id: 'bp-rejected',
         });
 
-        const syntheticReplay = log.find((entry) =>
-            entry.type === 'agent_result' && entry.assistant_message === 'Second blocked prompt',
-        );
-        expect(syntheticReplay).toMatchObject({
-            assistant_message_source: 'blocked_prompt',
-            synthetic_blocked_prompt: true,
-            blocked_prompt_source_turn: 1,
-            blocked_prompt_index: 1,
-            blocked_prompt_count: 2,
-            blocked_prompt_source_tool: 'AskUserQuestion',
-            blocked_prompt_tool_use_id: 'toolu_second',
-        });
-    });
-
-    it('26: normalizes queued blocked-prompt replies to an exact option label when uniquely implied', async () => {
-        const sendTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'hidden completion summary',
-                assistantMessage: 'hidden completion summary',
-                visibleAssistantMessage: '**Routing**\nHow should these two insights be routed?\n- **Apply suggested routing** - Apply both insights.\n- **Skip these items** - Record but do not edit.\n- **Review one by one** - Decide separately.',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'How should these two insights be routed?',
-                        header: 'Routing',
-                        options: [
-                            { label: 'Apply suggested routing', description: 'Apply both insights.' },
-                            { label: 'Skip these items', description: 'Record but do not edit.' },
-                            { label: 'Review one by one', description: 'Decide separately.' },
-                        ],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce({
-                rawOutput: 'done',
-                assistantMessage: 'done',
-                visibleAssistantMessage: 'done',
-                visibleAssistantMessageSource: 'assistant_message',
-                blockedPrompts: [],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult);
-
-        await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 2,
-                until: ({ lastMessage }) => lastMessage === 'done',
-                reactions: [
-                    { when: /How should these two insights be routed\?/, reply: 'Apply' },
-                ],
-            },
-            makeDeps({ sendTurn }),
-        );
-
-        expect(sendTurn.mock.calls.map(([message]) => message)).toEqual([
-            'Start',
-            'Apply suggested routing',
-        ]);
-    });
-
-    it('27: runtime policy metadata does not override blocked-prompt replay or reaction matching', async () => {
-        const sendTurn = vi.fn()
-            .mockResolvedValueOnce({
-                rawOutput: 'I know what to do already.',
-                assistantMessage: 'I know what to do already.',
-                visibleAssistantMessage: 'Need approval',
-                visibleAssistantMessageSource: 'blocked_prompt',
-                blockedPrompts: [
-                    {
-                        prompt: 'Need approval',
-                        options: [],
-                        sourceTool: 'AskUserQuestion',
-                        order: 0,
-                    },
-                ],
-                runtimePoliciesApplied: [
-                    { id: 'noninteractive-user-question', version: '1' },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult)
-            .mockResolvedValueOnce({
-                rawOutput: 'finished',
-                assistantMessage: 'finished',
-                visibleAssistantMessage: 'finished',
-                visibleAssistantMessageSource: 'assistant_message',
-                blockedPrompts: [],
-                runtimePoliciesApplied: [
-                    { id: 'noninteractive-user-question', version: '1' },
-                ],
-                exitCode: 0,
-                toolEvents: [],
-            } satisfies AgentTurnResult);
-
-        const result = await runConversation(
-            {
-                firstMessage: 'Start',
-                maxTurns: 2,
-                until: ({ lastMessage }) => lastMessage === 'finished',
-                reactions: [
-                    { when: /Runtime policy/, reply: 'Wrong reply' },
-                    { when: /approval/, reply: 'Approved' },
-                ],
-            },
-            makeDeps({ sendTurn }),
-        );
-
-        expect(sendTurn.mock.calls.map(([message]) => message)).toEqual(['Start', 'Approved']);
-        expect(result.reactionsFired).toEqual([
-            {
-                turn: 1,
-                reactionIndex: 1,
-                pattern: '/approval/',
-                reply: 'Approved',
-            },
-        ]);
+        // The runner's outer catch surfaced the constructed throw with the
+        // exit-code message shape mirroring what AgentImpl.sendTurn used to
+        // throw, so existing reason resolution (`'error'`) still works.
+        expect(result.completionReason).toBe('error');
+        expect(result.completionDetail).toContain('Agent exited with code 1');
+        expect(result.completionDetail).toContain('did not resolve within 0ms');
     });
 
     it('28: logs user reply text in session_log entries', async () => {

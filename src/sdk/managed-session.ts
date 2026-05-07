@@ -4,6 +4,7 @@ import type {
     AgentSessionOptions,
     AgentTurnResult,
     LogEntry,
+    TrialRuntime,
 } from '../types.js';
 import { createAgentSession } from '../types.js';
 import { createAgentEnvironment } from '../agents/registry.js';
@@ -115,7 +116,17 @@ export function createManagedSession(deps: ManagedSessionDeps): ManagedSession {
                     }
                     setupDone = true;
                 }
-                session = await createAgentSession(agent, ws.path, runCommand, sessionOptions);
+                // Carry the workspace's resolved env (from `prepareWorkspace
+                // → resolveCredentials`) into the runtime handle so drivers
+                // that auth through `Options.env` (notably the Claude SDK
+                // driver) can lift Anthropic keys out. Drivers that only
+                // need the workspace path keep using `getWorkspacePath`.
+                const runtime: TrialRuntime = {
+                    handle: ws.path,
+                    workspacePath: ws.path,
+                    env: ws.env,
+                };
+                session = await createAgentSession(agent, runtime, runCommand, sessionOptions);
                 return session.start({ message });
             }
             return session.reply({ message });

@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { extractCodexToolEvents } from '../src/agents/codex.js';
-import { extractClaudeStreamJsonEvents } from '../src/agents/claude.js';
 import { extractSkillsFromToolEvents, extractSkillNameFromPath, TOOL_NAME_MAP, buildSummary } from '../src/tool-events.js';
 import type { ToolEvent } from '../src/tool-events.js';
+
+// The Claude-specific NDJSON `extractClaudeStreamJsonEvents` describe block
+// that used to live here (~180 lines) has been removed. The SDK driver no
+// longer scrapes NDJSON; tool events are projected from the typed
+// `SDKMessage` stream by `projectSdkMessages`. The replacement tests live
+// in `tests/claude-sdk-projector.test.ts`.
 
 describe('extractCodexToolEvents', () => {
   it('normalizes Codex shell and file-read traces', () => {
@@ -169,187 +174,6 @@ describe('extractCodexToolEvents', () => {
         provider: 'codex',
       }),
     ]);
-  });
-});
-
-describe('extractClaudeStreamJsonEvents', () => {
-  it('extracts tool events from Claude stream-json NDJSON output', () => {
-    const trace = [
-      '{"type":"system","subtype":"init","session_id":"sess-123"}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/app.ts"}}]}}',
-      '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"file contents"}]}}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/app.ts","old_string":"a","new_string":"b"}}]}}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}',
-      '{"type":"result","result":"Done fixing the bug.","session_id":"sess-123"}',
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events).toEqual([
-      expect.objectContaining({ action: 'read_file', providerToolName: 'Read', provider: 'claude' }),
-      expect.objectContaining({ action: 'edit_file', providerToolName: 'Edit', provider: 'claude' }),
-      expect.objectContaining({ action: 'run_shell', providerToolName: 'Bash', provider: 'claude' }),
-    ]);
-  });
-
-  it('extracts Claude tool arguments correctly', () => {
-    const trace = '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}';
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events[0].arguments).toEqual({ command: 'npm test' });
-    expect(events[0].summary).toBe('npm test');
-  });
-
-  it('returns empty array for Claude output with no tool_use blocks', () => {
-    const trace = [
-      '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello!"}]}}',
-      '{"type":"result","result":"Hello!","session_id":"sess-123"}',
-    ].join('\n');
-    expect(extractClaudeStreamJsonEvents(trace)).toEqual([]);
-  });
-
-  it('maps Skill tool call to use_skill action with skillName', () => {
-    const trace = JSON.stringify({
-      type: 'assistant',
-      message: {
-        content: [
-          { type: 'tool_use', name: 'Skill', input: { skill: 'tdd', args: '' } },
-        ],
-      },
-    });
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      action: 'use_skill',
-      providerToolName: 'Skill',
-      provider: 'claude',
-      skillName: 'tdd',
-    });
-  });
-
-  it('maps Read on SKILL.md to use_skill action with skillName from parent dir', () => {
-    const trace = JSON.stringify({
-      type: 'assistant',
-      message: {
-        content: [
-          { type: 'tool_use', name: 'Read', input: { file_path: '/workspace/.claude/skills/debugging/SKILL.md' } },
-        ],
-      },
-    });
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      action: 'use_skill',
-      providerToolName: 'Read',
-      provider: 'claude',
-      skillName: 'debugging',
-    });
-  });
-
-  it('keeps Read on non-SKILL.md as read_file with no skillName', () => {
-    const trace = JSON.stringify({
-      type: 'assistant',
-      message: {
-        content: [
-          { type: 'tool_use', name: 'Read', input: { file_path: 'src/app.ts' } },
-        ],
-      },
-    });
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      action: 'read_file',
-      providerToolName: 'Read',
-    });
-    expect(events[0].skillName).toBeUndefined();
-  });
-
-  it('detects slash-command skill usage from init event and first message', () => {
-    const trace = [
-      '{"type":"system","subtype":"init","skills":["ck-handoff","tdd"]}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}',
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace, undefined, '/ck-handoff Create a handoff doc');
-    expect(events[0]).toMatchObject({
-      action: 'use_skill',
-      provider: 'claude',
-      providerToolName: 'Skill',
-      skillName: 'ck-handoff',
-    });
-    expect(events[0].arguments).toEqual({ skill: 'ck-handoff' });
-    // The Bash event should follow
-    expect(events[1]).toMatchObject({ action: 'run_shell', providerToolName: 'Bash' });
-  });
-
-  it('does not emit synthetic skill event when slash command is not in init skills', () => {
-    const trace = [
-      '{"type":"system","subtype":"init","skills":["tdd","debugging"]}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}',
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace, undefined, '/unknown-skill do stuff');
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ action: 'run_shell', providerToolName: 'Bash' });
-  });
-
-  it('does not emit synthetic skill event when no firstMessage is provided', () => {
-    const trace = [
-      '{"type":"system","subtype":"init","skills":["ck-handoff"]}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}',
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ action: 'run_shell' });
-  });
-
-  it('does not emit synthetic skill event when firstMessage does not start with /', () => {
-    const trace = [
-      '{"type":"system","subtype":"init","skills":["ck-handoff"]}',
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}',
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace, undefined, 'Create a handoff doc');
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ action: 'run_shell' });
-  });
-
-  it('does not emit synthetic skill event when stream has no init event', () => {
-    const trace = [
-      '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}',
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace, undefined, '/ck-handoff Create a handoff');
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ action: 'run_shell' });
-  });
-
-  it('deduplicates when slash command and explicit Skill tool call both present', () => {
-    const trace = [
-      '{"type":"system","subtype":"init","skills":["tdd"]}',
-      JSON.stringify({
-        type: 'assistant',
-        message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'tdd', args: '' } }] },
-      }),
-    ].join('\n');
-    const events = extractClaudeStreamJsonEvents(trace, undefined, '/tdd Build with TDD');
-    // Both events present in raw output
-    expect(events).toHaveLength(2);
-    expect(events[0]).toMatchObject({ action: 'use_skill', skillName: 'tdd' });
-    expect(events[1]).toMatchObject({ action: 'use_skill', skillName: 'tdd' });
-    // But extractSkillsFromToolEvents deduplicates
-    const skills = extractSkillsFromToolEvents(events);
-    expect(skills).toEqual(['tdd']);
-  });
-
-  it('handles Claude stream-json with multiple tool_use blocks in one message', () => {
-    const trace = JSON.stringify({
-      type: 'assistant',
-      message: {
-        content: [
-          { type: 'tool_use', name: 'Read', input: { file_path: 'a.ts' } },
-          { type: 'text', text: 'Reading files...' },
-          { type: 'tool_use', name: 'Read', input: { file_path: 'b.ts' } },
-        ],
-      },
-    });
-    const events = extractClaudeStreamJsonEvents(trace);
-    expect(events).toHaveLength(2);
-    expect(events[0].arguments).toEqual({ file_path: 'a.ts' });
-    expect(events[1].arguments).toEqual({ file_path: 'b.ts' });
   });
 });
 

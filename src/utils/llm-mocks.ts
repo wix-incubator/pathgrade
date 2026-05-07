@@ -73,6 +73,7 @@ export function createMockLLM(opts: CreateMockLLMOptions = {}): MockLLM {
     const defaultResponse = opts.defaultResponse;
     let inputTokens = 0;
     let outputTokens = 0;
+    let costUsd = 0;
     let callCount = 0;
 
     const take = (): MockResponse => {
@@ -87,6 +88,9 @@ export function createMockLLM(opts: CreateMockLLMOptions = {}): MockLLM {
         get tokenUsage(): TokenUsage {
             return { inputTokens, outputTokens };
         },
+        get costUsd(): number {
+            return costUsd;
+        },
         get supportsToolUse(): boolean {
             return true;
         },
@@ -97,9 +101,14 @@ export function createMockLLM(opts: CreateMockLLMOptions = {}): MockLLM {
             inputTokens += input;
             outputTokens += output;
         },
-        async measure<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: TokenUsage }> {
+        addCost(usd: number) {
+            if (!Number.isFinite(usd) || usd < 0) return;
+            costUsd += usd;
+        },
+        async measure<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: TokenUsage; costUsd: number }> {
             const inBefore = inputTokens;
             const outBefore = outputTokens;
+            const costBefore = costUsd;
             const result = await fn();
             return {
                 result,
@@ -107,6 +116,7 @@ export function createMockLLM(opts: CreateMockLLMOptions = {}): MockLLM {
                     inputTokens: inputTokens - inBefore,
                     outputTokens: outputTokens - outBefore,
                 },
+                costUsd: costUsd - costBefore,
             };
         },
         async call(prompt: string, callOpts?: LLMCallOptions): Promise<LLMCallResult> {

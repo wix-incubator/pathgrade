@@ -10,6 +10,7 @@ import type {
     AskUserReaction,
     AskUserReactionPreviewEntry,
     Reaction,
+    TextReaction,
 } from '../types.js';
 
 export type UnmatchedAskUserDisposition = 'error' | 'first-option' | 'decline';
@@ -23,6 +24,13 @@ export interface AskUserHandlerContext {
 export interface AskUserUnmatchedSignal {
     batchId: string;
     turnNumber: number;
+    /**
+     * The question text(s) on the live batch that triggered the unmatched
+     * signal — populated whether the trigger is `'error'` outright or a
+     * `'first-option'` degradation (free-text / isSecret). Consumers compose
+     * the user-facing completion detail from at least the first entry.
+     */
+    questionTexts: string[];
 }
 
 export interface AskUserHandlerApi {
@@ -41,6 +49,10 @@ function isAskUserReaction(reaction: Reaction): reaction is AskUserReaction {
     return 'whenAsked' in reaction;
 }
 
+function isTextReaction(reaction: Reaction): reaction is TextReaction {
+    return 'when' in reaction;
+}
+
 function toAskUserQuestion(q: AskQuestion): AskUserQuestion {
     return {
         id: q.id,
@@ -52,18 +64,26 @@ function toAskUserQuestion(q: AskQuestion): AskUserQuestion {
     };
 }
 
+function testRegExp(rx: RegExp, input: string): boolean {
+    const previousLastIndex = rx.lastIndex;
+    try {
+        rx.lastIndex = 0;
+        return rx.test(input);
+    } finally {
+        rx.lastIndex = previousLastIndex;
+    }
+}
+
 function matchesWhenAsked(reaction: AskUserReaction, question: AskUserQuestion): boolean {
     if (reaction.whenAsked instanceof RegExp) {
-        const rx = reaction.whenAsked;
-        const previousLastIndex = rx.lastIndex;
-        try {
-            rx.lastIndex = 0;
-            return rx.test(question.question);
-        } finally {
-            rx.lastIndex = previousLastIndex;
-        }
+        return testRegExp(reaction.whenAsked, question.question);
     }
     return reaction.whenAsked(question);
+}
+
+function matchesTextReaction(reaction: TextReaction, question: AskUserQuestion): boolean {
+    if (!testRegExp(reaction.when, question.question)) return false;
+    return reaction.unless ? !testRegExp(reaction.unless, question.question) : true;
 }
 
 function normalizeAnswer(raw: string | string[] | undefined): string[] | undefined {
@@ -107,6 +127,33 @@ function tryReactionsForQuestion(
 
         if (!primary) {
             primary = { reactionIndex, values };
+        } else {
+            let set = shadowedByQuestion.get(question.id);
+            if (!set) {
+                set = new Set<number>();
+                shadowedByQuestion.set(question.id, set);
+            }
+            set.add(reactionIndex);
+        }
+    }
+    return primary;
+}
+
+function tryLegacyTextReactionsForQuestion(
+    question: AskUserQuestion,
+    reactions: readonly Reaction[],
+    firedOnce: Set<number>,
+    shadowedByQuestion: Map<string, Set<number>>,
+): ReactionResolution | undefined {
+    let primary: ReactionResolution | undefined;
+    for (let reactionIndex = 0; reactionIndex < reactions.length; reactionIndex++) {
+        const reaction = reactions[reactionIndex];
+        if (!isTextReaction(reaction)) continue;
+        if (reaction.once && firedOnce.has(reactionIndex)) continue;
+        if (!matchesTextReaction(reaction, question)) continue;
+
+        if (!primary) {
+            primary = { reactionIndex, values: [reaction.reply] };
         } else {
             let set = shadowedByQuestion.get(question.id);
             if (!set) {
@@ -218,6 +265,11 @@ export function createAskUserHandler(ctx: AskUserHandlerContext): AskUserHandler
                 ctx.reactions,
                 currentFired,
                 shadowedByQuestion,
+            ) ?? tryLegacyTextReactionsForQuestion(
+                question,
+                ctx.reactions,
+                currentFired,
+                shadowedByQuestion,
             );
 
             if (reactionHit) {
@@ -229,7 +281,7 @@ export function createAskUserHandler(ctx: AskUserHandlerContext): AskUserHandler
                 firedReactionIndexes.add(reactionHit.reactionIndex);
                 resolvedAnswersByReaction.set(reactionHit.reactionIndex, reactionHit.values);
                 const reaction = ctx.reactions[reactionHit.reactionIndex];
-                if (isAskUserReaction(reaction) && reaction.once) {
+                if (reaction.once) {
                     firedOnceThisBatch.add(reactionHit.reactionIndex);
                 }
                 continue;
@@ -267,10 +319,18 @@ export function createAskUserHandler(ctx: AskUserHandlerContext): AskUserHandler
         respond(resolution);
 
         if (anyUnmatched && ctx.onUnmatchedAskUser === 'error') {
-            unmatchedError = { batchId: batch.batchId, turnNumber: batch.turnNumber };
+            unmatchedError = {
+                batchId: batch.batchId,
+                turnNumber: batch.turnNumber,
+                questionTexts: batch.questions.map((q) => q.question),
+            };
         } else if (anyUnmatched && ctx.onUnmatchedAskUser === 'first-option') {
             // 'first-option' falls through to 'error' when no options / isSecret.
-            unmatchedError = { batchId: batch.batchId, turnNumber: batch.turnNumber };
+            unmatchedError = {
+                batchId: batch.batchId,
+                turnNumber: batch.turnNumber,
+                questionTexts: batch.questions.map((q) => q.question),
+            };
         }
     };
 

@@ -34,7 +34,6 @@ describe('createVerboseEmitter', () => {
         emitter.turnEnd({ turn: 1, durationMs: 1000, outputLines: 2, messagePreview: 'done' });
         emitter.retry({ attempt: 1, maxAttempts: 2, errorMessage: 'oops' });
         emitter.reactionFired({ turn: 1, reactionIndex: 0, pattern: '/x/', reply: 'r' });
-        emitter.blockedPrompt({ sourceTool: 't', promptIndex: 0, promptCount: 1 });
         emitter.conversationEnd({ reason: 'until', turns: 2, durationMs: 1500 });
         expect(sink.lines).toEqual([]);
         expect(emitter.enabled).toBe(false);
@@ -86,13 +85,6 @@ describe('createVerboseEmitter', () => {
         const emitter = createVerboseEmitter({ enabled: true, sink });
         emitter.reactionFired({ turn: 2, reactionIndex: 1, pattern: '/confirm/i', reply: 'yes' });
         expect(stripAnsi(sink.lines[0])).toBe('  ⚡ reaction #1 /confirm/i → "yes"');
-    });
-
-    it('formats blockedPrompt as `  ⎔ blocked prompt from tool #i/n`', () => {
-        const sink = createFakeSink();
-        const emitter = createVerboseEmitter({ enabled: true, sink });
-        emitter.blockedPrompt({ sourceTool: 'ToolSearch', promptIndex: 0, promptCount: 2 });
-        expect(stripAnsi(sink.lines[0])).toBe('  ⎔ blocked prompt from ToolSearch #1/2');
     });
 
     it('formats conversationEnd as `■ end  reason=X  turns=N  Ms`', () => {

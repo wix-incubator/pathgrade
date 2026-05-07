@@ -25,7 +25,6 @@ import { createManagedSession, type ManagedSession } from './managed-session.js'
 import { createAgentLLM } from '../utils/llm.js';
 import type { LLMPort } from '../utils/llm-types.js';
 import { buildRunSnapshot } from './snapshots.js';
-import { AgentCrashError } from './agent-crash.js';
 import { buildModelAgentResultLogEntry } from './agent-result-log.js';
 import { getVisibleAssistantMessage } from './visible-turn.js';
 import { createVerboseEmitter, type VerboseEmitter, type VerboseSink } from '../reporters/verbose-emitter.js';
@@ -241,6 +240,13 @@ class AgentImpl implements Agent {
             if (turnResult.inputTokens || turnResult.outputTokens) {
                 this.llm.addTokens?.(turnResult.inputTokens ?? 0, turnResult.outputTokens ?? 0);
             }
+            // Accumulate agent turn cost on the same shared tracker when
+            // the upstream provider reports it (Claude SDK populates
+            // `costUsd` from `total_cost_usd`; Codex/Cursor leave it
+            // undefined, in which case this is a no-op).
+            if (turnResult.costUsd !== undefined) {
+                this.llm.addCost?.(turnResult.costUsd);
+            }
 
             for (const toolEvent of turnResult.toolEvents) {
                 this._log.push({
@@ -250,26 +256,11 @@ class AgentImpl implements Agent {
                 });
             }
 
-            if (turnResult.exitCode !== 0) {
-                if (turnResult.timedOut) {
-                    throw new Error(`Agent (limit: ${timeoutSec}s) timed out (agent killed)`);
-                }
-                const detail = turnResult.rawOutput?.trim();
-                const suffix = detail ? `: ${detail}` : '';
-                if (turnResult.crashInfo) {
-                    throw new AgentCrashError(
-                        `Agent crashed${suffix}`,
-                        {
-                            ...(turnResult.crashInfo.pid !== undefined ? { pid: turnResult.crashInfo.pid } : {}),
-                            ...(turnResult.crashInfo.signal !== undefined ? { signal: turnResult.crashInfo.signal } : {}),
-                            ...(turnResult.crashInfo.exitCode !== undefined ? { exitCode: turnResult.crashInfo.exitCode } : {}),
-                            partialToolEvents: turnResult.toolEvents,
-                        },
-                    );
-                }
-                throw new Error(`Agent exited with code ${turnResult.exitCode}${suffix}`);
-            }
-
+            // Exit-code failures are no longer thrown here. The runConversation
+            // loop projects the partial-turn through `pushModelAgentMessage`
+            // first (so `model_agent_result`, `ask_batch`, turn timings/details
+            // all capture the failed turn) and then throws — preserving
+            // observability into what the agent attempted before the failure.
             return turnResult;
         };
 
@@ -320,6 +311,7 @@ class AgentImpl implements Agent {
                 verbose: this.verbose,
                 askBus: ms.askBus,
                 agentName: this.agentName,
+                agentTimeoutSec: timeoutSec,
                 ...(this.transport !== undefined ? { transport: this.transport } : {}),
             });
             this.lastConversationResult = result;

@@ -14,19 +14,12 @@ import type {
 import {
     buildAskBatchLogEntries,
     buildModelAgentResultLogEntry,
-    buildSyntheticAgentResultLogEntry,
 } from './agent-result-log.js';
-import {
-    advancePendingBlockedPromptQueue,
-    createPendingBlockedPromptQueue,
-    getBlockedPromptReplayLogMetadata,
-    normalizeBlockedPromptReply,
-    type PendingBlockedPromptQueue,
-} from './blocked-prompt-queue.js';
 import { inspectReactions } from './reaction-preview.js';
 import { getVisibleAssistantMessage, normalizeTurnResult } from './visible-turn.js';
 import type { VerboseEmitter } from '../reporters/verbose-emitter.js';
 import type { AskBus } from './ask-bus/types.js';
+import { AskBusTimeoutError } from './ask-bus/bus.js';
 import { createAskUserHandler } from './ask-bus/handler.js';
 import { AgentCrashError } from './agent-crash.js';
 import type { ToolEvent } from '../tool-events.js';
@@ -60,10 +53,44 @@ export interface ConversationDeps {
      * `allowUnreachableReactions: true`.
      */
     transport?: AgentTransport;
+    /**
+     * Per-turn timeout in seconds. Used to format the agent-timeout error
+     * message thrown after `pushModelAgentMessage` records the partial turn.
+     * Optional for callers that supply their own thrown errors via `sendTurn`.
+     */
+    agentTimeoutSec?: number;
 }
 
 function isTimeoutError(err: unknown): boolean {
     return err instanceof Error && /timed out/i.test(err.message);
+}
+
+/**
+ * Translate a non-zero-exit `AgentTurnResult` into the Error the conversation
+ * loop throws after `pushModelAgentMessage` records the partial turn. The
+ * message shape mirrors what `AgentImpl.sendTurn` previously threw so
+ * downstream catch blocks (`isTimeoutError`, `AgentCrashError`,
+ * `AskBusTimeoutError`) keep matching by error class and message.
+ */
+function buildTurnExitError(
+    turnResult: AgentTurnResult,
+    timeoutSec: number | undefined,
+): Error {
+    if (turnResult.timedOut) {
+        const limit = timeoutSec !== undefined ? `Agent (limit: ${timeoutSec}s)` : 'Agent';
+        return new Error(`${limit} timed out (agent killed)`);
+    }
+    const detail = turnResult.rawOutput?.trim();
+    const suffix = detail ? `: ${detail}` : '';
+    if (turnResult.crashInfo) {
+        return new AgentCrashError(`Agent crashed${suffix}`, {
+            ...(turnResult.crashInfo.pid !== undefined ? { pid: turnResult.crashInfo.pid } : {}),
+            ...(turnResult.crashInfo.signal !== undefined ? { signal: turnResult.crashInfo.signal } : {}),
+            ...(turnResult.crashInfo.exitCode !== undefined ? { exitCode: turnResult.crashInfo.exitCode } : {}),
+            partialToolEvents: turnResult.toolEvents,
+        });
+    }
+    return new Error(`Agent exited with code ${turnResult.exitCode}${suffix}`);
 }
 
 export async function runConversation(
@@ -79,7 +106,6 @@ export async function runConversation(
     const turnDetails: TurnDetail[] = [];
     const reactionsFired: ReactionFiredEntry[] = [];
     let turn = 0;
-    let pendingBlockedPromptQueue: PendingBlockedPromptQueue | null = null;
     const conversationStart = Date.now();
 
     const askUserHandlerApi = deps.askBus
@@ -97,10 +123,16 @@ export async function runConversation(
         if (!askUserHandlerApi) return null;
         const err = askUserHandlerApi.getUnmatchedError();
         if (!err) return null;
-        return buildResult(
-            'error',
-            `unmatched ask_user on turn ${err.turnNumber}: ${err.batchId}`,
-        );
+        // Include the first question text so the surfaced detail names
+        // *what* the agent asked, not just that some batch on some
+        // turn failed. Multi-question batches list only the first to keep
+        // detail strings bounded — full list ships on the structured
+        // signal for any tooling that needs it.
+        const firstText = err.questionTexts[0];
+        const detail = firstText
+            ? `unmatched ask_user on turn ${err.turnNumber}: ${err.batchId}: ${firstText}`
+            : `unmatched ask_user on turn ${err.turnNumber}: ${err.batchId}`;
+        return buildResult('error', detail);
     };
 
     const MAX_TURN_RETRIES = 2;
@@ -221,28 +253,6 @@ export async function runConversation(
         });
     };
 
-    const pushSyntheticAgentMessage = (
-        response: string,
-        extraLogFields: Record<string, string | number | boolean | undefined>,
-    ): void => {
-        deps.messages.push({ role: 'agent', content: response });
-        deps.log.push(buildSyntheticAgentResultLogEntry({
-            timestamp: new Date().toISOString(),
-            assistantMessage: response,
-            extraFields: extraLogFields,
-        }));
-    };
-
-    const emitActiveBlockedPrompt = (queue: PendingBlockedPromptQueue | null): void => {
-        if (!queue) return;
-        const prompt = queue.prompts[queue.activeIndex];
-        deps.verbose?.blockedPrompt({
-            sourceTool: prompt.sourceTool,
-            promptIndex: prompt.order,
-            promptCount: queue.prompts.length,
-        });
-    };
-
     const doModelTurn = async (
         message: string,
         options: { preLogged?: boolean; kind?: 'agent_start' | 'user_reply' } = {},
@@ -256,16 +266,11 @@ export async function runConversation(
         // turn is not safely replayable, so retries are suppressed.
         const maxRetries = deps.transport === 'app-server' ? 0 : MAX_TURN_RETRIES;
         let lastError: unknown;
+        let turnResult: AgentTurnResult | undefined;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                const turnResult = normalizeTurnResult(await deps.sendTurn(message));
-                turn++;
-                const response = getVisibleAssistantMessage(turnResult);
-                const durationMs = Date.now() - turnStart;
-                pendingBlockedPromptQueue = createPendingBlockedPromptQueue(turnResult, turn);
-                pushModelAgentMessage(response, turn, durationMs, turnResult);
-                emitActiveBlockedPrompt(pendingBlockedPromptQueue);
-                return response;
+                turnResult = normalizeTurnResult(await deps.sendTurn(message));
+                break;
             } catch (err) {
                 lastError = err;
                 // Don't retry timeouts — only transient agent errors
@@ -273,6 +278,11 @@ export async function runConversation(
                 // Subprocess crashes bypass retries regardless of transport —
                 // the error itself is the signal that replay is unsafe.
                 if (err instanceof AgentCrashError) throw err;
+                // Ask-bus rejections (no subscriber, slow subscriber) do
+                // not recover on retry — retrying just burns the retry
+                // window before the same `error` completion. Surface the
+                // bus error immediately.
+                if (err instanceof AskBusTimeoutError) throw err;
                 if (attempt < maxRetries) {
                     deps.log.push({
                         type: 'agent_result',
@@ -295,7 +305,23 @@ export async function runConversation(
                 }
             }
         }
-        throw lastError;
+        if (turnResult === undefined) throw lastError;
+
+        turn++;
+        const response = getVisibleAssistantMessage(turnResult);
+        const durationMs = Date.now() - turnStart;
+        // Project the partial turn (`pushModelAgentMessage`) BEFORE any
+        // exit-code throw so the failure mode is observable in the same
+        // shape as a successful turn — `model_agent_result`, `ask_batch`,
+        // turn timings/details all capture the rejected turn before the
+        // runner propagates the error. Exit-code failures bypass retry by
+        // construction (already logged): retrying would re-emit those log
+        // entries on a successful retry, double-counting the turn.
+        pushModelAgentMessage(response, turn, durationMs, turnResult);
+        if (turnResult.exitCode !== 0) {
+            throw buildTurnExitError(turnResult, deps.agentTimeoutSec);
+        }
+        return response;
     };
 
     try {
@@ -320,7 +346,7 @@ export async function runConversation(
 
         while (true) {
             // Check until predicate
-            if (!pendingBlockedPromptQueue && opts.until) {
+            if (opts.until) {
                 const done = await opts.until({
                     turn,
                     lastMessage: agentMessage,
@@ -332,17 +358,15 @@ export async function runConversation(
             }
 
             // Check maxTurns
-            if (!pendingBlockedPromptQueue && turn >= maxTurns) {
+            if (turn >= maxTurns) {
                 return buildResult('maxTurns');
             }
 
             // Run step scorers scheduled for this turn
-            if (!pendingBlockedPromptQueue) {
-                for (const sg of stepScorers) {
-                    if (sg.afterTurn === turn && deps.runStepScorers) {
-                        const result = await deps.runStepScorers(sg.scorers);
-                        stepResults.push({ afterTurn: sg.afterTurn, result });
-                    }
+            for (const sg of stepScorers) {
+                if (sg.afterTurn === turn && deps.runStepScorers) {
+                    const result = await deps.runStepScorers(sg.scorers);
+                    stepResults.push({ afterTurn: sg.afterTurn, result });
                 }
             }
 
@@ -379,25 +403,6 @@ export async function runConversation(
             }
             if (reply === null) {
                 return buildResult('noReply');
-            }
-
-            if (pendingBlockedPromptQueue) {
-                reply = normalizeBlockedPromptReply(pendingBlockedPromptQueue, reply);
-                const sourceTurn = pendingBlockedPromptQueue.sourceTurn;
-                pushUserMessage(reply, 'user_reply', sourceTurn);
-                const replay = advancePendingBlockedPromptQueue(pendingBlockedPromptQueue);
-                pendingBlockedPromptQueue = replay.queue;
-                if (replay.nextPromptMessage) {
-                    agentMessage = replay.nextPromptMessage;
-                    pushSyntheticAgentMessage(agentMessage, getBlockedPromptReplayLogMetadata(replay.queue!));
-                    emitActiveBlockedPrompt(replay.queue);
-                    continue;
-                }
-                if (turn >= maxTurns) {
-                    return buildResult('maxTurns');
-                }
-                agentMessage = await doModelTurn(reply, { preLogged: true, kind: 'user_reply' });
-                continue;
             }
 
             agentMessage = await doModelTurn(reply, { kind: 'user_reply' });

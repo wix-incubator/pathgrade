@@ -111,6 +111,51 @@ describe('LLMPort — token accumulation', () => {
         expect(typeof withTools.callWithTools).toBe('function');
     });
 
+    it('costUsd accumulates across addCost calls and surfaces zero before any addCost', async () => {
+        // Agent-turn costs are accumulated onto the agent's shared telemetry
+        // object alongside token usage.
+        // The Claude SDK driver feeds turn `costUsd` into `addCost` exactly
+        // as it feeds `inputTokens`/`outputTokens` into `addTokens` today.
+        const llm = createLLMClient({ adapters: [fakeAdapter({ name: 'cli' })] });
+        expect(llm.costUsd).toBe(0);
+        llm.addCost!(0.0125);
+        llm.addCost!(0.0008);
+        // Floating-point noise is acceptable — assert a tight numeric
+        // tolerance rather than exact equality. Producers track costs in
+        // SDK-reported decimals; consumers reconcile against the same.
+        expect(llm.costUsd).toBeCloseTo(0.0133, 10);
+    });
+
+    it('addCost ignores non-finite or non-positive deltas defensively', async () => {
+        // The SDK could in principle report 0 (free turn), NaN (corrupt),
+        // or negative cost (refund? unlikely but cheap to guard). The
+        // accumulator should never go backwards and should ignore garbage.
+        const llm = createLLMClient({ adapters: [fakeAdapter({ name: 'cli' })] });
+        llm.addCost!(0.01);
+        llm.addCost!(0);            // 0 is a valid cost — accumulates
+        llm.addCost!(NaN);          // ignored
+        llm.addCost!(-0.5);         // ignored
+        llm.addCost!(Infinity);     // ignored
+        expect(llm.costUsd).toBeCloseTo(0.01, 10);
+    });
+
+    it('measure(fn) returns the cost delta consumed by fn, regardless of prior cost', async () => {
+        // Mirrors the existing token-delta contract so `evaluate()` can
+        // attribute conversation cost (pre-evaluate) separately from
+        // judge-evaluate cost using the same `before.costUsd` snapshot.
+        const llm = createLLMClient({ adapters: [fakeAdapter({ name: 'cli' })] });
+        llm.addCost!(0.5);
+        const { result, tokens, costUsd } = await llm.measure!(async () => {
+            llm.addCost!(0.02);
+            llm.addCost!(0.03);
+            return 'done';
+        });
+        expect(result).toBe('done');
+        expect(costUsd).toBeCloseTo(0.05, 10);
+        expect(tokens).toEqual({ inputTokens: 0, outputTokens: 0 });
+        expect(llm.costUsd).toBeCloseTo(0.55, 10);
+    });
+
     it('measure(fn) returns the token delta consumed by fn, regardless of prior usage', async () => {
         const call = vi.fn<() => Promise<LLMCallResult>>()
             .mockResolvedValueOnce({

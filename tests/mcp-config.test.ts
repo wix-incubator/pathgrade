@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
-import { writeMcpConfig } from '../src/providers/mcp-config.js';
+import { writeMcpConfig, loadMcpServersForSdk } from '../src/providers/mcp-config.js';
 import type { McpSpec } from '../src/providers/mcp-config.js';
 import type { MockMcpServerDescriptor } from '../src/core/mcp-mock.types.js';
 
@@ -138,5 +138,82 @@ describe('writeMcpConfig', () => {
     // The mcpServers key should still use the original name
     const mcpConfig = await fs.readJson(path.join(workDir, '.pathgrade-mcp.json'));
     expect(mcpConfig.mcpServers['my server/v2.0']).toBeDefined();
+  });
+});
+
+describe('loadMcpServersForSdk', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-loader-test-'));
+  });
+
+  afterEach(async () => {
+    await fs.remove(tmpDir);
+  });
+
+  it('returns undefined when the workspace has no MCP config file', async () => {
+    // Mirrors the "no MCP" path through the driver: writeMcpConfig was a no-op
+    // because the fixture didn't declare an `mcp` spec.
+    const result = await loadMcpServersForSdk(tmpDir);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns the inner mcpServers object from .pathgrade-mcp.json', async () => {
+    // Shape parity with what writeMcpConfig writes (`{ mcpServers: { ... } }`).
+    // The SDK's `Options.mcpServers: Record<string, McpStdioServerConfig>`
+    // accepts this shape directly: `{ command, args }` is the stdio form, and
+    // the `type: 'stdio'` discriminator is optional.
+    await fs.writeJson(path.join(tmpDir, '.pathgrade-mcp.json'), {
+      mcpServers: {
+        'mock-greeter': {
+          command: 'node',
+          args: ['/some/path/server.js', '/some/fixture.json'],
+        },
+      },
+    });
+
+    const result = await loadMcpServersForSdk(tmpDir);
+    expect(result).toEqual({
+      'mock-greeter': {
+        command: 'node',
+        args: ['/some/path/server.js', '/some/fixture.json'],
+      },
+    });
+  });
+
+  it('round-trips the file writeMcpConfig writes for mock descriptors', async () => {
+    const workDir = path.join(tmpDir, 'workspace');
+    await fs.ensureDir(workDir);
+
+    const mock: MockMcpServerDescriptor = {
+      __type: 'mock_mcp_server',
+      config: {
+        name: 'round-trip',
+        tools: [{ name: 'greet', response: 'hi' }],
+      },
+    };
+
+    await writeMcpConfig(workDir, { mock });
+    const result = await loadMcpServersForSdk(workDir);
+
+    expect(result).toBeDefined();
+    expect(result!['round-trip']).toBeDefined();
+    expect(result!['round-trip'].command).toBe('node');
+    expect(Array.isArray(result!['round-trip'].args)).toBe(true);
+  });
+
+  it('round-trips a passthrough configFile spec', async () => {
+    const srcFile = path.join(tmpDir, 'src-mcp.json');
+    await fs.writeJson(srcFile, {
+      mcpServers: { foo: { command: 'echo', args: ['ok'] } },
+    });
+    const workDir = path.join(tmpDir, 'workspace');
+    await fs.ensureDir(workDir);
+
+    await writeMcpConfig(workDir, { configFile: srcFile });
+    const result = await loadMcpServersForSdk(workDir);
+
+    expect(result).toEqual({ foo: { command: 'echo', args: ['ok'] } });
   });
 });

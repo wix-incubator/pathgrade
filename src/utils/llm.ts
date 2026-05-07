@@ -78,6 +78,7 @@ export function createLLMClient(
     const warnedTransitions = new Set<string>();
     let inputTokens = 0;
     let outputTokens = 0;
+    let costUsd = 0;
     let lastProvider: string | undefined;
 
     const warnFallthrough = (from: string, to: string, reason: string) => {
@@ -96,6 +97,9 @@ export function createLLMClient(
         get tokenUsage(): TokenUsage {
             return { inputTokens, outputTokens };
         },
+        get costUsd(): number {
+            return costUsd;
+        },
         get supportsToolUse(): boolean {
             return !!toolCapable;
         },
@@ -106,9 +110,17 @@ export function createLLMClient(
             inputTokens += input;
             outputTokens += output;
         },
-        async measure<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: TokenUsage }> {
+        addCost(usd: number) {
+            // Defensive: ignore non-finite or negative deltas. The SDK
+            // reports a non-negative finite total_cost_usd in practice;
+            // anything else is corrupt and should not poison the tracker.
+            if (!Number.isFinite(usd) || usd < 0) return;
+            costUsd += usd;
+        },
+        async measure<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: TokenUsage; costUsd: number }> {
             const inBefore = inputTokens;
             const outBefore = outputTokens;
+            const costBefore = costUsd;
             const result = await fn();
             return {
                 result,
@@ -116,6 +128,7 @@ export function createLLMClient(
                     inputTokens: inputTokens - inBefore,
                     outputTokens: outputTokens - outBefore,
                 },
+                costUsd: costUsd - costBefore,
             };
         },
         async call(prompt: string, opts: LLMCallOptions = {}): Promise<LLMCallResult> {

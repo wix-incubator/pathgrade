@@ -27,7 +27,6 @@ export class CodexAgent extends TranscriptAgent {
             visibleAssistantMessageSource: 'assistant_message',
             exitCode: result.exitCode,
             traceOutput: rawOutput,
-            blockedPrompts: [],
             toolEvents,
         };
     }

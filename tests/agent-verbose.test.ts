@@ -28,7 +28,6 @@ function makeTurnResult(message: string, toolEvents: AgentTurnResult['toolEvents
         visibleAssistantMessage: message,
         visibleAssistantMessageSource: 'assistant_message',
         exitCode: 0,
-        blockedPrompts: [],
         toolEvents,
     };
 }

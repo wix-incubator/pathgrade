@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { planRuntimePolicies, NONINTERACTIVE_RUNTIME_POLICY, renderRuntimePolicy } from '../src/sdk/runtime-policy.js';
 
 describe('runtime policy planning', () => {
-  it('plans the non-interactive runtime policy for Claude sessions', () => {
-    expect(planRuntimePolicies('claude')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
+  it('plans no runtime policy for Claude sessions — capability is reliable', () => {
+    // The SDK driver replaces the synthesis workaround with a live ask-user
+    // bridge, so Claude's capability is `'reliable'` and
+    // `planRuntimePolicies` returns an empty array. The renderer below still
+    // works because the policy module stays in place to serve Codex (exec)
+    // and Cursor.
+    expect(planRuntimePolicies('claude')).toEqual([]);
   });
 
   it('plans the non-interactive runtime policy for Codex transcript sessions', () => {

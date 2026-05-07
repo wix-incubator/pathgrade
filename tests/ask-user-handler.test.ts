@@ -46,6 +46,60 @@ describe('createAskUserHandler — live batches', () => {
         ]);
     });
 
+    it('legacy text reactions resolve matching structured ask_user questions', async () => {
+        const reactions: Reaction[] = [
+            { when: /figma/i, reply: 'Skip' },
+        ];
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        const api = createAskUserHandler({
+            reactions,
+            onUnmatchedAskUser: 'error',
+            firedOnce: new Set<number>(),
+        });
+        bus.onAsk(api.handler);
+
+        const resolution = await bus.emit(makeBatch({
+            questions: [
+                {
+                    id: 'q1',
+                    question: "Paste the Figma file URL. If none, pick 'Skip'.",
+                    options: [{ label: 'Skip' }],
+                    isOther: false,
+                    isSecret: false,
+                },
+            ],
+        })).resolution;
+
+        expect(resolution!.answers).toEqual([
+            { questionId: 'q1', values: ['Skip'], source: 'reaction' },
+        ]);
+        expect(api.getUnmatchedError()).toBeNull();
+    });
+
+    it('legacy text reaction once:true is retired after answering a structured question', async () => {
+        const reactions: Reaction[] = [
+            { when: /./, reply: 'first', once: true },
+            { when: /./, reply: 'second' },
+        ];
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        const api = createAskUserHandler({
+            reactions,
+            onUnmatchedAskUser: 'error',
+            firedOnce: new Set<number>(),
+        });
+        bus.onAsk(api.handler);
+
+        const batch = makeBatch({
+            questions: [
+                { id: 'q1', question: 'First question?', options: null, isOther: false, isSecret: false },
+                { id: 'q2', question: 'Second question?', options: null, isOther: false, isSecret: false },
+            ],
+        });
+        const resolution = await bus.emit(batch).resolution;
+
+        expect(resolution!.answers.map((a) => a.values)).toEqual([['first'], ['second']]);
+    });
+
     it('bare string answer normalizes to [string]', async () => {
         const reactions: Reaction[] = [{ whenAsked: /.*/, answer: 'x' }];
         const bus = createAskBus({ askUserTimeoutMs: 1000 });
@@ -158,7 +212,34 @@ describe('createAskUserHandler — live batches', () => {
             values: [],
             source: 'declined',
         });
-        expect(api.getUnmatchedError()).toEqual({ batchId: 'batch-err', turnNumber: 4 });
+        expect(api.getUnmatchedError()).toEqual({
+            batchId: 'batch-err',
+            turnNumber: 4,
+            questionTexts: ['Which region?'],
+        });
+    });
+
+    it('unmatched signal carries every question text on the live batch', async () => {
+        // Structured unmatched signals must include the question text(s) so
+        // completion details and downstream tooling can surface what the
+        // agent actually asked, not just the batch id.
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        const api = createAskUserHandler({ reactions: [], onUnmatchedAskUser: 'error', firedOnce: new Set() });
+        bus.onAsk(api.handler);
+        const batch = makeBatch({
+            batchId: 'batch-multi',
+            turnNumber: 2,
+            questions: [
+                { id: 'q1', question: 'Which region?', options: null, isOther: false, isSecret: false },
+                { id: 'q2', question: 'Which env?', options: null, isOther: false, isSecret: false },
+            ],
+        });
+        await bus.emit(batch).resolution;
+        expect(api.getUnmatchedError()).toEqual({
+            batchId: 'batch-multi',
+            turnNumber: 2,
+            questionTexts: ['Which region?', 'Which env?'],
+        });
     });
 
     it("fallback first-option: picks options[0].label when options present and non-secret", async () => {
@@ -192,7 +273,11 @@ describe('createAskUserHandler — live batches', () => {
         const resolution = await bus.emit(makeBatch({ batchId: 'ft' })).resolution;
         expect(resolution!.answers[0].values).toEqual([]);
         expect(resolution!.answers[0].source).toBe('declined');
-        expect(api.getUnmatchedError()).toEqual({ batchId: 'ft', turnNumber: 1 });
+        expect(api.getUnmatchedError()).toEqual({
+            batchId: 'ft',
+            turnNumber: 1,
+            questionTexts: ['Which region?'],
+        });
     });
 
     it('fallback first-option: isSecret question degrades to error (never fabricates secrets)', async () => {
@@ -213,7 +298,11 @@ describe('createAskUserHandler — live batches', () => {
         });
         const resolution = await bus.emit(batch).resolution;
         expect(resolution!.answers[0]).toEqual({ questionId: 'q1', values: [], source: 'declined' });
-        expect(api.getUnmatchedError()).toEqual({ batchId: 'sec', turnNumber: 1 });
+        expect(api.getUnmatchedError()).toEqual({
+            batchId: 'sec',
+            turnNumber: 1,
+            questionTexts: ['Password?'],
+        });
     });
 
     it('fallback decline: emits empty values without signalling unmatched error', async () => {

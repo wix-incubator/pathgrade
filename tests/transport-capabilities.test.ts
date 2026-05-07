@@ -16,10 +16,15 @@ describe('getAgentCapabilities', () => {
         expect(getAgentCapabilities('codex', 'app-server').interactiveQuestionTransport).toBe('reliable');
     });
 
-    it('returns noninteractive ask-user transport for claude regardless of transport', () => {
-        expect(getAgentCapabilities('claude').interactiveQuestionTransport).toBe('noninteractive');
-        expect(getAgentCapabilities('claude', 'app-server').interactiveQuestionTransport).toBe('noninteractive');
-        expect(getAgentCapabilities('claude', 'exec').interactiveQuestionTransport).toBe('noninteractive');
+    it('returns reliable ask-user transport for claude regardless of transport', () => {
+        // The Claude SDK driver routes AskUserQuestion through the live
+        // ask-user bridge, which is the same `'reliable'` tier Codex
+        // app-server occupies. The transport hint is Codex-specific so it has
+        // no effect on Claude's capability — every transport variant resolves
+        // to `'reliable'` for Claude.
+        expect(getAgentCapabilities('claude').interactiveQuestionTransport).toBe('reliable');
+        expect(getAgentCapabilities('claude', 'app-server').interactiveQuestionTransport).toBe('reliable');
+        expect(getAgentCapabilities('claude', 'exec').interactiveQuestionTransport).toBe('reliable');
     });
 
     it('returns noninteractive ask-user transport for cursor regardless of transport', () => {
@@ -45,9 +50,14 @@ describe('planRuntimePolicies transport-aware', () => {
         expect(planRuntimePolicies('codex', 'app-server')).toEqual([]);
     });
 
-    it('still plans the noninteractive policy for claude regardless of transport', () => {
-        expect(planRuntimePolicies('claude')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
-        expect(planRuntimePolicies('claude', 'app-server')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
+    it('plans no runtime policy for claude — capability is reliable', () => {
+        // Claude's interactive-question transport is `'reliable'` (the live
+        // ask-user bridge replaces the synthesis workaround the policy was
+        // wallpapering). The plan-side behavior falls out of the capability
+        // because `planRuntimePolicies` is purely capability-driven.
+        expect(planRuntimePolicies('claude')).toEqual([]);
+        expect(planRuntimePolicies('claude', 'app-server')).toEqual([]);
+        expect(planRuntimePolicies('claude', 'exec')).toEqual([]);
     });
 
     it('still plans the noninteractive policy for cursor regardless of transport', () => {

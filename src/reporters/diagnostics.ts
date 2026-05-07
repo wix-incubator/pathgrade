@@ -15,17 +15,6 @@ export interface DiagnosticsTurnDetail extends TurnDetail {
     apiRetries: number;
 }
 
-export interface DiagnosticsBlockedPromptEntry {
-    turn: number;
-    promptIndex: number;
-    promptCount: number;
-    sourceTool?: string;
-    toolUseId?: string;
-    rawAssistantMessage?: string;
-    synthetic: boolean;
-    sourceTurn?: number;
-}
-
 export type DiagnosticsRuntimePolicyEntry = RuntimePolicyAuditEntry;
 
 export interface DiagnosticsReport {
@@ -36,7 +25,6 @@ export interface DiagnosticsReport {
     score?: number;
     turnDetails: DiagnosticsTurnDetail[];
     reactionsFired: ReactionFiredEntry[];
-    blockedPrompts: DiagnosticsBlockedPromptEntry[];
     runtimePoliciesApplied: DiagnosticsRuntimePolicyEntry[];
     recommendedTimeoutMs: number;
     warnings: string[];
@@ -82,7 +70,6 @@ export function buildDiagnosticsReport(input: BuildDiagnosticsReportInput): Diag
         score: input.score,
         turnDetails,
         reactionsFired: input.reactionsFired ?? [],
-        blockedPrompts: extractBlockedPromptEntries(input.log),
         runtimePoliciesApplied: extractRuntimePolicyAuditEntries(input.log),
         recommendedTimeoutMs: recommendTimeoutMs(turnDetails),
         warnings,
@@ -134,27 +121,6 @@ export function formatDiagnostics(report: DiagnosticsReport, opts: FormatDiagnos
             lines.push(
                 `  Turn ${reaction.turn}: reaction ${reaction.reactionIndex} ${reaction.pattern} -> ${reaction.reply}`,
             );
-        }
-    }
-
-    if (report.blockedPrompts.length > 0) {
-        lines.push('', 'Blocked prompts:');
-        for (const blockedPrompt of report.blockedPrompts) {
-            const sourceTool = blockedPrompt.sourceTool ?? 'unknown tool';
-            const promptLabel = `prompt ${blockedPrompt.promptIndex + 1}/${blockedPrompt.promptCount}`;
-            const toolUseSuffix = blockedPrompt.toolUseId ? ` (${blockedPrompt.toolUseId})` : '';
-            if (blockedPrompt.synthetic) {
-                lines.push(
-                    `  Replay from turn ${blockedPrompt.sourceTurn ?? blockedPrompt.turn}: ${sourceTool} ${promptLabel}${toolUseSuffix}`,
-                );
-            } else {
-                lines.push(
-                    `  Turn ${blockedPrompt.turn}: visible turn synthesized from ${sourceTool} ${promptLabel}${toolUseSuffix}`,
-                );
-                if (blockedPrompt.rawAssistantMessage) {
-                    lines.push(`    raw completion: ${blockedPrompt.rawAssistantMessage}`);
-                }
-            }
         }
     }
 
@@ -225,21 +191,6 @@ function countRetriesByTurn(log: LogEntry[]): Map<number, number> {
     }
 
     return retriesByTurn;
-}
-
-function extractBlockedPromptEntries(log: LogEntry[]): DiagnosticsBlockedPromptEntry[] {
-    return log
-        .filter((entry) => entry.type === 'agent_result' && entry.assistant_message_source === 'blocked_prompt')
-        .map((entry) => ({
-            turn: entry.turn_number ?? entry.blocked_prompt_source_turn ?? 0,
-            promptIndex: entry.blocked_prompt_index ?? 0,
-            promptCount: entry.blocked_prompt_count ?? 1,
-            sourceTool: entry.blocked_prompt_source_tool,
-            toolUseId: entry.blocked_prompt_tool_use_id,
-            rawAssistantMessage: entry.raw_assistant_message,
-            synthetic: entry.synthetic_blocked_prompt === true,
-            sourceTurn: entry.blocked_prompt_source_turn,
-        }));
 }
 
 function isRetryEntry(entry: LogEntry): boolean {

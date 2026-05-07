@@ -11,7 +11,6 @@ function makeTurnResult(overrides: Partial<AgentTurnResult> = {}): AgentTurnResu
         visibleAssistantMessage: 'ok',
         visibleAssistantMessageSource: 'assistant_message',
         exitCode: 0,
-        blockedPrompts: [],
         toolEvents: [],
         ...overrides,
     };

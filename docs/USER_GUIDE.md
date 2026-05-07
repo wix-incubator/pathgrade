@@ -32,6 +32,7 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
   - [Real MCP Configs](#real-mcp-configs)
   - [Mock MCP Servers](#mock-mcp-servers)
 - [Agents](#agents)
+  - [Claude SDK driver](#claude-sdk-driver)
 - [CLI Reference](#cli-reference)
 - [Vitest Plugin Configuration](#vitest-plugin-configuration)
 - [EvalRuntime and LLM Injection](#evalruntime-and-llm-injection)
@@ -52,10 +53,15 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
 npm i @wix/pathgrade vitest
 ```
 
-You also need at least one agent CLI installed:
+### Per-agent runtime requirements
 
-- **Claude**: Install Claude Code per Anthropic's documentation
-- **Codex**: Install the Codex CLI per OpenAI's documentation
+- **Claude**: pathgrade pulls in `@anthropic-ai/claude-agent-sdk`, which ships a per-platform `claude` binary as an optional npm dependency. With a normal `npm install` (or `yarn install`), the bundled binary is fetched automatically — you do not need a separate Claude CLI install. **Footprint:** the bundled binary adds tens of megabytes to `node_modules` (a per-platform binary plus the SDK runtime). If you already have a Claude CLI installed and want to avoid the duplicate footprint, you can either:
+  - skip the optional dependency at install time (e.g. `npm install --no-optional` / `yarn install --ignore-optional`), and
+  - point pathgrade at your local binary via `AgentOptions.claudeCodeExecutable: '/abs/path/to/claude'` or the `PATHGRADE_CLAUDE_CODE_EXECUTABLE` env var.
+
+  See [Claude SDK driver](#claude-sdk-driver) for the full override precedence.
+- **Codex**: install the Codex CLI per OpenAI's documentation; pathgrade shells out to it.
+- **Cursor**: install `cursor-agent` per Cursor's documentation; pathgrade shells out to it.
 
 ## Quick Start
 
@@ -881,18 +887,72 @@ const agent = await createAgent({
 
 ## Agents
 
-Pathgrade supports two agent runtimes:
+Pathgrade supports three agent runtimes:
 
-| Agent | CLI Tool | MCP Support | Auth |
-|-------|----------|-------------|------|
-| **Claude** | `claude` | Mock | Keychain OAuth (macOS) or API key |
-| **Codex** | `codex` | None | Cached CLI login or API key |
+| Agent | Runtime | MCP Support | Auth |
+|-------|---------|-------------|------|
+| **Claude** | `@anthropic-ai/claude-agent-sdk` (bundled binary) | Real + Mock | Keychain OAuth (macOS), API key, or other SDK auth env vars |
+| **Codex** | `codex` CLI | None | Cached CLI login or API key |
+| **Cursor** | `cursor-agent` CLI | None | Keychain OAuth (macOS) or `CURSOR_API_KEY` |
 
-**Agent selection**: The `agent` field in `AgentOptions` determines which CLI to use. The `PATHGRADE_AGENT` environment variable overrides this at runtime, letting you run the same eval file against different agents without editing code.
+**Agent selection**: The `agent` field in `AgentOptions` determines which runtime to use. The `PATHGRADE_AGENT` environment variable overrides this at runtime, letting you run the same eval file against different agents without editing code.
 
 **Auth**: All agents get a fresh isolated HOME directory. Authentication is resolved automatically:
-- **Claude**: On macOS, extracts OAuth credentials from the system Keychain. Falls back to `ANTHROPIC_API_KEY` env var.
+- **Claude**: On macOS, extracts OAuth credentials from the system Keychain. Falls back to `ANTHROPIC_API_KEY`. See [Claude SDK driver](#claude-sdk-driver) below for the full SDK auth env var allowlist (including Bedrock, Vertex, Foundry).
 - **Codex**: When `OPENAI_API_KEY` is available, runs `codex login --with-api-key` in the sandbox before the first turn. Otherwise, if the host machine already has a file-based Codex login cache at `~/.codex/auth.json`, Pathgrade copies that cache into the isolated HOME and reuses it.
+- **Cursor**: forwards `CURSOR_API_KEY` when set; on macOS, reuses `cursor-agent login` OAuth tokens from the login Keychain.
+
+### Claude SDK driver
+
+The Claude agent driver runs Claude through the `@anthropic-ai/claude-agent-sdk` rather than scraping the `claude` CLI's stream-JSON output. This unlocks the real `AskUserQuestion` handshake — Pathgrade reactions can deliver answers back to Claude as a real tool result mid-turn, instead of being reconstructed from denied prompts after the fact.
+
+A few pathgrade behaviors follow from this choice and are worth knowing when authoring fixtures or running evals.
+
+#### `AskUserQuestion` is unavailable inside subagents
+
+The Claude Agent SDK does not expose `AskUserQuestion` to subagents spawned through the `Task` tool. If your fixture or skill spawns a subagent and that subagent tries to ask the user a question, the SDK will not surface that question to pathgrade's `canUseTool` callback, so no `AskUserReaction` can fire for it. Author fixtures that rely on the structured ask-user handshake at the top-level agent — not from inside a subagent.
+
+#### Claude binary: bundled by default, overridable
+
+The SDK ships a per-platform `claude` binary as an optional npm dependency, so by default pathgrade uses that pinned binary regardless of which Claude CLI version is installed on the host. This protects CI from "today's green eval is red tomorrow because someone updated their local Claude" drift.
+
+If you want Pathgrade to run a specific local Claude build instead (for example, an in-development build under test), supply an override path. Precedence is:
+
+1. `AgentOptions.claudeCodeExecutable` — passed to `createAgent({ agent: 'claude', claudeCodeExecutable: '/abs/path/to/claude' })`.
+2. `PATHGRADE_CLAUDE_CODE_EXECUTABLE` — process env, picked up at agent construction.
+3. The SDK's bundled binary — used when neither override is set.
+
+The override is intentionally run-level. There is no fixture-file-level API for selecting different Claude binaries per trial.
+
+#### Claude Code system-prompt preset
+
+Pathgrade configures the SDK with `systemPrompt: { type: 'preset', preset: 'claude_code' }`. This is required because the SDK's default prompt is intentionally minimal and does not include the full Claude Code coding guidelines, response style, safety instructions, or environment context. Pathgrade evaluates skills under the same core prompt contract Claude Code users get, not the SDK's bare default. Pathgrade does not currently expose a fixture-level knob to replace the system prompt; if you need to evaluate a specific prompt variant, that is a future feature.
+
+#### Hermetic vs. CLI-faithful settings
+
+By default, Pathgrade runs Claude in a **hermetic** profile: `settingSources: ['project']`, with `CLAUDE_CONFIG_DIR` pointed at a per-trial scratch directory under the workspace and auto-memory excluded by virtue of not loading the user scope. This means:
+
+- Skills staged under `<workspace>/.claude/skills/<name>/SKILL.md` are auto-discovered.
+- Project-level rules, hooks, settings, slash commands, and `CLAUDE.md` from the prepared workspace load.
+- The host machine's `~/.claude.json`, user-level skills, user-level hooks, and accumulated auto-memory **do not** load.
+
+If you instead want CLI-faithful evaluation (skills, hooks, settings, and memory exactly as your local CLI sees them), opt in via the `settingSources: ['user', 'project', 'local']` Claude SDK option. This is **non-hermetic**: results can vary across machines because user-level skills and accumulated memory differ. Use it when you are explicitly evaluating local-machine behavior, not for CI matrices that need to be reproducible. (Pathgrade does not currently surface the override at the `createAgent` level; it is a documented option pathway for downstream consumers configuring the SDK directly.)
+
+#### SDK auth environment variables
+
+The Claude SDK driver can authenticate through any of the following env surfaces. Set whichever matches your environment; Pathgrade forwards them through the sandbox-exec env filter:
+
+| Variable | When to use |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Default API-key auth. The most common CI pattern. |
+| `ANTHROPIC_AUTH_TOKEN` | OAuth-style token auth. |
+| `ANTHROPIC_BASE_URL` | Custom Anthropic API endpoint (e.g. enterprise proxy). Pair with the matching key/token. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code OAuth token (alternative to keychain-extracted OAuth on macOS). |
+| `AWS_*` (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`, etc.), `ANTHROPIC_BEDROCK_BASE_URL` | Bedrock-hosted Claude. |
+| `GOOGLE_*`, `GCLOUD_*`, `CLOUD_ML_*`, `ANTHROPIC_VERTEX_BASE_URL` | Vertex AI-hosted Claude. |
+| `AZURE_*`, `ANTHROPIC_FOUNDRY_BASE_URL` | Foundry-hosted Claude. |
+
+For local first-party use on macOS, your existing Claude Code keychain login still works — pathgrade extracts the OAuth credentials and forwards them as `ANTHROPIC_API_KEY`. For productized SDK use or anything running outside your developer machine, configure one of the explicit auth surfaces above. `apiKeyHelper` (a code callback) is intentionally out of scope; inject concrete env credentials instead.
 
 ## CLI Reference
 
@@ -1032,10 +1092,18 @@ The pathgrade vitest plugin uses `setRuntime({ onResult })` internally to captur
 | Variable | Used By |
 |----------|---------|
 | `ANTHROPIC_API_KEY` | Claude agent, judge scorers, persona replies |
+| `ANTHROPIC_AUTH_TOKEN` | Claude agent (OAuth token alternative to API key) |
 | `ANTHROPIC_BASE_URL` | Custom Anthropic API endpoint (passed through to sandbox) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude agent (Claude Code OAuth token) |
+| `AWS_*`, `ANTHROPIC_BEDROCK_BASE_URL` | Claude agent on Bedrock |
+| `GOOGLE_*`, `GCLOUD_*`, `CLOUD_ML_*`, `ANTHROPIC_VERTEX_BASE_URL` | Claude agent on Vertex |
+| `AZURE_*`, `ANTHROPIC_FOUNDRY_BASE_URL` | Claude agent on Foundry |
 | `OPENAI_API_KEY` | Codex agent, judge scorers (when using OpenAI models) |
 | `OPENAI_BASE_URL` | Custom OpenAI API endpoint (passed through to sandbox) |
+| `CURSOR_API_KEY` | Cursor agent (when not using keychain OAuth) |
 | `PATHGRADE_AGENT` | Overrides `agent` in `AgentOptions` at runtime |
+| `PATHGRADE_CLAUDE_CODE_EXECUTABLE` | Overrides the SDK's bundled Claude binary with a local path |
+| `PATHGRADE_CODEX_TRANSPORT` | Overrides Codex transport (`app-server` \| `exec`) |
 
 When the Claude CLI is installed and authenticated (or Keychain credentials are available on macOS), it is used as the primary LLM backend for judge scorers and persona replies -- no API key needed for local development.
 

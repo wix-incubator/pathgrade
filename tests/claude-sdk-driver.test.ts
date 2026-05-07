@@ -1,0 +1,697 @@
+/**
+ * Tests for the Claude SDK driver's orchestration shell.
+ *
+ * The driver runs a Claude session through `@anthropic-ai/claude-agent-sdk`'s
+ * `query()` instead of the old CLI scrape. This file exercises the
+ * orchestration in isolation by injecting a fake `query` so no real Claude
+ * subprocess starts:
+ *
+ *   - Turn 1 → no `Options.resume`; the SDK starts a new session.
+ *   - Turn 2 → `Options.resume` carries the prior turn's `session_id`, so
+ *     pathgrade's per-turn lifecycle and multi-turn fixtures work the same
+ *     way they did under the CLI driver.
+ *
+ * The full SDK message projection (assistant text, tool events, typed errors,
+ * cache tokens, `cost_usd`) lives in the projector tests. Here we assert only
+ * what the shell needs: session-id flow, per-turn options, and a non-zero
+ * shape for `AgentTurnResult` so consumers don't trip on a half-built object.
+ */
+
+import { describe, expect, it } from 'vitest';
+import type {
+    Options,
+    Query,
+    SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk';
+import { ClaudeAgent } from '../src/agents/claude.js';
+import type { TrialRuntime } from '../src/types.js';
+import { createAskBus } from '../src/sdk/ask-bus/bus.js';
+import {
+    NONINTERACTIVE_RUNTIME_POLICY,
+    renderRuntimePolicy,
+} from '../src/sdk/runtime-policy.js';
+
+interface RecordedQuery {
+    prompt: string | unknown;
+    options: Options | undefined;
+}
+
+function makeFakeQuery(messageStreams: SDKMessage[][]): {
+    query: (args: { prompt: string | unknown; options?: Options }) => Query;
+    calls: RecordedQuery[];
+} {
+    const calls: RecordedQuery[] = [];
+    let callIndex = 0;
+    return {
+        calls,
+        query: (args) => {
+            const messages = messageStreams[callIndex++] ?? [];
+            calls.push({ prompt: args.prompt, options: args.options });
+            // The real `Query` is an async iterable that also has control
+            // methods; the shell only ever iterates it, so we satisfy the
+            // iterable surface and cast — keeps the test focused.
+            return (async function* () {
+                for (const msg of messages) yield msg;
+            })() as unknown as Query;
+        },
+    };
+}
+
+function makeInitMessage(sessionId: string): SDKMessage {
+    return {
+        type: 'system',
+        subtype: 'init',
+        session_id: sessionId,
+        agents: [],
+        apiKeySource: 'none' as never,
+        claude_code_version: '0.0.0-test',
+        cwd: '/tmp/workspace',
+        tools: [],
+        mcp_servers: [],
+        model: 'claude-opus-4-7',
+        permissionMode: 'default',
+        slash_commands: [],
+        output_style: 'default',
+        skills: [],
+        plugins: [],
+        uuid: 'init-uuid' as never,
+    } as unknown as SDKMessage;
+}
+
+function makeAssistantMessage(text: string, sessionId: string): SDKMessage {
+    return {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text }] },
+        parent_tool_use_id: null,
+        uuid: 'assistant-uuid',
+        session_id: sessionId,
+    } as unknown as SDKMessage;
+}
+
+function makeResultSuccess(sessionId: string, text: string): SDKMessage {
+    return {
+        type: 'result',
+        subtype: 'success',
+        duration_ms: 1,
+        duration_api_ms: 1,
+        is_error: false,
+        num_turns: 1,
+        result: text,
+        stop_reason: 'end_turn',
+        total_cost_usd: 0,
+        usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+        },
+        modelUsage: {},
+        permission_denials: [],
+        uuid: 'result-uuid',
+        session_id: sessionId,
+    } as unknown as SDKMessage;
+}
+
+describe('ClaudeAgent.createSession (SDK driver) — TB10', () => {
+    it('fails fast when no askBus is supplied (live batches require a real subscriber)', async () => {
+        // The SDK driver emits `lifecycle: 'live'` ask-user batches via the
+        // canUseTool callback. Silently resolving to `null` or an empty
+        // answer map would send an empty answer back to Claude on the wire,
+        // which is a worse failure mode than refusing to start. Match the
+        // shared `requireAskBusForLiveBatches` contract.
+        const fake = makeFakeQuery([[]]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        await expect(
+            agent.createSession('/tmp/workspace', async () => ({
+                stdout: '', stderr: '', exitCode: 0,
+            })),
+        ).rejects.toThrow(/askBus/);
+    });
+
+    it('runs turn 1 through SDK query() with no resume option', async () => {
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-turn1'),
+                makeAssistantMessage('hello', 'sess-turn1'),
+                makeResultSuccess('sess-turn1', 'hello'),
+            ],
+        ]);
+
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await session.start({ message: 'hi' });
+
+        expect(fake.calls).toHaveLength(1);
+        // Turn 1: no resume.
+        expect('resume' in fake.calls[0].options!).toBe(false);
+        expect(fake.calls[0].prompt).toBe('hi');
+    });
+
+    it('resumes turn 2 with the session_id reported on turn 1', async () => {
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-real-id'),
+                makeResultSuccess('sess-real-id', 'turn1'),
+            ],
+            [
+                makeInitMessage('sess-real-id'),
+                makeResultSuccess('sess-real-id', 'turn2'),
+            ],
+        ]);
+
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await session.start({ message: 'turn1' });
+        await session.reply({ message: 'turn2' });
+
+        expect(fake.calls).toHaveLength(2);
+        // Turn 2: resume carries the prior turn's session_id.
+        expect(fake.calls[1].options!.resume).toBe('sess-real-id');
+        expect(fake.calls[1].prompt).toBe('turn2');
+    });
+
+    it('configures the per-turn Options with hermetic defaults from the builder', async () => {
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-1'),
+                makeResultSuccess('sess-1', 'ok'),
+            ],
+        ]);
+
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await session.start({ message: 'hi' });
+
+        const opts = fake.calls[0].options!;
+        expect(opts.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code' });
+        expect(opts.settingSources).toEqual(['project']);
+        // autoMemoryEnabled is *intentionally absent* from Options — see
+        // src/agents/claude/sdk-options.ts deviation note.
+        expect('autoMemoryEnabled' in opts).toBe(false);
+        expect(opts.permissionMode).toBe('default');
+        expect(opts.cwd).toBe('/tmp/workspace');
+        expect(opts.canUseTool).toBeTypeOf('function');
+        expect(opts.spawnClaudeCodeProcess).toBeTypeOf('function');
+        expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/workspace/.pathgrade-claude-config');
+    });
+
+    it('spreads the runtime handle env wholesale onto Options.env', async () => {
+        // Env composition ownership: `prepareWorkspace` curates the workspace
+        // env (safe host vars, sandbox HOME/TMPDIR, resolveCredentials() output,
+        // user-supplied `createAgent({ env })`); the driver does NOT pluck
+        // specific keys. It spreads the curated runtime env wholesale onto
+        // `Options.env` so all three contracts — ANTHROPIC_* auth, sandbox
+        // isolation env, and documented `createAgent({ env })` injection —
+        // flow through the same path. Picking only ANTHROPIC_* keys would
+        // be a regression vs the legacy CLI driver; this test pins the
+        // wholesale behavior.
+        const fake = makeFakeQuery([
+            [makeInitMessage('s'), makeResultSuccess('s', 'ok')],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const runtime: TrialRuntime = {
+            handle: '/tmp/workspace',
+            workspacePath: '/tmp/workspace',
+            env: {
+                ANTHROPIC_API_KEY: 'sk-test-123',
+                ANTHROPIC_BASE_URL: 'https://proxy.example.com',
+                ANTHROPIC_AUTH_TOKEN: 'oauth-token',
+                HOME: '/sandbox/home',
+                TMPDIR: '/sandbox/tmp',
+                MY_USER_VAR: 'user-supplied-value',
+            },
+        };
+        const session = await agent.createSession(runtime, async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await session.start({ message: 'hi' });
+
+        const opts = fake.calls[0].options!;
+        // Auth keys (resolveCredentials output) flow through.
+        expect(opts.env!.ANTHROPIC_API_KEY).toBe('sk-test-123');
+        expect(opts.env!.ANTHROPIC_BASE_URL).toBe('https://proxy.example.com');
+        expect(opts.env!.ANTHROPIC_AUTH_TOKEN).toBe('oauth-token');
+        // Sandbox isolation env (HOME, TMPDIR) flows through so model-invoked
+        // tools (Bash, Edit, file writes) inherit the sandbox boundary.
+        expect(opts.env!.HOME).toBe('/sandbox/home');
+        expect(opts.env!.TMPDIR).toBe('/sandbox/tmp');
+        // User-supplied `createAgent({ env })` keys flow through (the
+        // documented contract per `docs/USER_GUIDE.md`).
+        expect(opts.env!.MY_USER_VAR).toBe('user-supplied-value');
+        // Driver-owned CLAUDE_CONFIG_DIR is layered AFTER the spread so the
+        // hermetic-default invariant holds.
+        expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/workspace/.pathgrade-claude-config');
+    });
+
+    it('overrides any runtime CLAUDE_CONFIG_DIR with the driver-owned per-workspace value', async () => {
+        // Hermetic invariant: even if an upstream resolver leaks
+        // CLAUDE_CONFIG_DIR or a user supplies it via `createAgent({ env })`,
+        // the driver's per-trial scratch directory wins. The wholesale-spread
+        // pattern would weaken the invariant if not for the
+        // override-after-spread placement in the SDK options builder.
+        const fake = makeFakeQuery([
+            [makeInitMessage('s'), makeResultSuccess('s', 'ok')],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const runtime: TrialRuntime = {
+            handle: '/tmp/workspace',
+            workspacePath: '/tmp/workspace',
+            env: {
+                CLAUDE_CONFIG_DIR: '/should/be/overridden',
+            },
+        };
+        const session = await agent.createSession(runtime, async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        await session.start({ message: 'hi' });
+
+        const opts = fake.calls[0].options!;
+        expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/workspace/.pathgrade-claude-config');
+    });
+
+    it('forwards the model option onto the SDK query', async () => {
+        const fake = makeFakeQuery([
+            [makeInitMessage('s'), makeResultSuccess('s', 'ok')],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus, model: 'claude-sonnet-4-6' });
+
+        await session.start({ message: 'hi' });
+
+        expect(fake.calls[0].options!.model).toBe('claude-sonnet-4-6');
+    });
+
+    it('returns an AgentTurnResult with sessionId from the SDK result', async () => {
+        const fake = makeFakeQuery([
+            [makeInitMessage('sess-xyz'), makeResultSuccess('sess-xyz', 'pong')],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        const result = await session.start({ message: 'ping' });
+        // Internal session id flows back to the orchestrator (asserted via the
+        // resume behavior of the next test). The public result type does not
+        // expose sessionId — full projection lives in the projector — but
+        // the shell must at least return a structurally-valid
+        // `AgentTurnResult`.
+        expect(result.exitCode).toBe(0);
+        expect(Array.isArray(result.toolEvents)).toBe(true);
+    });
+
+    it('routes AskUserQuestion through the live ask-user bridge', async () => {
+        // Drives a single mocked SDK turn where Claude emits an AskUserQuestion
+        // tool_use, the bridge resolves it through a reaction-style ask-bus
+        // subscriber, and the assistant continues the same turn with text
+        // that consumed the chosen branch. The result must surface:
+        //   - assistantMessage built from the typed `result` text;
+        //   - one ToolEvent for AskUserQuestion whose arguments carry both
+        //     the structured input AND the bridge-supplied `answers` +
+        //     `answerSource: 'reaction'`.
+        const askInput = {
+            questions: [
+                {
+                    question: 'Which database should we use?',
+                    header: 'Database',
+                    multiSelect: false,
+                    options: [
+                        { label: 'SQLite', description: 'Local file' },
+                        { label: 'Postgres', description: 'Server' },
+                    ],
+                },
+            ],
+        };
+
+        // Custom fake query for this case: between the AskUserQuestion
+        // tool_use message and the follow-up assistant text, the fake invokes
+        // the real driver-installed `canUseTool` exactly the way the SDK
+        // does — passing the same `toolUseID` that's on the tool_use block.
+        // That's the real production handshake, not a side-channel call.
+        let updatedInputSeenBySdk: Record<string, unknown> | undefined;
+        const askToolUseId = 'toolu-ask-1';
+        const fakeQuery = (args: { prompt: string | unknown; options?: Options }): Query => {
+            return (async function* () {
+                yield makeInitMessage('sess-ask');
+                yield {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'tool_use', id: askToolUseId, name: 'AskUserQuestion', input: askInput },
+                        ],
+                    },
+                    parent_tool_use_id: null,
+                    uuid: 'a1',
+                    session_id: 'sess-ask',
+                } as unknown as SDKMessage;
+                // SDK calls canUseTool synchronously after the tool_use block
+                // is parsed; the bridge resolves through the bus and returns
+                // an `allow` with the SDK's documented `answers` shape on
+                // `updatedInput`. The mocked SDK accepts that and continues.
+                const result = await args.options!.canUseTool!(
+                    'AskUserQuestion',
+                    askInput,
+                    {
+                        signal: new AbortController().signal,
+                        suggestions: [],
+                        toolUseID: askToolUseId,
+                    },
+                );
+                if (result.behavior === 'allow') {
+                    updatedInputSeenBySdk = result.updatedInput;
+                }
+                yield makeAssistantMessage('Going with SQLite.', 'sess-ask');
+                yield makeResultSuccess('sess-ask', 'Going with SQLite.');
+            })() as unknown as Query;
+        };
+
+        const agent = new ClaudeAgent({ query: fakeQuery });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        // Reaction-style subscriber — answers from the option list directly,
+        // the same shape `createAskUserHandler` produces in production.
+        askBus.onAsk((batch, respond) => {
+            respond({
+                answers: [
+                    { questionId: batch.questions[0].id, values: ['SQLite'], source: 'reaction' },
+                ],
+            });
+        });
+
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        // Drive the turn — exercising the real canUseTool the driver wired up.
+        const result = await session.start({ message: 'pick a db' });
+
+        // The SDK saw the bridge-supplied answers on `updatedInput`.
+        expect(updatedInputSeenBySdk).toBeDefined();
+        expect((updatedInputSeenBySdk as { answers: Record<string, string> }).answers).toEqual({
+            'Which database should we use?': 'SQLite',
+        });
+
+        // Assistant continued in the same turn with the chosen branch.
+        expect(result.assistantMessage).toBe('Going with SQLite.');
+        expect(result.exitCode).toBe(0);
+
+        // Tool event surfaces the live ask-user round-trip with answer source.
+        const askEvent = result.toolEvents.find((e) => e.providerToolName === 'AskUserQuestion');
+        expect(askEvent).toBeDefined();
+        expect(askEvent!.action).toBe('ask_user');
+        expect(askEvent!.arguments).toMatchObject({
+            answers: { 'Which database should we use?': 'SQLite' },
+            answerSource: 'reaction',
+        });
+        expect(askEvent!.arguments?.questions).toEqual(askInput.questions);
+
+        // Bus snapshot has the resolved batch (post-resolution snapshot view).
+        const snapshot = askBus.snapshot();
+        expect(snapshot).toHaveLength(1);
+        expect(snapshot[0].source).toBe('claude');
+        expect(snapshot[0].sourceTool).toBe('AskUserQuestion');
+        expect(snapshot[0].lifecycle).toBe('live');
+        expect(snapshot[0].resolution?.answers[0]).toMatchObject({
+            values: ['SQLite'],
+            source: 'reaction',
+        });
+    });
+
+    it('returns a bus_rejection AgentTurnResult carrying the partial trace when the ask-bus rejects', async () => {
+        // No subscriber installed — the bus' 0ms timeout fires when the
+        // bridge awaits resolution. The bridge denies to the SDK with the
+        // error message AND records on `lastError()`; the driver returns an
+        // error `AgentTurnResult` carrying `exitCode === 1`,
+        // `errorSubtype === 'bus_rejection'`, the bridge error message in
+        // `rawOutput`, and the projected partial trace (toolEvents +
+        // traceOutput from the SDK stream). The conversation runner projects
+        // this through `pushModelAgentMessage` before propagating, so the
+        // failure mode preserves the same five log surfaces as a successful
+        // turn just with `exitCode = 1`.
+        const askToolUseId = 'toolu-ask-timeout';
+        const askInput = {
+            questions: [
+                { question: 'Pick one?', options: [{ label: 'A' }, { label: 'B' }] },
+            ],
+        };
+        const fakeQuery = (args: { prompt: string | unknown; options?: Options }): Query => {
+            return (async function* () {
+                yield makeInitMessage('sess-timeout');
+                yield {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'tool_use', id: askToolUseId, name: 'AskUserQuestion', input: askInput },
+                        ],
+                    },
+                    parent_tool_use_id: null,
+                    uuid: 'a1',
+                    session_id: 'sess-timeout',
+                } as unknown as SDKMessage;
+                // The SDK still calls canUseTool — the bridge denies once
+                // the timeout fires. We swallow the result here because the
+                // mock SDK has no real tool-call machinery; what matters is
+                // the bridge captures the rejection.
+                await args.options!.canUseTool!(
+                    'AskUserQuestion',
+                    askInput,
+                    {
+                        signal: new AbortController().signal,
+                        suggestions: [],
+                        toolUseID: askToolUseId,
+                    },
+                );
+                yield makeResultSuccess('sess-timeout', 'streamed-result-text');
+            })() as unknown as Query;
+        };
+
+        const agent = new ClaudeAgent({ query: fakeQuery });
+        const askBus = createAskBus({ askUserTimeoutMs: 0 });
+        // No subscriber — the live batch will time out.
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        const result = await session.start({ message: 'go' });
+
+        expect(result.exitCode).toBe(1);
+        expect(result.errorSubtype).toBe('bus_rejection');
+        // rawOutput carries the bridge error message so downstream consumers
+        // (and the conversation runner's catch arm) can surface what failed.
+        expect(result.rawOutput).toMatch(/did not resolve within 0ms/);
+        // Partial trace from the projection survives the rejection: the
+        // ask_user tool event Claude emitted before the bus denied is
+        // preserved on `toolEvents`, and the SDK stream lives on
+        // `traceOutput`.
+        const askEvent = result.toolEvents.find((e) => e.action === 'ask_user');
+        expect(askEvent).toBeDefined();
+        expect(askEvent!.providerToolName).toBe('AskUserQuestion');
+        expect(result.traceOutput).toContain('sess-timeout');
+    });
+
+    it('inherits BaseAgent.run()\'s diagnostic when run() is called', async () => {
+        // The driver does not override run(): the live ask-user bridge needs
+        // an `askBus` that run() cannot supply, and silently routing through
+        // createSession surfaces "askBus required" — a misleading error
+        // suggesting the caller could add an argument. Inheriting BaseAgent's
+        // throw points the caller at the right API surface.
+        const agent = new ClaudeAgent();
+        // BaseAgent.run is not declared `async`, so the throw is synchronous;
+        // wrap in a thunk for `expect(...).toThrow`.
+        expect(() =>
+            agent.run('hi', '/tmp/workspace', async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+        ).toThrow('Agent must implement createSession() or run()');
+    });
+
+    it('does not synthesize a slash-command use_skill event on turn 2 when the cached first message would have matched', async () => {
+        // Pre-fix the driver cached `firstMessage` and passed it to the
+        // projector on every turn; combined with the SDK emitting a fresh
+        // `init.skills` system message per turn, this re-fired
+        // `prependSlashCommandSkillEvent` on turn 2+. The legacy NDJSON
+        // parser only synthesized on turn 1; this test pins the corrected
+        // behavior at the driver scope.
+        const fakeWithSkill = (sessionId: string): SDKMessage => ({
+            type: 'system',
+            subtype: 'init',
+            session_id: sessionId,
+            agents: [],
+            apiKeySource: 'none' as never,
+            claude_code_version: '0.0.0-test',
+            cwd: '/tmp/workspace',
+            tools: [],
+            mcp_servers: [],
+            model: 'claude-opus-4-7',
+            permissionMode: 'default',
+            slash_commands: [],
+            output_style: 'default',
+            skills: ['tdd'],
+            plugins: [],
+            uuid: 'init-uuid' as never,
+        } as unknown as SDKMessage);
+
+        const fake = makeFakeQuery([
+            [fakeWithSkill('sess-1'), makeResultSuccess('sess-1', 'turn1')],
+            [fakeWithSkill('sess-1'), makeResultSuccess('sess-1', 'turn2')],
+        ]);
+
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        const turn1 = await session.start({ message: '/tdd write a test' });
+        // Turn 1: synthesis fires (existing behavior) because the user message
+        // started with `/tdd` and `init.skills` lists `tdd`.
+        const turn1Skill = turn1.toolEvents.find(
+            (e) => e.action === 'use_skill' && e.skillName === 'tdd',
+        );
+        expect(turn1Skill).toBeDefined();
+
+        // Turn 2: plain text reply. Even though `init.skills` still lists
+        // `tdd`, the driver passes `undefined` for `firstMessage` on turn 2+,
+        // so the projector does not synthesize.
+        const turn2 = await session.reply({ message: 'thanks' });
+        const turn2Skill = turn2.toolEvents.find(
+            (e) => e.action === 'use_skill' && e.skillName === 'tdd',
+        );
+        expect(turn2Skill).toBeUndefined();
+    });
+
+    it('resumes turn 2 from the rejected turn\'s session_id after a bus rejection', async () => {
+        // Resume-after-rejection: even though turn 1 ended in a bus rejection,
+        // the driver captures the SDK-reported `session_id` on `priorSessionId`
+        // BEFORE constructing the error result. Turn 2's `Options.resume`
+        // therefore points at the rejected turn's session, so a downstream
+        // caller that catches and re-issues continues from the correct
+        // conversation state instead of from a stale prior session.
+        const askToolUseId = 'toolu-ask-resume';
+        const askInput = {
+            questions: [
+                { question: 'Pick one?', options: [{ label: 'A' }, { label: 'B' }] },
+            ],
+        };
+        let callIndex = 0;
+        const calls: RecordedQuery[] = [];
+        const fakeQuery = (args: { prompt: string | unknown; options?: Options }): Query => {
+            const idx = callIndex++;
+            calls.push({ prompt: args.prompt, options: args.options });
+            return (async function* () {
+                if (idx === 0) {
+                    yield makeInitMessage('rejected-turn-session-id');
+                    yield {
+                        type: 'assistant',
+                        message: {
+                            content: [
+                                { type: 'tool_use', id: askToolUseId, name: 'AskUserQuestion', input: askInput },
+                            ],
+                        },
+                        parent_tool_use_id: null,
+                        uuid: 'a1',
+                        session_id: 'rejected-turn-session-id',
+                    } as unknown as SDKMessage;
+                    await args.options!.canUseTool!(
+                        'AskUserQuestion',
+                        askInput,
+                        {
+                            signal: new AbortController().signal,
+                            suggestions: [],
+                            toolUseID: askToolUseId,
+                        },
+                    );
+                    yield makeResultSuccess('rejected-turn-session-id', 'partial');
+                } else {
+                    yield makeInitMessage('rejected-turn-session-id');
+                    yield makeResultSuccess('rejected-turn-session-id', 'turn2-ok');
+                }
+            })() as unknown as Query;
+        };
+
+        const agent = new ClaudeAgent({ query: fakeQuery });
+        const askBus = createAskBus({ askUserTimeoutMs: 0 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus });
+
+        const turn1 = await session.start({ message: 'go' });
+        expect(turn1.errorSubtype).toBe('bus_rejection');
+
+        await session.reply({ message: 'retry' });
+        // Turn 2's resume points at the rejected turn's session_id, not at
+        // some stale earlier id (and not absent).
+        expect(calls[1].options!.resume).toBe('rejected-turn-session-id');
+    });
+
+    it('does NOT prepend the non-interactive runtime-policy text to the SDK prompt even when sessionOptions carries it', async () => {
+        // The legacy Claude CLI driver prepended the
+        // `noninteractive-user-question` policy text in front of the user's
+        // message on first turn to wallpaper the missing live ask-user
+        // transport. The SDK driver never consults the policy infrastructure
+        // — capability is `'reliable'`, planRuntimePolicies('claude') === [].
+        // Even if a caller hands the SDK driver an AgentSessionOptions with
+        // `runtimePolicies` populated, the SDK `query()` must see the bare
+        // user message, not a prepend.
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-policy'),
+                makeResultSuccess('sess-policy', 'ok'),
+            ],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus, runtimePolicies: [NONINTERACTIVE_RUNTIME_POLICY] });
+
+        await session.start({ message: 'do the thing' });
+
+        // Bare prompt — no policy text injected.
+        expect(fake.calls[0].prompt).toBe('do the thing');
+        // Defensive: the rendered policy text must not appear anywhere in
+        // the prompt the SDK saw.
+        const renderedPolicy = renderRuntimePolicy(NONINTERACTIVE_RUNTIME_POLICY, { agent: 'claude' });
+        expect(String(fake.calls[0].prompt)).not.toContain(renderedPolicy);
+    });
+
+    it('returns runtimePoliciesApplied as an empty array even when sessionOptions carries policies', async () => {
+        // Mirrors the projector-level invariant exercised by
+        // tests/claude-sdk-projector.test.ts but at the driver shell so a
+        // future refactor that re-introduces a policy-application path
+        // (e.g. through claude.ts reading sessionOptions.runtimePolicies)
+        // breaks this test before it ships.
+        const fake = makeFakeQuery([
+            [
+                makeInitMessage('sess-empty-applied'),
+                makeResultSuccess('sess-empty-applied', 'ok'),
+            ],
+        ]);
+        const agent = new ClaudeAgent({ query: fake.query });
+        const askBus = createAskBus({ askUserTimeoutMs: 1000 });
+        const session = await agent.createSession('/tmp/workspace', async () => ({
+            stdout: '', stderr: '', exitCode: 0,
+        }), { askBus, runtimePolicies: [NONINTERACTIVE_RUNTIME_POLICY] });
+
+        const result = await session.start({ message: 'hi' });
+
+        expect(result.runtimePoliciesApplied).toEqual([]);
+    });
+});

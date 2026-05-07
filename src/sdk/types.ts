@@ -118,6 +118,9 @@ export interface UntilContext {
 /**
  * Free-text reaction. When the agent's assistant message matches `when`
  * (and does not match `unless`), `reply` is sent as the next user message.
+ * Also kept as a compatibility answer for structured ask_user questions:
+ * when no `AskUserReaction` answers a matching question, `reply` is used as
+ * that question's answer.
  * Shape is byte-identical to the pre-discriminated-union Reaction.
  */
 export interface TextReaction {
@@ -413,7 +416,7 @@ export interface AgentCapabilities {
 export type AgentTransport = 'exec' | 'app-server';
 
 const BASE_CAPABILITIES: Record<AgentName, AgentCapabilities> = {
-    claude: { mcp: true, nativeSession: true, interactiveQuestionTransport: 'noninteractive' },
+    claude: { mcp: true, nativeSession: true, interactiveQuestionTransport: 'reliable' },
     codex: { mcp: false, nativeSession: true, interactiveQuestionTransport: 'noninteractive' },
     cursor: { mcp: true, nativeSession: true, interactiveQuestionTransport: 'noninteractive' },
 };

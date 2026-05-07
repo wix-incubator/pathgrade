@@ -188,6 +188,38 @@ describe("runConversation guard: transport 'exec' + AskUserReaction", () => {
         expect(result.completionReason).toBe('maxTurns');
     });
 
+    it('does NOT block Claude conversations with AskUserReaction — Claude transport is reliable', async () => {
+        // The legacy CLI driver synthesized blocked-prompt envelopes from CLI
+        // denial output to approximate ask-user behavior. The preflight on
+        // `transport: 'exec'` never fired for Claude because `transport` is a
+        // Codex-only field; today Claude routes AskUserQuestion through the
+        // live ask-user bridge (capability `'reliable'`), so reactions are
+        // reachable. Lock in: the conversation runner does not refuse to start
+        // a Claude conversation that defines an AskUserReaction.
+        let sendTurnCalled = false;
+        const result = await runConversation(
+            {
+                firstMessage: 'Start',
+                maxTurns: 1,
+                reactions: [{ whenAsked: /q/, answer: 'yes' }],
+            },
+            makeDeps({
+                askBus: createAskBus({ askUserTimeoutMs: 1000 }),
+                // No transport — Claude is not transport-gated.
+                agentName: 'claude',
+                sendTurn: async () => {
+                    sendTurnCalled = true;
+                    return 'ok';
+                },
+            }),
+        );
+
+        expect(sendTurnCalled).toBe(true);
+        expect(result.completionReason).toBe('maxTurns');
+        // Bonus: no error / unmatched detail surfaces.
+        expect(result.completionDetail).toBeUndefined();
+    });
+
     it('does not trigger under transport app-server (reactions deliverable)', async () => {
         let sendTurnCalled = false;
         const result = await runConversation(
