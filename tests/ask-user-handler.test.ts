@@ -46,6 +46,60 @@ describe('createAskUserHandler — live batches', () => {
         ]);
     });
 
+    it('legacy text reactions resolve matching structured ask_user questions', async () => {
+        const reactions: Reaction[] = [
+            { when: /figma/i, reply: 'Skip' },
+        ];
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        const api = createAskUserHandler({
+            reactions,
+            onUnmatchedAskUser: 'error',
+            firedOnce: new Set<number>(),
+        });
+        bus.onAsk(api.handler);
+
+        const resolution = await bus.emit(makeBatch({
+            questions: [
+                {
+                    id: 'q1',
+                    question: "Paste the Figma file URL. If none, pick 'Skip'.",
+                    options: [{ label: 'Skip' }],
+                    isOther: false,
+                    isSecret: false,
+                },
+            ],
+        })).resolution;
+
+        expect(resolution!.answers).toEqual([
+            { questionId: 'q1', values: ['Skip'], source: 'reaction' },
+        ]);
+        expect(api.getUnmatchedError()).toBeNull();
+    });
+
+    it('legacy text reaction once:true is retired after answering a structured question', async () => {
+        const reactions: Reaction[] = [
+            { when: /./, reply: 'first', once: true },
+            { when: /./, reply: 'second' },
+        ];
+        const bus = createAskBus({ askUserTimeoutMs: 1000 });
+        const api = createAskUserHandler({
+            reactions,
+            onUnmatchedAskUser: 'error',
+            firedOnce: new Set<number>(),
+        });
+        bus.onAsk(api.handler);
+
+        const batch = makeBatch({
+            questions: [
+                { id: 'q1', question: 'First question?', options: null, isOther: false, isSecret: false },
+                { id: 'q2', question: 'Second question?', options: null, isOther: false, isSecret: false },
+            ],
+        });
+        const resolution = await bus.emit(batch).resolution;
+
+        expect(resolution!.answers.map((a) => a.values)).toEqual([['first'], ['second']]);
+    });
+
     it('bare string answer normalizes to [string]', async () => {
         const reactions: Reaction[] = [{ whenAsked: /.*/, answer: 'x' }];
         const bus = createAskBus({ askUserTimeoutMs: 1000 });
