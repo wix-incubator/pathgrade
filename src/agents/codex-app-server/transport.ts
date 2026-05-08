@@ -212,6 +212,31 @@ export interface SpawnAppServerTransportInput {
     killGracePeriodMs?: number;
 }
 
+const CODEX_PROXY_PROVIDER_ID = 'pathgrade_openai_proxy';
+
+function quoteCodexConfigString(value: string): string {
+    return JSON.stringify(value);
+}
+
+export function buildAppServerSpawnArgs(
+    args: readonly string[] = [],
+    env: NodeJS.ProcessEnv = process.env,
+): string[] {
+    const baseUrl = env.OPENAI_BASE_URL?.trim();
+    if (!baseUrl) return [...args, 'app-server'];
+
+    return [
+        '-c', `model_provider=${quoteCodexConfigString(CODEX_PROXY_PROVIDER_ID)}`,
+        '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.name=${quoteCodexConfigString('PathGrade OpenAI Proxy')}`,
+        '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.base_url=${quoteCodexConfigString(baseUrl)}`,
+        '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.env_key=${quoteCodexConfigString('OPENAI_API_KEY')}`,
+        '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.wire_api=${quoteCodexConfigString('responses')}`,
+        '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.supports_websockets=false`,
+        ...args,
+        'app-server',
+    ];
+}
+
 /**
  * Minimal child-process surface the session handle needs. Real spawns satisfy
  * this via `ChildProcessWithoutNullStreams`; tests can substitute a fake that
@@ -300,9 +325,10 @@ export function spawnAppServerTransport(
 ): AppServerSessionHandle {
     const binary = cfg.binary ?? 'codex';
     const args = cfg.args ?? [];
-    const child: ChildProcessWithoutNullStreams = spawn(binary, [...args, 'app-server'], {
+    const env = cfg.env ?? process.env;
+    const child: ChildProcessWithoutNullStreams = spawn(binary, buildAppServerSpawnArgs(args, env), {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: cfg.env ?? process.env,
+        env,
         cwd: cfg.cwd,
     });
 

@@ -30,9 +30,7 @@ function getRun() {
     return runPromise;
 }
 
-// Codex app-server transport calls api.openai.com directly; the CI runner
-// only has a private proxy token which 401s. Skip on CI — same as cursor.
-describe.skipIf(!!process.env.CI)('sdk-regression (codex)', () => {
+describe('sdk-regression (codex)', () => {
     it('completes a real bug-fix conversation with healthy live scoring', async () => {
         const { conversation, liveEval } = await getRun();
         expect(conversation.turns).toBeGreaterThanOrEqual(1);

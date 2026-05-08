@@ -581,7 +581,7 @@ All agents get a fresh HOME directory. Authentication is resolved per-agent by `
 
 - **Claude**: If the user explicitly provided `ANTHROPIC_API_KEY`, no action needed. If the user provided `ANTHROPIC_BASE_URL` (proxy mode), the host's `ANTHROPIC_API_KEY` is forwarded (Keychain is skipped since OAuth tokens only work with direct Anthropic API). Otherwise, on macOS, attempts to extract an OAuth token from the system Keychain (`Claude Code-credentials`). Falls back to forwarding host env vars.
 
-- **Codex**: If the user provided `OPENAI_BASE_URL` without `OPENAI_API_KEY`, the host key is forwarded. If `OPENAI_API_KEY` is available (user-provided or host-forwarded), generates a setup command that runs `codex login --with-api-key` inside the sandbox before the first agent turn. Otherwise, if the host HOME contains `~/.codex/auth.json`, Pathgrade copies that file into the sandbox HOME so the Codex CLI can reuse the existing local login.
+- **Codex**: If the user provided `OPENAI_BASE_URL` without `OPENAI_API_KEY`, the host key is forwarded. If `OPENAI_API_KEY` is available (user-provided or host-forwarded), generates a setup command that runs `codex login --with-api-key` inside the sandbox before the first agent turn. When `OPENAI_BASE_URL` is set, both Codex transports use it: `codex exec` injects a proxy model provider and the default `app-server` transport prepends equivalent `-c` overrides before `app-server`, including `wire_api="responses"` and `supports_websockets=false`. Otherwise, if the host HOME contains `~/.codex/auth.json`, Pathgrade copies that file into the sandbox HOME so the Codex CLI can reuse the existing local login.
 
 ### 6.4 Skill Staging
 

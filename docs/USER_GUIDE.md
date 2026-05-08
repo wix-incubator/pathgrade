@@ -1099,13 +1099,15 @@ The pathgrade vitest plugin uses `setRuntime({ onResult })` internally to captur
 | `GOOGLE_*`, `GCLOUD_*`, `CLOUD_ML_*`, `ANTHROPIC_VERTEX_BASE_URL` | Claude agent on Vertex |
 | `AZURE_*`, `ANTHROPIC_FOUNDRY_BASE_URL` | Claude agent on Foundry |
 | `OPENAI_API_KEY` | Codex agent, judge scorers (when using OpenAI models) |
-| `OPENAI_BASE_URL` | Custom OpenAI API endpoint (passed through to sandbox) |
+| `OPENAI_BASE_URL` | Custom OpenAI API endpoint. Pathgrade forwards it into the sandbox, `codex exec` uses it for proxy mode, and the default Codex `app-server` transport now injects matching `-c model_provider=...` overrides before launch. |
 | `CURSOR_API_KEY` | Cursor agent (when not using keychain OAuth) |
 | `PATHGRADE_AGENT` | Overrides `agent` in `AgentOptions` at runtime |
 | `PATHGRADE_CLAUDE_CODE_EXECUTABLE` | Overrides the SDK's bundled Claude binary with a local path |
 | `PATHGRADE_CODEX_TRANSPORT` | Overrides Codex transport (`app-server` \| `exec`) |
 
 When the Claude CLI is installed and authenticated (or Keychain credentials are available on macOS), it is used as the primary LLM backend for judge scorers and persona replies -- no API key needed for local development.
+
+For Codex, `OPENAI_API_KEY` is still required when using API-key auth. If `OPENAI_BASE_URL` is set, both Codex transports route Responses traffic through that base URL instead of the direct OpenAI endpoint. The app-server transport also requests `supports_websockets=false`, so proxy deployments must support the non-WebSocket Responses path that Codex uses for this provider configuration.
 
 ## Reviewing Results
 

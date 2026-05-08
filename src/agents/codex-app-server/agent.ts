@@ -414,7 +414,7 @@ export class CodexAppServerAgent extends BaseAgent {
                 return;
             case 'account/chatgptAuthTokens/refresh': {
                 const message =
-                    'codex app-server requires OPENAI_API_KEY for pathgrade; ChatGPT/cached auth unsupported under transport=app-server';
+                    'codex app-server requires OPENAI_API_KEY for pathgrade and honors OPENAI_BASE_URL when set; ChatGPT/cached auth unsupported under transport=app-server';
                 transport.sendErrorResponse(req.id, -32001, message);
                 const turn = activeTurn();
                 if (turn) {

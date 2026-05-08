@@ -272,10 +272,7 @@ async function getShowcaseRun(): Promise<ShowcaseRun> {
     return showcaseRunPromise;
 }
 
-// Codex app-server transport calls api.openai.com directly; the self-hosted
-// CI runner only has a private proxy token which 401s against real OpenAI. Skip
-// on CI — same pattern as cursor.
-describe.skipIf(!!process.env.CI)('sdk-showcase (codex): shared bugfix flow', () => {
+describe('sdk-showcase (codex): shared bugfix flow', () => {
     it('completes a real bug-fix conversation with healthy scoring', async () => {
         const { conversation, liveEval } = await getShowcaseRun();
 

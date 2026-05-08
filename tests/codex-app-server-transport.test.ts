@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'stream';
 import {
+    buildAppServerSpawnArgs,
     createAppServerSessionHandle,
     createNdjsonTransport,
     type SessionChildHandle,
@@ -168,6 +169,28 @@ describe('createNdjsonTransport', () => {
         await new Promise((r) => setImmediate(r));
         expect(seen).toHaveLength(1);
         await transport.close();
+    });
+});
+
+describe('buildAppServerSpawnArgs', () => {
+    it('preserves the current default argv when OPENAI_BASE_URL is unset', () => {
+        expect(buildAppServerSpawnArgs([], {})).toEqual(['app-server']);
+        expect(buildAppServerSpawnArgs(['--verbose'], {})).toEqual(['--verbose', 'app-server']);
+    });
+
+    it('prepends proxy config overrides before app-server when OPENAI_BASE_URL is set', () => {
+        expect(buildAppServerSpawnArgs(['--verbose'], {
+            OPENAI_BASE_URL: 'https://internal-proxy.example/v1',
+        })).toEqual([
+            '-c', 'model_provider="pathgrade_openai_proxy"',
+            '-c', 'model_providers.pathgrade_openai_proxy.name="PathGrade OpenAI Proxy"',
+            '-c', 'model_providers.pathgrade_openai_proxy.base_url="https://internal-proxy.example/v1"',
+            '-c', 'model_providers.pathgrade_openai_proxy.env_key="OPENAI_API_KEY"',
+            '-c', 'model_providers.pathgrade_openai_proxy.wire_api="responses"',
+            '-c', 'model_providers.pathgrade_openai_proxy.supports_websockets=false',
+            '--verbose',
+            'app-server',
+        ]);
     });
 });
 
