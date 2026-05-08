@@ -21,6 +21,7 @@ import { resolveBaseRef, computeChangedFiles } from '../affected/git.js';
 import { loadAffectedConfig } from '../affected/config.js';
 import { formatExplain, formatJson } from '../affected/format.js';
 import type { SelectionResult } from '../affected/types.js';
+import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
 
 export interface RunAffectedOptions {
     /** Absolute path to the repo root (CLI passes `process.cwd()`). */
@@ -173,34 +174,11 @@ function readChangedFilesList(filePath: string): string[] {
  * exclude defaults the vitest plugin uses.
  */
 export function discoverEvalFiles(cwd: string): string[] {
-    const results: string[] = [];
-    const excludeMatchers = DEFAULT_EXCLUDE.map(g => picomatch(g, { dot: true }));
-
-    function isExcluded(relPath: string): boolean {
-        return excludeMatchers.some(m => m(relPath));
-    }
-
-    function walk(absDir: string, relDir: string): void {
-        let entries: fs.Dirent[];
-        try {
-            entries = fs.readdirSync(absDir, { withFileTypes: true });
-        } catch {
-            return;
-        }
-        for (const ent of entries) {
-            const rel = relDir ? `${relDir}/${ent.name}` : ent.name;
-            if (isExcluded(rel)) continue;
-            const abs = path.join(absDir, ent.name);
-            if (ent.isDirectory()) {
-                walk(abs, rel);
-            } else if (ent.isFile() && ent.name.endsWith('.eval.ts')) {
-                results.push(rel);
-            }
-        }
-    }
-    walk(path.resolve(cwd), '');
-    results.sort();
-    return results;
+    return discoverPathgradeEvalFiles({
+        cwd,
+        include: ['**/*.eval.ts'],
+        exclude: DEFAULT_EXCLUDE,
+    });
 }
 
 function printSelectedToStdout(result: SelectionResult): void {

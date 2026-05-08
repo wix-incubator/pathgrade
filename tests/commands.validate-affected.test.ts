@@ -40,9 +40,9 @@ describe('runValidateAffected (pathgrade validate --affected)', () => {
     it('exits 0 when every eval has a SKILL.md ancestor', async () => {
         const root = makeTempRepo();
         writeFile(root, 'skills/a/SKILL.md', '# a');
-        writeFile(root, 'skills/a/a.eval.ts', 'export {};\n');
+        writeFile(root, 'skills/a/a.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
         writeFile(root, 'skills/b/SKILL.md', '# b');
-        writeFile(root, 'skills/b/b.eval.ts', 'export {};\n');
+        writeFile(root, 'skills/b/b.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
 
         const cap = captureStd();
         try {
@@ -80,7 +80,7 @@ export const __pathgradeMeta: PathgradeMeta = { deps: ['integration/**'] };
 
     it('exits 1 when an eval is onMissing (no anchor, no meta)', async () => {
         const root = makeTempRepo();
-        writeFile(root, 'orphan.eval.ts', 'export {};\n');
+        writeFile(root, 'orphan.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
 
         const cap = captureStd();
         try {
@@ -117,8 +117,8 @@ export const __pathgradeMeta: PathgradeMeta = { deps: ['integration/**'] };
     it('mixed pass/fail: exits 1 and reports both', async () => {
         const root = makeTempRepo();
         writeFile(root, 'skills/a/SKILL.md', '# a');
-        writeFile(root, 'skills/a/a.eval.ts', 'export {};\n');
-        writeFile(root, 'orphan.eval.ts', 'export {};\n');
+        writeFile(root, 'skills/a/a.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
+        writeFile(root, 'orphan.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
 
         const cap = captureStd();
         try {
@@ -126,6 +126,30 @@ export const __pathgradeMeta: PathgradeMeta = { deps: ['integration/**'] };
             cap.restore();
             expect(code).toBe(1);
             expect(cap.stdout()).toMatch(/2 evals, 1 errors/);
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('ignores foreign .eval.ts files that are not PathGrade evals', async () => {
+        const root = makeTempRepo();
+        writeFile(root, 'skills/a/SKILL.md', '# a');
+        writeFile(root, 'skills/a/a.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
+        writeFile(
+            root,
+            'skills/a/triggers.eval.ts',
+            `import { defineTriggerSuite } from './define-trigger-suite.js';
+export default defineTriggerSuite();
+`,
+        );
+
+        const cap = captureStd();
+        try {
+            const code = await runValidateAffected(root);
+            cap.restore();
+            expect(code).toBe(0);
+            expect(cap.stdout()).not.toContain('triggers.eval.ts');
+            expect(cap.stdout()).toMatch(/1 evals, 0 errors/);
         } finally {
             cap.restore();
         }

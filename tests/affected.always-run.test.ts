@@ -82,7 +82,7 @@ export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true, deps: ['custom/
 describe('selectAffected — onMissing fail-closed', () => {
     it('eval with no SKILL.md and no meta emits a warning and selects with reason', () => {
         const root = makeTempRepo();
-        writeFile(root, 'orphan.eval.ts', 'export {};\n');
+        writeFile(root, 'orphan.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
 
         const result = selectAffected({
             evalFiles: ['orphan.eval.ts'],
@@ -101,7 +101,7 @@ describe('selectAffected — onMissing fail-closed', () => {
     it('no warning when eval has a SKILL.md anchor even if nothing changed', () => {
         const root = makeTempRepo();
         writeFile(root, 'skills/ok/SKILL.md', '# ok');
-        writeFile(root, 'skills/ok/ok.eval.ts', 'export {};\n');
+        writeFile(root, 'skills/ok/ok.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
 
         const result = selectAffected({
             evalFiles: ['skills/ok/ok.eval.ts'],

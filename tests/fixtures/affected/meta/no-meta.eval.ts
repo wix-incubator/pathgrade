@@ -1,2 +1,4 @@
 // No __pathgradeMeta export.
-export {};
+import { createAgent } from '@wix/pathgrade';
+
+void createAgent;

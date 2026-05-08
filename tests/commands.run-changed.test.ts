@@ -45,9 +45,9 @@ function makeRepo(): string {
         fs.writeFileSync(full, c);
     };
     w('skills/alpha/SKILL.md', '# a');
-    w('skills/alpha/a.eval.ts', 'export {};\n');
+    w('skills/alpha/a.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
     w('skills/beta/SKILL.md', '# b');
-    w('skills/beta/b.eval.ts', 'export {};\n');
+    w('skills/beta/b.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
     return root;
 }
 

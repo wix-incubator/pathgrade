@@ -3,6 +3,7 @@ import * as path from 'path';
 import { configDefaults } from 'vitest/config';
 import type { PathgradePluginOptions } from '../sdk/types.js';
 import { PathgradeReporter } from './reporter.js';
+import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
 
 export type { PathgradePluginOptions };
 
@@ -56,6 +57,17 @@ export function pathgrade(opts?: PathgradePluginOptions): any {
                     ],
                 },
             };
+        },
+        configResolved(resolved: { root?: string; test?: { include?: string[]; exclude?: string[] } }) {
+            const root = resolved.root ?? process.cwd();
+            const include = resolved.test?.include ?? opts?.include ?? ['**/*.eval.ts'];
+            const exclude = resolved.test?.exclude ?? opts?.exclude ?? DEFAULT_EXCLUDE;
+            const discovered = discoverPathgradeEvalFiles({ cwd: root, include, exclude });
+
+            if (!resolved.test) {
+                resolved.test = {};
+            }
+            resolved.test.include = discovered;
         },
     };
 }

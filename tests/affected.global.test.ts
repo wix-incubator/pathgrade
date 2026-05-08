@@ -16,13 +16,13 @@ function writeFile(root: string, rel: string, content: string): void {
 function setupMonorepo(): string {
     const root = makeTempRepo();
     writeFile(root, 'skills/a/SKILL.md', '# a');
-    writeFile(root, 'skills/a/a.eval.ts', 'export {};\n');
+    writeFile(root, 'skills/a/a.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
     writeFile(root, 'skills/b/SKILL.md', '# b');
-    writeFile(root, 'skills/b/b.eval.ts', 'export {};\n');
+    writeFile(root, 'skills/b/b.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
     writeFile(root, 'skills/c/SKILL.md', '# c');
-    writeFile(root, 'skills/c/c.eval.ts', 'export {};\n');
+    writeFile(root, 'skills/c/c.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
     writeFile(root, 'skills/d/SKILL.md', '# d');
-    writeFile(root, 'skills/d/d.eval.ts', 'export {};\n');
+    writeFile(root, 'skills/d/d.eval.ts', "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n");
     return root;
 }
 

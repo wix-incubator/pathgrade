@@ -1,2 +1,4 @@
 // inner eval — nearest SKILL.md wins
-export {};
+import { createAgent } from '@wix/pathgrade';
+
+void createAgent;

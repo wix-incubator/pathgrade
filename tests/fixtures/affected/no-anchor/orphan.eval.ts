@@ -1,2 +1,4 @@
 // eval with no SKILL.md ancestor
-export {};
+import { createAgent } from '@wix/pathgrade';
+
+void createAgent;

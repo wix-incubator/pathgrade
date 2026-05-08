@@ -1,2 +1,4 @@
 // nested layout eval fixture
-export {};
+import { createAgent } from '@wix/pathgrade';
+
+void createAgent;
