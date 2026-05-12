@@ -24,6 +24,22 @@ export interface FormatOptions {
 export const MISSING_RESULTS_BODY =
     'Pathgrade evals did not produce results. Check the workflow logs.';
 
+export function formatNoAffectedEvalsMarkdown(selection: PathgradeSelectionReport): string {
+    const total = selection.selected.length + selection.skipped.length;
+    const lines: string[] = [];
+    lines.push('### Pathgrade report');
+    lines.push('');
+    lines.push('No affected evals found for this change set.');
+    lines.push('');
+    lines.push(`Base: \`${selection.base_ref}\`  |  Changed files: **${selection.changed_files_count}**`);
+    if (total > 0) {
+        lines.push('');
+        lines.push(formatSelectionSection(selection));
+    }
+    lines.push('');
+    return lines.join('\n');
+}
+
 export function commentMarker(commentId: string): string {
     return `<!-- pathgrade:${commentId} -->`;
 }

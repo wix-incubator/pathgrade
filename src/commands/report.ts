@@ -20,8 +20,10 @@
 
 import * as path from 'path';
 import fs from 'fs-extra';
+import { readSidecar } from '../affected/sidecar.js';
 import type { PathgradeReport } from '../types.js';
 import {
+    formatNoAffectedEvalsMarkdown,
     formatReportMarkdown,
     MISSING_RESULTS_BODY,
     postOrUpdateComment,
@@ -106,6 +108,23 @@ export async function runReport(cwd: string, opts: ReportOptions = {}): Promise<
     }
 
     if (loadError) {
+        const selection = await readSidecar(cwd, msg => {
+            console.error(`pathgrade report: ${msg}`);
+        });
+        if (selection && selection.selected.length === 0) {
+            const markdown = formatNoAffectedEvalsMarkdown(selection);
+            if (prContext) {
+                await postOrUpdateComment(prContext, {
+                    commentId,
+                    body: markdown,
+                });
+                console.log('0');
+            } else {
+                printMarkdownAndPassRate(markdown, 0);
+            }
+            return;
+        }
+
         console.error(`pathgrade report: ${loadError}`);
         if (prContext) {
             await postOrUpdateComment(prContext, {

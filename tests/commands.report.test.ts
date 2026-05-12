@@ -268,6 +268,29 @@ describe('runReport — posting path (Issue 4)', () => {
         // Stdout still has a pass rate line (0)
         expect(stdoutLines.join('\n').trim().split('\n').pop()).toBe('0');
     });
+
+    it('when changed-run selected no evals, posts a no-evals comment instead of missing-results', async () => {
+        mockedFs.pathExists
+            .mockResolvedValueOnce(false as never)
+            .mockResolvedValueOnce(true as never);
+        mockedFs.readJSON.mockResolvedValue({
+            base_ref: 'origin/main@abc1234',
+            changed_files_count: 2,
+            selected: [],
+            skipped: [
+                { file: 'skills/a/a.eval.ts', reason: 'no-matching-deps' },
+            ],
+        } as never);
+
+        await runReport('/project', {});
+
+        expect(mockedPost).toHaveBeenCalledTimes(1);
+        const [, opts] = mockedPost.mock.calls[0];
+        expect(opts.body).toContain('No affected evals found');
+        expect(opts.body).toContain('origin/main@abc1234');
+        expect(opts.body).not.toContain('Pathgrade evals did not produce results');
+        expect(stdoutLines.join('\n').trim().split('\n').pop()).toBe('0');
+    });
 });
 
 describe('runReport — error handling', () => {
