@@ -24,7 +24,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install dependencies
-        run: NPQ_PKG_MGR=yarn npx --yes npq install
+        run: yes | NPQ_PKG_MGR=yarn npx --yes npq install
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
