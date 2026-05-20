@@ -1,0 +1,103 @@
+name: AICM Windows Hook Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      aicm_repository:
+        description: "AICM repository to test"
+        required: true
+        default: "wix-private/aicm"
+      aicm_ref:
+        description: "AICM branch, tag, or SHA to test"
+        required: true
+        default: "fix-claude-hook-absolute-commands"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Windows hook command smoke
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout AICM
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ${{ inputs.aicm_repository }}
+          ref: ${{ inputs.aicm_ref }}
+          path: aicm
+          token: ${{ secrets.AICM_REPO_TOKEN || github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+
+      - name: Enable corepack
+        shell: pwsh
+        run: corepack enable
+
+      - name: Install AICM dependencies
+        shell: pwsh
+        working-directory: aicm
+        run: yarn install --immutable
+
+      - name: Build AICM
+        shell: pwsh
+        working-directory: aicm
+        run: yarn workspace @wix/aicm build
+
+      - name: Run focused hook config E2E
+        shell: pwsh
+        working-directory: aicm
+        run: |
+          yarn workspace @wix/aicm test --runInBand packages/aicm/tests/e2e/scope.test.ts -t "install writes Claude Code user hooks"
+
+      - name: Smoke bare absolute JS and shell hook commands
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $smokeDir = Join-Path $env:RUNNER_TEMP "aicm-hook-smoke"
+          New-Item -ItemType Directory -Force -Path $smokeDir | Out-Null
+
+          $jsHook = Join-Path $smokeDir "hook.js"
+          @'
+          #!/usr/bin/env node
+          console.log("js hook ok");
+          '@ | Set-Content -Path $jsHook -NoNewline -Encoding utf8
+
+          $shHook = Join-Path $smokeDir "hook.sh"
+          @'
+          #!/usr/bin/env bash
+          echo "shell hook ok"
+          '@ | Set-Content -Path $shHook -NoNewline -Encoding utf8
+
+          function Test-Command {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Command
+            )
+
+            Write-Host "::group::$Label"
+            try {
+              & $Command
+              Write-Host "RESULT: PASS"
+            } catch {
+              Write-Host "RESULT: FAIL"
+              Write-Host $_
+              $script:failures += $Label
+            } finally {
+              Write-Host "::endgroup::"
+            }
+          }
+
+          $failures = @()
+          Test-Command "JS bare absolute path" { & $jsHook }
+          Test-Command "JS explicit node" { node $jsHook }
+          Test-Command "Shell bare absolute path" { & $shHook }
+          Test-Command "Shell explicit bash" { bash $shHook }
+
+          if ($failures.Count -gt 0) {
+            throw "Hook smoke failed for: $($failures -join ', ')"
+          }
