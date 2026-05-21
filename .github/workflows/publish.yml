@@ -22,7 +22,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
-        run: NPQ_PKG_MGR=yarn npx --yes npq install
+        run: printf 'y\n' | NPQ_PKG_MGR=yarn npx --yes npq install
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
