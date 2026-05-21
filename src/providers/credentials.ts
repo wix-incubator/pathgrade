@@ -142,11 +142,19 @@ async function resolveClaude(
     // a proxy. Skip the Keychain branch so the host-forward fallback wins.
     const hostSignalsProxy = !!ports.hostEnv('ANTHROPIC_BASE_URL');
 
-    // On macOS, prefer Keychain OAuth (direct Anthropic token).
+    // On macOS, prefer Claude Code's native claude.ai OAuth. Do not expose
+    // the OAuth access token as ANTHROPIC_API_KEY: Claude Code treats that env
+    // var as an external API-key auth path, and first-party OAuth tokens are
+    // rejected there as invalid API keys.
     if (ports.platform === 'darwin' && !hostSignalsProxy) {
         const token = await ports.readKeychainToken('Claude Code-credentials');
         if (token) {
-            return { env: { ANTHROPIC_API_KEY: token }, setupCommands: [], copyFromHome: [] };
+            return {
+                env: { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
+                setupCommands: [],
+                copyFromHome: ['.claude.json'],
+                linkFromHome: ['Library/Keychains'],
+            };
         }
     }
 

@@ -124,6 +124,16 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
         expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/trial-42/.pathgrade-claude-config');
     });
 
+    it('uses host Claude Code config when local OAuth is selected', () => {
+        const opts = buildClaudeSdkOptions(baseInputs({
+            workspacePath: '/tmp/trial-oauth',
+            runtimeEnv: { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
+        }));
+        expect(opts.env).toBeDefined();
+        expect('CLAUDE_CONFIG_DIR' in opts.env!).toBe(false);
+        expect('PATHGRADE_CLAUDE_LOCAL_OAUTH' in opts.env!).toBe(false);
+    });
+
     it('does not set Options.env keys whose values are undefined in the auth env', () => {
         // resolveClaude() only emits keys it actually has values for, but a
         // future helper might pass through optional keys. The builder treats

@@ -146,3 +146,49 @@ describe('AgentImpl runConversation — cost accumulation', () => {
         expect(agent.llm.costUsd).toBeCloseTo(0.001, 10);
     });
 });
+
+describe('AgentImpl prompt/startChat — token & cost accumulation', () => {
+    it('prompt() accumulates tokens and cost onto the shared LLM tracker', async () => {
+        prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
+        createManagedSessionMock.mockReturnValue({
+            executeTurn: vi.fn().mockResolvedValue(
+                makeTurnResult({ inputTokens: 200, outputTokens: 50, costUsd: 0.0042 }),
+            ),
+            send: vi.fn(),
+            remainingMs: vi.fn().mockReturnValue(60_000),
+            dispose: vi.fn().mockResolvedValue(undefined),
+        });
+
+        const { createAgent } = await import('../src/sdk/agent.js');
+        const agent = await createAgent({ timeout: 60 });
+        await agent.prompt('hi');
+
+        expect(agent.llm.tokenUsage).toEqual({ inputTokens: 200, outputTokens: 50 });
+        expect(agent.llm.costUsd).toBeCloseTo(0.0042, 10);
+    });
+
+    it('startChat() first turn + chat.reply() turns both accumulate tokens and cost', async () => {
+        prepareWorkspaceMock.mockResolvedValue(makeWorkspace());
+        const executeTurn = vi.fn()
+            .mockResolvedValueOnce(
+                makeTurnResult({ inputTokens: 100, outputTokens: 20, costUsd: 0.001 }),
+            )
+            .mockResolvedValueOnce(
+                makeTurnResult({ inputTokens: 150, outputTokens: 30, costUsd: 0.002 }),
+            );
+        createManagedSessionMock.mockReturnValue({
+            executeTurn,
+            send: vi.fn(),
+            remainingMs: vi.fn().mockReturnValue(60_000),
+            dispose: vi.fn().mockResolvedValue(undefined),
+        });
+
+        const { createAgent } = await import('../src/sdk/agent.js');
+        const agent = await createAgent({ timeout: 60 });
+        const chat = await agent.startChat('hello');
+        await chat.reply('continue');
+
+        expect(agent.llm.tokenUsage).toEqual({ inputTokens: 250, outputTokens: 50 });
+        expect(agent.llm.costUsd).toBeCloseTo(0.003, 10);
+    });
+});

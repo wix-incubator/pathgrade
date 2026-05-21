@@ -20,6 +20,10 @@ export async function loadReports(
     opts?: { skipTraces?: boolean },
 ): Promise<LoadedReport[]> {
     const resolved = path.resolve(resultsDir);
+    if (!await fs.pathExists(resolved)) {
+        return [];
+    }
+
     const files = (await fs.readdir(resolved))
         .filter(f => f.endsWith('.json'))
         .reverse();

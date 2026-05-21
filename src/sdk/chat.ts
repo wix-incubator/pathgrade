@@ -108,7 +108,15 @@ export class ChatSessionImpl implements ChatSession {
 
         if (turnResult.exitCode !== 0) {
             this._done = true;
-            throw new Error(`Agent exited with code ${turnResult.exitCode}`);
+            // Match `agent.ts:executeLoggedTurnResult` — append the driver's
+            // captured `rawOutput` and typed `errorSubtype` so chat-session
+            // failures expose actionable detail (e.g. ask-bus rejection from
+            // the Claude SDK driver) instead of a bare exit-code string.
+            const detail = turnResult.rawOutput?.trim();
+            const subtype = turnResult.errorSubtype;
+            const subtypeTag = subtype ? ` (${subtype})` : '';
+            const suffix = detail ? `: ${detail}` : '';
+            throw new Error(`Agent exited with code ${turnResult.exitCode}${subtypeTag}${suffix}`);
         }
 
         this._turn = turnNumber;

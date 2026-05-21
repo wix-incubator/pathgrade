@@ -111,12 +111,16 @@ export function buildClaudeSdkOptions(inputs: ClaudeSdkOptionsInputs): Options {
     // then layer driver-owned hermetic overrides on top — `CLAUDE_CONFIG_DIR`
     // wins on collision so an upstream leak (or a user-supplied env value)
     // cannot weaken the per-trial isolation invariant.
+    const useLocalOAuth = inputs.runtimeEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1';
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(inputs.runtimeEnv)) {
         if (value === undefined) continue;
+        if (key === 'PATHGRADE_CLAUDE_LOCAL_OAUTH') continue;
         env[key] = value;
     }
-    env.CLAUDE_CONFIG_DIR = path.join(inputs.workspacePath, CLAUDE_CONFIG_SUBDIR);
+    if (!useLocalOAuth) {
+        env.CLAUDE_CONFIG_DIR = path.join(inputs.workspacePath, CLAUDE_CONFIG_SUBDIR);
+    }
     opts.env = env;
 
     return opts;

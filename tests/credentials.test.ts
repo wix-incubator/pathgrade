@@ -49,7 +49,7 @@ describe('resolveCredentials', () => {
         ).rejects.toThrow(/ANTHROPIC_API_KEY/);
     });
 
-    it('claude: no user env + Keychain available (macOS) → Keychain token', async () => {
+    it('claude: no user env + Keychain available (macOS) → local OAuth keychain link', async () => {
         const result = await resolveCredentials(
             'claude',
             {},
@@ -58,7 +58,9 @@ describe('resolveCredentials', () => {
                 readKeychainToken: async () => 'oauth-token-123',
             }),
         );
-        expect(result.env).toEqual({ ANTHROPIC_API_KEY: 'oauth-token-123' });
+        expect(result.env).toEqual({ PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' });
+        expect(result.copyFromHome).toEqual(['.claude.json']);
+        expect(result.linkFromHome).toEqual(['Library/Keychains']);
     });
 
     it('claude: no user env + no Keychain + host key → forwards host key', async () => {
@@ -111,7 +113,9 @@ describe('resolveCredentials', () => {
                 readKeychainToken: async () => 'oauth-from-keychain',
             }),
         );
-        expect(result.env).toEqual({ ANTHROPIC_API_KEY: 'oauth-from-keychain' });
+        expect(result.env).toEqual({ PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' });
+        expect(result.copyFromHome).toEqual(['.claude.json']);
+        expect(result.linkFromHome).toEqual(['Library/Keychains']);
     });
 
     it('claude: user both ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL → empty', async () => {

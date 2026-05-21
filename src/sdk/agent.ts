@@ -124,6 +124,15 @@ class AgentImpl implements Agent {
         return Math.ceil((turns * 80_000 + 200_000) / 1000);
     }
 
+    private accumulateTurnUsage(turnResult: AgentTurnResult): void {
+        if (turnResult.inputTokens || turnResult.outputTokens) {
+            this.llm.addTokens?.(turnResult.inputTokens ?? 0, turnResult.outputTokens ?? 0);
+        }
+        if (turnResult.costUsd !== undefined) {
+            this.llm.addCost?.(turnResult.costUsd);
+        }
+    }
+
     private async executeLoggedTurnResult(
         session: ManagedSession,
         message: string,
@@ -142,6 +151,7 @@ class AgentImpl implements Agent {
 
         const turnStart = Date.now();
         const turnResult = await session.executeTurn(message);
+        this.accumulateTurnUsage(turnResult);
         const response = getVisibleAssistantMessage(turnResult);
         const durationMs = Date.now() - turnStart;
 
@@ -174,7 +184,16 @@ class AgentImpl implements Agent {
             if (turnResult.timedOut) {
                 throw new Error(`Agent (limit: ${timeoutSec}s) timed out (agent killed)`);
             }
-            throw new Error(`Agent exited with code ${turnResult.exitCode}`);
+            // Surface the underlying detail (e.g. an ask-bus rejection message
+            // from the Claude SDK driver) and the typed `errorSubtype` so a
+            // failing `prompt()`/`startChat()` does not collapse to a bare
+            // "Agent exited with code 1" — matching what `runConversation`
+            // already does via `converse.ts:buildTurnExitError`.
+            const detail = turnResult.rawOutput?.trim();
+            const subtype = turnResult.errorSubtype;
+            const subtypeTag = subtype ? ` (${subtype})` : '';
+            const suffix = detail ? `: ${detail}` : '';
+            throw new Error(`Agent exited with code ${turnResult.exitCode}${subtypeTag}${suffix}`);
         }
 
         return turnResult;
@@ -217,7 +236,11 @@ class AgentImpl implements Agent {
             messages: this._messages,
             log: this._log,
             exec: (cmd) => this.exec(cmd),
-            sendTurn: (message) => ms.executeTurn(message),
+            sendTurn: async (message) => {
+                const turnResult = await ms.executeTurn(message);
+                this.accumulateTurnUsage(turnResult);
+                return turnResult;
+            },
             verbose: this.verbose,
         });
     }
@@ -236,17 +259,10 @@ class AgentImpl implements Agent {
             const turnResult = await ms.executeTurn(message);
             turnNumber++;
 
-            // Accumulate agent turn tokens (from CLI stream-json) on the shared tracker
-            if (turnResult.inputTokens || turnResult.outputTokens) {
-                this.llm.addTokens?.(turnResult.inputTokens ?? 0, turnResult.outputTokens ?? 0);
-            }
-            // Accumulate agent turn cost on the same shared tracker when
-            // the upstream provider reports it (Claude SDK populates
-            // `costUsd` from `total_cost_usd`; Codex/Cursor leave it
-            // undefined, in which case this is a no-op).
-            if (turnResult.costUsd !== undefined) {
-                this.llm.addCost?.(turnResult.costUsd);
-            }
+            // Accumulate agent turn tokens (from CLI stream-json) on the shared tracker.
+            // Cost is populated by Claude SDK (from `total_cost_usd`); Codex/Cursor leave
+            // it undefined, in which case this is a no-op.
+            this.accumulateTurnUsage(turnResult);
 
             for (const toolEvent of turnResult.toolEvents) {
                 this._log.push({

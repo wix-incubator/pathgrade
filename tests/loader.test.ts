@@ -221,4 +221,12 @@ describe('loadReports', () => {
     const reports = await loadReports(tempDir);
     expect(reports).toEqual([]);
   });
+
+  it('returns empty array when the results directory does not exist', async () => {
+    const missingDir = path.join(tempDir, 'missing-results');
+
+    const reports = await loadReports(missingDir);
+
+    expect(reports).toEqual([]);
+  });
 });
