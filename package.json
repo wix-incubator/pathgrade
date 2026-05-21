@@ -73,5 +73,8 @@
     "picomatch": "^4.0.4",
     "typescript": "^5.9.3",
     "zod": "4.3.6"
+  },
+  "resolutions": {
+    "fast-uri@npm:^3.0.1": "npm:3.1.2"
   }
 }
