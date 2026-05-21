@@ -2,6 +2,9 @@ name: Publish
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -29,8 +32,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Verify npm OIDC support
+        run: |
+          npm_version="$(npm --version)"
+          echo "npm version: $npm_version"
+          NPM_VERSION="$npm_version" node -e "const actual = process.env.NPM_VERSION.split('.').map(Number); const [major = 0, minor = 0, patch = 0] = actual; const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))); if (!ok) { throw new Error('npm 11.5.1 or newer is required for Trusted Publishing OIDC'); }"
+
       - name: Build
         run: yarn build
+
+      - name: Test
+        run: yarn test
 
       - name: Verify release tag
         run: |
@@ -43,6 +55,21 @@ jobs:
             echo "Publish must run from tag v$version, got $GITHUB_REF_NAME"
             exit 1
           fi
+
+      - name: Verify version is unpublished
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "@wix/pathgrade@$version" version --registry https://registry.npmjs.org >npm-view.log 2>npm-view.err; then
+            echo "@wix/pathgrade@$version is already published"
+            exit 1
+          fi
+          if ! grep -Eq "E404|404 Not Found|is not in this registry" npm-view.err; then
+            cat npm-view.err
+            exit 1
+          fi
+
+      - name: Validate package contents
+        run: npm pack --dry-run
 
       - name: Publish package
         run: npm publish --registry https://registry.npmjs.org --provenance --access public
