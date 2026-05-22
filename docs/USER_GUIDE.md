@@ -755,10 +755,10 @@ Personas are LLM-simulated conversation partners that respond naturally based on
 
 ```typescript
 persona: {
-    description: `You are a product manager at Acme who has worked on the Stores
+    description: `You are a product manager who has worked on the Stores
 platform for 2 years. You communicate directly and concisely.`,
     facts: [
-        'The feature is for the Acme Stores platform',
+        'The feature is for the Stores platform',
         'Target users are Self-Creators',
         'Goal: solve user pain point',
     ],
@@ -1143,25 +1143,23 @@ jobs:
       pull-requests: write
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22.10.0
-          cache: yarn
-      - run: corepack enable
-      - run: NPQ_PKG_MGR=yarn npx npq install
+          node-version: '20'
+      - run: npm ci
       - name: Run pathgrade evals
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: yarn pathgrade run
+        run: npx pathgrade run
       - name: Post PR report
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: yarn pathgrade report
+        run: npx pathgrade report
       - name: Upload eval reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: pathgrade-reports
           path: .pathgrade/
@@ -1250,7 +1248,7 @@ pathgrade({
         global: [
             'vitest.config.ts',
             'package.json',
-            'package-lock.json',
+            'yarn.lock',
             'skills/shared-runtime/**',
         ],
     },
@@ -1293,7 +1291,7 @@ separate CI step after you've finished adopting `__pathgradeMeta`.
 - `npx vitest run` — unchanged. Selection is a CLI-layer feature; the
   vitest plugin doesn't see it. Your raw escape hatch for local debugging.
 
-**Note the `fetch-depth: 0`** requirement on the `actions/checkout` step for the
+**Note the `fetch-depth: 0`** requirement on `actions/checkout@v4` for the
 `--changed` variant — default shallow clones break merge-base resolution.
 
 ### Downstream: `results.json` and the PR comment
@@ -1317,7 +1315,7 @@ slow end-to-end fixtures, etc.):
    (`pathgrade run`, no `--changed`) so examples still get coverage
    periodically.
 
-Pathgrade's own repo follows this pattern for `examples/`.
+Pathgrade's own repo follows this pattern for `packages/pathgrade/examples/`.
 
 ## Best Practices
 

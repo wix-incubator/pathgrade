@@ -16,7 +16,7 @@
 **Prerequisites**: Node.js 20.11+, Vitest 4+, and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), or the `cursor-agent` CLI
 
 ```bash
-npm install --save-dev @wix/pathgrade
+yarn add -D @wix/pathgrade
 ```
 
 ### Authentication
@@ -193,7 +193,7 @@ judge('spec-structure', {
 });
 ```
 
-Tool-using judges currently require the Anthropic HTTP provider (`ANTHROPIC_API_KEY`); other providers produce a clean `provider_not_supported` error. See the [User Guide](docs/USER_GUIDE.md#tool-using-judges--judge-tools-) for the full tool list, failure codes, and the migration recipe from `input`-helper probes.
+Tool-using judges currently require the Anthropic HTTP provider (`ANTHROPIC_API_KEY`); other providers produce a clean `provider_not_supported` error. See the [User Guide](packages/pathgrade/docs/USER_GUIDE.md#tool-using-judges--judge-tools-) for the full tool list, failure codes, and the migration recipe from `input`-helper probes.
 
 ### `toolUsage()` - Tool event matching
 
@@ -274,7 +274,7 @@ Pathgrade exposes a few useful features that are easy to miss from the basic exa
 - `conversationWindow` on agents and personas keeps long transcripts bounded with summarization instead of sending the full conversation every turn.
 - `copyIgnore` and `DEFAULT_COPY_IGNORE` let you control what gets copied into the sandbox when seeding from large fixtures or skill directories.
 
-See [sdk-showcase](examples/sdk-showcase/) for a single example suite that demonstrates these APIs together.
+See [sdk-showcase](packages/pathgrade/examples/sdk-showcase/) for a single example suite that demonstrates these APIs together.
 
 ## MCP Mock Servers
 
@@ -332,7 +332,7 @@ pathgrade({
     verbose: false,              // stream live per-turn events to stderr while evals run
     ci: { threshold: 0.8 },      // fail when the mean test score drops below threshold
     affected: {
-        global: ['package.json', 'package-lock.json'],
+        global: ['package.json', 'yarn.lock'],
     },
 });
 ```
@@ -373,28 +373,26 @@ jobs:
       pull-requests: write
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # required for affected selection
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22.10.0
-          cache: yarn
-      - run: corepack enable
-      - run: NPQ_PKG_MGR=yarn npx npq install
+          node-version: '20'
+      - run: npm ci
 
       - name: Run affected evals
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: yarn pathgrade run --changed
+        run: npx pathgrade run --changed
 
       - name: Post PR report
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: yarn pathgrade report
+        run: npx pathgrade report
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pathgrade-reports
@@ -405,21 +403,16 @@ jobs:
 - Evals under a `SKILL.md` are tracked automatically; use `__pathgradeMeta` for cross-skill or non-standard dependencies.
 - Set `ci: { threshold: 0.8 }` in the plugin config to fail the run when the mean test score drops below your threshold.
 
-See the [User Guide - CI Integration](docs/USER_GUIDE.md#ci-integration) for the full reference.
+See the [User Guide - CI Integration](packages/pathgrade/docs/USER_GUIDE.md#ci-integration) for the full reference.
 
 ## Links
 
-- [User Guide](docs/USER_GUIDE.md) - full API reference and usage patterns
-- [Design Spec](docs/DESIGN_SPEC.md) - architecture and internals
+- [User Guide](packages/pathgrade/docs/USER_GUIDE.md) - full API reference and usage patterns
 - Examples:
-  - [start-chat](examples/start-chat/) - multi-turn conversation
-  - [sdk-showcase](examples/sdk-showcase/) - advanced SDK features in one suite
-  - [tool-judge-demo](examples/tool-judge-demo/) - `judge({ tools })` reading workspace artifacts
+  - [start-chat](packages/pathgrade/examples/start-chat/) - multi-turn conversation
+  - [sdk-showcase](packages/pathgrade/examples/sdk-showcase/) - advanced SDK features in one suite
+  - [tool-judge-demo](packages/pathgrade/examples/tool-judge-demo/) - `judge({ tools })` reading workspace artifacts
 
 ## License
 
 MIT
-
-## Origins
-
-Pathgrade began as a fork of Minko Gechev's MIT-licensed skillgrade project, was incubated at Wix, and is now maintained as an independent open-source project by Nadav Lachish.
