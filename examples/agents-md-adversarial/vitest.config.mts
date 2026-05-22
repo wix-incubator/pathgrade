@@ -1,0 +1,15 @@
+import { defineConfig } from 'vitest/config';
+import { pathgrade } from '../../src/plugin/index.js';
+
+export default defineConfig({
+    plugins: [pathgrade({
+        include: ['examples/agents-md-adversarial/test/**/*.eval.ts'],
+        timeout: 600,
+    })],
+    test: {
+        env: {
+            ...(process.env.APP_OPENAI_API_KEY && { OPENAI_API_KEY: process.env.APP_OPENAI_API_KEY }),
+            ...(process.env.APP_OPENAI_BASE_URL && { OPENAI_BASE_URL: process.env.APP_OPENAI_BASE_URL }),
+        },
+    },
+});
