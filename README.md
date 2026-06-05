@@ -413,6 +413,12 @@ See the [User Guide - CI Integration](packages/pathgrade/docs/USER_GUIDE.md#ci-i
   - [sdk-showcase](packages/pathgrade/examples/sdk-showcase/) - advanced SDK features in one suite
   - [tool-judge-demo](packages/pathgrade/examples/tool-judge-demo/) - `judge({ tools })` reading workspace artifacts
 
+## Note on AI provider dependencies
+
+Pathgrade is released under the MIT license. Pathgrade can use third-party AI agent tools and SDKs to run evaluations, including `@anthropic-ai/claude-agent-sdk` for Claude, Codex CLI for Codex, and `cursor-agent` for Cursor. These tools, SDKs, hosted services, and related authentication methods are governed by their respective provider terms, which are separate from Pathgrade's MIT license.
+
+In particular, `@anthropic-ai/claude-agent-sdk` is governed by Anthropic's Commercial Terms of Service, except where Anthropic specifies a different license for a specific component or dependency.
+
 ## License
 
 MIT
