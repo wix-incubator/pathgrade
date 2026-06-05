@@ -1,10 +1,12 @@
-import fs from 'fs-extra';
-import path from 'path';
 import type { TokenUsage } from '../sdk/types.js';
 import { AgentCommandRunner, AgentSession, AgentSessionOptions, AgentTurnResult, BaseAgent, CommandResult, EnvironmentHandle, getWorkspacePath } from '../types.js';
 import { ToolEvent, TOOL_NAME_MAP, buildSummary, enrichSkillEvents } from '../tool-events.js';
 import { getVisibleAssistantMessage } from '../sdk/visible-turn.js';
 import { prependRuntimePolicies } from '../sdk/runtime-policy.js';
+import {
+    assertUnsupportedLiveMcpSafetyRuntime,
+    mountMcpForCursor,
+} from '../providers/mcp-runtime-mounting.js';
 
 /**
  * Cursor tool_call discriminants observed in the discovery spike. Probed in
@@ -234,6 +236,13 @@ export class CursorAgent extends BaseAgent {
         sessionId: string | undefined,
         options?: AgentSessionOptions,
     ): Promise<AgentTurnResult & { sessionId?: string }> {
+        await assertUnsupportedLiveMcpSafetyRuntime({
+            runtimeName: 'Cursor',
+            workspacePath,
+            mcpConfigPath: options?.mcpConfigPath,
+            mcpSafety: options?.mcpSafety,
+        });
+
         // Runtime policies are injected into the first-turn prompt only.
         // On resumed turns (sessionId set) the policy was already delivered,
         // so we skip re-prepending. The Claude SDK driver does not prepend
@@ -253,19 +262,13 @@ export class CursorAgent extends BaseAgent {
         const b64 = Buffer.from(effectiveInstruction).toString('base64');
         await runCommand(`mkdir -p "\${TMPDIR:-/tmp}" && echo '${b64}' | base64 -d > ${promptPath}`);
 
-        // Materialize .cursor/mcp.json from pathgrade's MCP config so the
-        // CLI's native loader picks it up. Idempotent per turn.
-        if (options?.mcpConfigPath) {
-            const srcMcp = path.join(workspacePath, options.mcpConfigPath);
-            if (await fs.pathExists(srcMcp)) {
-                const cursorDir = path.join(workspacePath, '.cursor');
-                await fs.ensureDir(cursorDir);
-                await fs.copy(srcMcp, path.join(cursorDir, 'mcp.json'), { overwrite: true });
-            }
-        }
+        const mcpMount = await mountMcpForCursor({
+            workspacePath,
+            mcpConfigPath: options?.mcpConfigPath,
+        });
 
         const modelFlag = options?.model ? ` --model ${options.model}` : '';
-        const mcpFlag = options?.mcpConfigPath ? ' --approve-mcps' : '';
+        const mcpFlag = mcpMount.approveMcps ? ' --approve-mcps' : '';
         const resumeFlag = sessionId ? ` --resume ${this.sanitizeSessionId(sessionId)}` : '';
         const command = `${CURSOR_EXECUTABLE} -p --output-format stream-json --trust --force --workspace "${workspacePath}"${resumeFlag}${modelFlag}${mcpFlag} "$(cat ${promptPath})" < /dev/null`;
 

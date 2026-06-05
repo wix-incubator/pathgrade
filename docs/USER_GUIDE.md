@@ -153,11 +153,13 @@ All test API functions are imported from `@wix/pathgrade`. The vitest plugin is 
 
 ```typescript
 const agent = await createAgent({
-    agent: 'claude',            // 'claude' | 'codex' (default: 'claude')
+    agent: 'claude',            // 'claude' | 'codex' | 'cursor' (default: 'claude')
+    transport: 'app-server',    // Codex only: 'app-server' (default) | 'exec'
     timeout: 'auto',            // seconds or 'auto' (runConversation() only)
     workspace: 'fixtures',      // fixture directory to copy into workspace (optional)
     skillDir: './my-skill',     // path to skill directory (optional)
     copyIgnore: ['coverage'],   // replace default staging filters
+    mcpConfigFile: './mcp.json', // real MCP config file (optional)
     mcpMock: mockServer,        // mock MCP server descriptor (optional)
     debug: true,                // preserve workspace and emit run-snapshot.json
 });
@@ -167,14 +169,16 @@ const agent = await createAgent({
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agent` | `'claude' \| 'codex'` | `'claude'` | Agent CLI to use. Can be overridden via `PATHGRADE_AGENT` env var. |
+| `agent` | `'claude' \| 'codex' \| 'cursor'` | `'claude'` | Agent runtime to use. Can be overridden via `PATHGRADE_AGENT` env var. |
+| `transport` | `'app-server' \| 'exec'` | `'app-server'` | Codex-only transport. App-server supports live MCP mounting and reliable ask-user reactions; exec stages config but cannot mount MCP tools. |
 | `timeout` | `number \| 'auto'` | `300` | Seconds before the agent times out. `'auto'` is supported for `runConversation()` only. |
 | `workspace` | `string` | -- | Path to a fixture directory whose contents are copied into the agent workspace |
 | `skillDir` | `string` | -- | Path to a skill directory to stage into both `.claude/skills/<name>/` and `.agents/skills/<name>/` so either path convention resolves |
 | `copyFromHome` | `string[]` | -- | Relative paths to copy from real HOME into sandbox HOME |
 | `copyIgnore` | `string[]` | built-in ignore list | Replaces the default workspace and skill copy ignore list. Pass `[]` to disable configurable filtering. |
 | `env` | `Record<string, string>` | -- | Extra environment variables to inject into the agent environment |
-| `mcpMock` | `MockMcpServerDescriptor \| MockMcpServerDescriptor[]` | -- | Mock MCP server(s) (Claude only) |
+| `mcpConfigFile` | `string` | -- | Path to a real MCP config file to stage into the isolated workspace and mount for runtimes that support MCP Runtime Mounting |
+| `mcpMock` | `MockMcpServerDescriptor \| MockMcpServerDescriptor[]` | -- | Generated stdio mock MCP server(s); supported by Claude, Codex app-server/default transport, and Cursor |
 | `conversationWindow` | `ConversationWindowConfig \| false` | agent default | Configure transcript summarization for long conversations |
 | `debug` | `boolean \| string` | -- | Preserve the workspace and emit `run-snapshot.json` under `pathgrade-debug/` or a custom directory |
 
@@ -228,7 +232,7 @@ const agent = await createAgent({
 });
 ```
 
-`copyIgnore` replaces the default list entirely. Pass `copyIgnore: []` to disable configurable filtering. `copyFromHome` is never filtered by `copyIgnore`, and staged skill directories still exclude `test/`.
+`copyIgnore` replaces the default list entirely. Pass `copyIgnore: []` to disable configurable filtering. `copyFromHome` is never filtered by `copyIgnore`, and staged skill directories still exclude `test/` and `tests/`.
 
 ### Instruction Tasks
 
@@ -463,7 +467,7 @@ toolUsage('expected-tool-calls', [
 
 **Signature**: `toolUsage(name, expectations, opts?) => ToolUsageScorer`
 
-**Normalized actions**: `run_shell`, `read_file`, `write_file`, `edit_file`, `search_code`, `list_files`, `ask_user`, `web_fetch`, `unknown`.
+**Normalized actions**: `run_shell`, `read_file`, `write_file`, `edit_file`, `search_code`, `list_files`, `ask_user`, `web_fetch`, `mcp_tool_call`, `unknown`.
 
 **Expectation filters**:
 
@@ -843,11 +847,52 @@ When blocked prompts are involved, snapshots continue to show the visible assist
 
 ### Real MCP Configs
 
-Real MCP server configuration pass-through is supported internally but is **not yet exposed** through the `AgentOptions` public API. Currently, only mock MCP servers are available via the `mcpMock` option.
+Real MCP server configuration pass-through is exposed through `AgentOptions.mcpConfigFile`. Pathgrade copies the supplied config into the isolated workspace and asks the selected runtime to mount it when that runtime has an MCP runtime mounting path.
+
+```typescript
+const agent = await createAgent({
+    agent: 'codex',
+    transport: 'app-server', // default for Codex
+    mcpConfigFile: './mcp.json',
+});
+```
+
+Claude and Codex app-server mount staged MCP configs at runtime. Cursor receives a generated `.cursor/mcp.json` and `--approve-mcps`; live behavior depends on the installed `cursor-agent`. Codex `exec` can stage the config file, but it has no MCP runtime mounting path, so use Claude or Codex app-server for live MCP evals.
+
+For Streamable HTTP MCP servers, Pathgrade v1 stages and normalizes the MCP config file, then delegates the actual HTTP transport behavior to the selected agent runtime. Codex app-server receives Streamable HTTP servers through `thread/start.config.mcp_servers`; Claude SDK receives remote MCP servers through `Options.mcpServers` using the SDK's HTTP server config shape. Pathgrade does not own Streamable HTTP sessions, reconnects, OAuth, resumability, or protocol conformance in v1.
+
+The accepted remote config shape is intentionally small: a server entry may use `type: "streamable-http"` or `type: "http"` with `url`, optional static `headers`/`http_headers`, optional Codex-only `env_http_headers` or `bearer_token_env_var`, and optional timeout fields. Pathgrade rejects malformed entries and ambiguous entries that define both `command` and `url`; this is shape validation only, not MCP protocol validation. A runtime-compatible MCP config is a staged config whose fields the selected runtime can actually honor. Claude rejects Codex-only fields such as `env_http_headers` and `bearer_token_env_var`, and also rejects remote entries that specify both `headers` and `http_headers`, before any live MCP contact.
+
+Live MCP runs can declare an MCP safety policy through `mcpSafety`. This is a cross-runtime contract for runtimes with MCP runtime mounting: the runtime must enforce the MCP safety policy or fail before live mounting. `live-readonly` requires `liveOptIn: true` and an explicit policy; deny rules win, and allowed tools must be marked `readonly: true`. Configuration mistakes fail before live MCP contact, while policy decisions become `mcp_tool_call` evidence only after safe mounting. For Claude, missing `liveOptIn` is a pre-trial configuration error, not policy-denied tool-call evidence. For runtimes with MCP runtime mounting but no MCP safety enforcement, Pathgrade fails fast for live `mcpSafety` modes. Denied calls are declined before approval and recorded with `status: "policy_denied"`; secret-looking MCP arguments are redacted in denial evidence.
+
+```typescript
+const agent = await createAgent({
+    agent: 'codex',
+    transport: 'app-server',
+    mcpConfigFile: './mcp.json',
+    mcpSafety: {
+        runMode: 'live-readonly',
+        liveOptIn: process.env.PATHGRADE_LIVE_MCP === '1',
+        mcpToolPolicy: {
+            allow: [
+                { serverName: 'Docs', toolName: 'search_docs', readonly: true },
+            ],
+            deny: [
+                { serverName: 'Docs', toolName: 'delete_doc' },
+            ],
+        },
+    },
+});
+```
+
+The deterministic coverage examples are:
+
+- `examples/codex-streamable-http-mcp`: Codex app-server mounts a local Streamable HTTP MCP fixture, calls it, and records `mcp_tool_call` evidence.
+- `examples/mcp-scenarios`: the v1 MCP scenario matrix for Codex app-server and Claude SDK, covering generated `mcpMock`, stdio `mcpConfigFile`, Streamable HTTP `mcpConfigFile` via `type: "streamable-http"`, and generic remote HTTP config via `url`.
 
 ### Mock MCP Servers
 
-Create fake MCP servers with predefined responses. Mock servers work with Claude only (`AGENT_CAPABILITIES` records `codex.mcp === false`):
+Create fake MCP servers with predefined responses. Mock servers are generated as local stdio MCP servers and mounted through the same runtime path as real configs. They work with Claude, Codex app-server/default transport, and Cursor; Codex `exec` remains unsupported for MCP Runtime Mounting.
 
 ```typescript
 import { mockMcpServer } from '@wix/pathgrade/mcp-mock';
@@ -891,9 +936,10 @@ Pathgrade supports three agent runtimes:
 
 | Agent | Runtime | MCP Support | Auth |
 |-------|---------|-------------|------|
-| **Claude** | `@anthropic-ai/claude-agent-sdk` (bundled binary) | Real + Mock | Keychain OAuth (macOS), API key, or other SDK auth env vars |
-| **Codex** | `codex` CLI | None | Cached CLI login or API key |
-| **Cursor** | `cursor-agent` CLI | None | Keychain OAuth (macOS) or `CURSOR_API_KEY` |
+| **Claude** | `@anthropic-ai/claude-agent-sdk` (bundled binary) | Real + Mock, including Streamable HTTP passthrough | Keychain OAuth (macOS), API key, or other SDK auth env vars |
+| **Codex app-server** | `codex app-server` (default Codex transport) | Real + Mock, including Streamable HTTP passthrough | Cached CLI login or API key |
+| **Codex exec** | `codex exec` | Config staging only; no MCP Runtime Mounting | Cached CLI login or API key |
+| **Cursor** | `cursor-agent` CLI | Real config materialization + Mock; MCP event capture is partial | Keychain OAuth (macOS) or `CURSOR_API_KEY` |
 
 **Agent selection**: The `agent` field in `AgentOptions` determines which runtime to use. The `PATHGRADE_AGENT` environment variable overrides this at runtime, letting you run the same eval file against different agents without editing code.
 
@@ -1287,7 +1333,11 @@ separate CI step after you've finished adopting `__pathgradeMeta`.
   affected set and spawns `vitest run <files>` with it. Empty selection
   short-circuits with `no affected evals` and exits 0 without invoking
   vitest. `--quiet` suppresses the run-start summary; args after `--`
-  forward to vitest.
+  forward to vitest. If those args include `--config`, Pathgrade scopes
+  affected selection to that config's `pathgrade({ include, exclude })`
+  patterns before spawning Vitest. Do not pass Vitest's `--passWithNoTests` here:
+  `run --changed` already handles the empty-selection case, and selected
+  evals resolving to no Vitest files should fail CI.
 - `npx vitest run` — unchanged. Selection is a CLI-layer feature; the
   vitest plugin doesn't see it. Your raw escape hatch for local debugging.
 

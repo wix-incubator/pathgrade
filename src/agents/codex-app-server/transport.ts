@@ -223,9 +223,11 @@ export function buildAppServerSpawnArgs(
     env: NodeJS.ProcessEnv = process.env,
 ): string[] {
     const baseUrl = env.OPENAI_BASE_URL?.trim();
-    if (!baseUrl) return [...args, 'app-server'];
+    const requestUserInputConfig = ['-c', 'features.default_mode_request_user_input=true'];
+    if (!baseUrl) return [...requestUserInputConfig, ...args, 'app-server'];
 
     return [
+        ...requestUserInputConfig,
         '-c', `model_provider=${quoteCodexConfigString(CODEX_PROXY_PROVIDER_ID)}`,
         '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.name=${quoteCodexConfigString('PathGrade OpenAI Proxy')}`,
         '-c', `model_providers.${CODEX_PROXY_PROVIDER_ID}.base_url=${quoteCodexConfigString(baseUrl)}`,

@@ -173,15 +173,25 @@ describe('createNdjsonTransport', () => {
 });
 
 describe('buildAppServerSpawnArgs', () => {
-    it('preserves the current default argv when OPENAI_BASE_URL is unset', () => {
-        expect(buildAppServerSpawnArgs([], {})).toEqual(['app-server']);
-        expect(buildAppServerSpawnArgs(['--verbose'], {})).toEqual(['--verbose', 'app-server']);
+    it('forces request_user_input support before app-server when OPENAI_BASE_URL is unset', () => {
+        expect(buildAppServerSpawnArgs([], {})).toEqual([
+            '-c',
+            'features.default_mode_request_user_input=true',
+            'app-server',
+        ]);
+        expect(buildAppServerSpawnArgs(['--verbose'], {})).toEqual([
+            '-c',
+            'features.default_mode_request_user_input=true',
+            '--verbose',
+            'app-server',
+        ]);
     });
 
-    it('prepends proxy config overrides before app-server when OPENAI_BASE_URL is set', () => {
+    it('prepends request_user_input and proxy config overrides before app-server when OPENAI_BASE_URL is set', () => {
         expect(buildAppServerSpawnArgs(['--verbose'], {
             OPENAI_BASE_URL: 'https://internal-proxy.example/v1',
         })).toEqual([
+            '-c', 'features.default_mode_request_user_input=true',
             '-c', 'model_provider="pathgrade_openai_proxy"',
             '-c', 'model_providers.pathgrade_openai_proxy.name="PathGrade OpenAI Proxy"',
             '-c', 'model_providers.pathgrade_openai_proxy.base_url="https://internal-proxy.example/v1"',

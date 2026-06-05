@@ -13,28 +13,26 @@ export function withAbortTimeout<T>(
 ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         const controller = new AbortController();
-        let timedOut = false;
+        let settled = false;
 
         const timer = setTimeout(() => {
-            timedOut = true;
+            if (settled) return;
+            settled = true;
             controller.abort();
+            reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
         }, timeoutMs);
 
         run(controller.signal).then(
             (val) => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timer);
-                if (timedOut || controller.signal.aborted) {
-                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-                    return;
-                }
                 resolve(val);
             },
             (err) => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timer);
-                if (timedOut || controller.signal.aborted) {
-                    reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
-                    return;
-                }
                 reject(err);
             }
         );

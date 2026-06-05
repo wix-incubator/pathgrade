@@ -10,7 +10,7 @@
  *   2. `GITHUB_EVENT_BEFORE` (push event) if non-zero SHA → diff vs. that SHA.
  *      The all-zero SHA (`000…000`) is emitted on branch-first-push and falls
  *      through to branch 3.
- *   3. Fallback: `git merge-base HEAD origin/main`, then `origin/master`.
+ *   3. Fallback: `git merge-base HEAD origin/main`.
  *
  * Merge-base (not plain two-dot) is critical for long-lived branches whose
  * base has diverged. Vitest's built-in `--changed` gets this wrong; we must not.
@@ -46,17 +46,13 @@ export function resolveBaseRef(env: NodeJS.ProcessEnv = process.env): BaseRefRes
         return { base: GITHUB_EVENT_BEFORE, sha: GITHUB_EVENT_BEFORE };
     }
 
-    // Fallback: merge-base with common default branch names.
-    let lastError: unknown;
-    for (const base of ['origin/main', 'origin/master']) {
-        try {
-            const sha = runGit(['merge-base', 'HEAD', base]);
-            return { base, sha };
-        } catch (err) {
-            lastError = err;
-        }
+    // Fallback: merge-base with origin/main.
+    try {
+        const sha = runGit(['merge-base', 'HEAD', 'origin/main']);
+        return { base: 'origin/main', sha };
+    } catch (err) {
+        return { error: formatMergeBaseError(err) };
     }
-    return { error: formatMergeBaseError(lastError) };
 }
 
 /**
@@ -78,7 +74,7 @@ function runGit(args: string[]): string {
 function formatMergeBaseError(err: unknown): string {
     const detail = err instanceof Error ? err.message : String(err);
     return (
-        `pathgrade: merge-base resolution failed — ensure the \`actions/checkout\` step ` +
+        `pathgrade: merge-base resolution failed — ensure \`actions/checkout@v4\` ` +
         `has \`fetch-depth: 0\` (shallow clones break merge-base). ` +
         `Underlying error: ${detail}`
     );

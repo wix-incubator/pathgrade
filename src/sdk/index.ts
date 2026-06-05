@@ -1,4 +1,4 @@
-// pathgrade — public API for writing evaluations
+// @wix/pathgrade — public API for writing evaluations
 
 export { createAgent } from './agent.js';
 export {
@@ -8,6 +8,17 @@ export {
 } from './agent-resolution.js';
 export { AgentCrashError } from './agent-crash.js';
 export { check, score, judge, toolUsage } from './scorers.js';
+export {
+    getMcpToolCall,
+    isMcpToolCall,
+    findMcpToolCalls,
+    getMcpStartupStatus,
+    isMcpStartupStatus,
+} from './mcp-evidence.js';
+export {
+    decideMcpToolCall,
+    redactMcpSecrets,
+} from './mcp-safety.js';
 export { evaluate, EvalScorerError } from './evaluate.js';
 export {
     RUN_SNAPSHOT_VERSION,
@@ -33,7 +44,15 @@ export type {
 } from './ask-bus/projection.js';
 export { buildAskBatchLogEntries } from './agent-result-log.js';
 export { getAgentCapabilities } from './types.js';
-export type { AgentTransport, AgentCapabilities, AgentName } from './types.js';
+export type {
+    AgentTransport,
+    AgentCapabilities,
+    AgentName,
+    McpRunMode,
+    McpSafetyOptions,
+    McpToolPolicy,
+    McpToolPolicyRule,
+} from './types.js';
 export type {
     AskBus,
     AskBatch,
@@ -69,6 +88,8 @@ export type {
     ChatSession,
     ConversationResult,
     ConverseOptions,
+    UntilPredicate,
+    UntilContext,
     Reaction,
     TextReaction,
     AskUserReaction,
@@ -79,15 +100,27 @@ export type {
     AskUserReactionPreviewEntry,
     ReactionPreviewResult,
     ReactionPreviewTurn,
+    StepScorer,
     Persona,
     PersonaConfig,
     ConversationWindowConfig,
+    TurnDetail,
+    ReactionFiredEntry,
     PathgradePluginOptions,
     PathgradeMeta,
     TurnTiming,
     TokenUsage,
     EvaluateOptions,
     ReactionPreviewStatus,
+    ScoreResult,
+    JudgeInput,
+    CodeJudgeToolName,
+    ToolExpectation,
+    SessionArtifactMatchOptions,
+    SessionArtifactContent,
+    SessionArtifacts,
+    RecordedEvalResult,
+    PathgradeTestMeta,
 } from './types.js';
 
 export type { ConversationWindow, ConversationWindowOptions } from './conversation-window.js';
@@ -95,6 +128,18 @@ export type { JudgePipelineOptions } from './judge-pipeline.js';
 export type { RunScorerOptions } from './run-scorer.js';
 export type { OnScorerErrorMode } from './evaluate.js';
 export type { RunSnapshot } from './snapshots.js';
+export type {
+    ExpectedMcpStartupStatus,
+    ExpectedMcpToolCall,
+    McpStartupStatusEvidence,
+    McpToolCallEvidence,
+} from './mcp-evidence.js';
+export type {
+    McpPolicyDenialReason,
+    McpToolCallRequest,
+    McpToolPolicyDecision,
+} from './mcp-safety.js';
+export type { ToolEvent } from '../tool-events.js';
 
 export type { LLMPort, EvalRuntime } from './eval-runtime.js';
 export { createLLMClient, ProviderNotSupportedError } from '../utils/llm.js';

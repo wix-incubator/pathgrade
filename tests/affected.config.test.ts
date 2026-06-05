@@ -32,7 +32,7 @@ export default {
         {
             name: 'pathgrade',
             __pathgradeOptions: {
-                affected: { global: ['vitest.config.ts', 'package-lock.json'] },
+                affected: { global: ['vitest.config.ts', 'yarn.lock'] },
             },
         },
     ],
@@ -41,7 +41,38 @@ export default {
         const warnings: string[] = [];
         const config = await loadAffectedConfig(root, { onWarning: w => warnings.push(w) });
         expect(warnings, `unexpected warnings: ${warnings.join(' | ')}`).toEqual([]);
-        expect(config.global).toEqual(['vitest.config.ts', 'package-lock.json']);
+        expect(config.global).toEqual(['vitest.config.ts', 'yarn.lock']);
+        expect(config.include).toBeUndefined();
+        expect(config.exclude).toBeUndefined();
+    });
+
+    it('extracts include and exclude from a pathgrade plugin config', async () => {
+        const root = makeTempRepo();
+        writeFile(root, 'custom.vitest.config.ts', `
+export default {
+    plugins: [
+        {
+            name: 'pathgrade',
+            __pathgradeOptions: {
+                include: ['selected/**/*.eval.ts'],
+                exclude: ['selected/local-only.eval.ts'],
+                affected: { global: ['package.json'] },
+            },
+        },
+    ],
+};
+`);
+        const warnings: string[] = [];
+        const config = await loadAffectedConfig(root, {
+            configPath: 'custom.vitest.config.ts',
+            onWarning: w => warnings.push(w),
+        });
+        expect(warnings, `unexpected warnings: ${warnings.join(' | ')}`).toEqual([]);
+        expect(config).toEqual({
+            global: ['package.json'],
+            include: ['selected/**/*.eval.ts'],
+            exclude: ['selected/local-only.eval.ts'],
+        });
     });
 
     it('warns and returns empty when config has no pathgrade plugin', async () => {

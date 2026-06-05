@@ -8,7 +8,7 @@
  *   - `sandboxedClaudeSpawn`      — `Options.spawnClaudeCodeProcess` adapter
  *                                   that filters env and (optionally) wraps
  *                                   argv with macOS sandbox-exec.
- *   - `loadMcpServersForSdk`      — reads pathgrade's MCP config JSON into
+ *   - `mountMcpForClaudeSdk`      — reads pathgrade's MCP config JSON into
  *                                   the SDK's `Options.mcpServers` shape.
  *   - `buildClaudeSdkOptions`     — pure builder for the per-turn `Options`.
  *   - `createAskUserBridge`       — live `canUseTool` that auto-allows
@@ -38,14 +38,19 @@ import {
     getWorkspacePath,
 } from '../types.js';
 import { createSandboxedClaudeSpawn } from '../providers/sandboxed-claude-spawn.js';
-import { loadMcpServersForSdk } from '../providers/mcp-config.js';
+import {
+    assertClaudeLiveMcpSafetyPreflight,
+    assertStdioMcpServersStartForClaudeSdk,
+    mountMcpForClaudeSdk,
+} from '../providers/mcp-runtime-mounting.js';
 import {
     buildClaudeSdkOptions,
     resolveClaudeCodeExecutable,
 } from './claude/sdk-options.js';
 import { projectSdkMessages } from './claude/sdk-message-projector.js';
-import { createAskUserBridge } from './claude/ask-user-bridge.js';
 import { createAskUserAnswerStore } from './claude/ask-user-answer-store.js';
+import { createClaudeToolPermissionBridge } from './claude/tool-permission-bridge.js';
+import { createClaudeDeniedMcpEventStore } from './claude/denied-mcp-event-store.js';
 import { requireAskBusForLiveBatches } from '../sdk/ask-bus/bus.js';
 
 /** Shape of the SDK `query()` callable, narrowed for orchestration use. */
@@ -74,6 +79,21 @@ export interface ClaudeAgentOptions {
      * is intentionally out of scope.
      */
     claudeCodeExecutable?: string;
+}
+
+function createLinkedAbortController(signal: AbortSignal | undefined): AbortController {
+    const controller = new AbortController();
+    if (!signal) return controller;
+    if (signal.aborted) {
+        controller.abort();
+        return controller;
+    }
+    signal.addEventListener('abort', () => controller.abort(), { once: true });
+    return controller;
+}
+
+function getTurnAbortSignal(sessionOptions: AgentSessionOptions | undefined): AbortSignal | undefined {
+    return sessionOptions?.getAbortSignal?.() ?? sessionOptions?.abortSignal;
 }
 
 export class ClaudeAgent extends BaseAgent {
@@ -108,7 +128,17 @@ export class ClaudeAgent extends BaseAgent {
             agentOptionsExecutable: this.opts.claudeCodeExecutable,
             envExecutable,
         });
-        const mcpServers = await loadMcpServersForSdk(workspacePath);
+        const mcpMountOptions = {
+            workspacePath,
+            mcpConfigPath: sessionOptions?.mcpConfigPath,
+            runtimeEnv: getRuntimeEnv(runtime),
+        };
+        await assertClaudeLiveMcpSafetyPreflight({
+            ...mcpMountOptions,
+            mcpSafety: sessionOptions?.mcpSafety,
+        });
+        await assertStdioMcpServersStartForClaudeSdk(mcpMountOptions);
+        const mcpServers = await mountMcpForClaudeSdk(mcpMountOptions);
 
         let priorSessionId: string | undefined;
         let turnNumber = 0;
@@ -119,15 +149,25 @@ export class ClaudeAgent extends BaseAgent {
         // turn 2 cannot read a stale answer from turn 1 even on toolUseID
         // collisions.
         let answerStore = createAskUserAnswerStore();
-        const bridge = createAskUserBridge({
+        let deniedMcpEvents = createClaudeDeniedMcpEventStore();
+        const bridge = createClaudeToolPermissionBridge({
             askBus,
             getTurnNumber: () => turnNumber,
             answerStore: { record: (id, e) => answerStore.record(id, e), get: (id) => answerStore.get(id) },
+            mcpServerNames: mcpServers ? Object.keys(mcpServers) : [],
+            mcpSafety: sessionOptions?.mcpSafety,
+            deniedMcpEvents: {
+                record: (id, event) => deniedMcpEvents.record(id, event),
+                get: (id) => deniedMcpEvents.get(id),
+                all: () => deniedMcpEvents.all(),
+                clear: () => deniedMcpEvents.clear(),
+            },
         });
 
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
             turnNumber += 1;
             answerStore = createAskUserAnswerStore();
+            deniedMcpEvents = createClaudeDeniedMcpEventStore();
             // Clear any ask-bus rejection captured on a prior turn so a
             // stale error never causes a spurious result on this turn.
             bridge.clearLastError();
@@ -140,6 +180,7 @@ export class ClaudeAgent extends BaseAgent {
                 claudeCodeExecutable,
                 resume: priorSessionId,
                 mcpServers,
+                abortController: createLinkedAbortController(getTurnAbortSignal(sessionOptions)),
             });
 
             const messages: SDKMessage[] = [];
@@ -161,6 +202,8 @@ export class ClaudeAgent extends BaseAgent {
                 turnNumber,
                 firstMessage: projectorFirstMessage,
                 answerStore,
+                mcpServerNames: mcpServers ? Object.keys(mcpServers) : [],
+                deniedMcpEvents,
             });
             // Capture the SDK-reported session id BEFORE checking for a bus
             // rejection so the next turn's `Options.resume` points at this

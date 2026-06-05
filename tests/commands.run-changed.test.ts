@@ -121,6 +121,74 @@ describe('runChanged — pathgrade run --changed orchestration', () => {
         }
     });
 
+    it('scopes affected selection to the supplied pathgrade config include', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'pr-ci.vitest.config.ts'), `
+export default {
+    plugins: [
+        {
+            name: 'pathgrade',
+            __pathgradeOptions: {
+                include: ['skills/alpha/**/*.eval.ts'],
+            },
+        },
+    ],
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/beta/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    vitestArgs: ['--config', 'pr-ci.vitest.config.ts'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: false,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(0);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(cap.stderr()).toContain('selected: 0 / 1 evals');
+            expect(cap.stderr()).toContain('no affected evals');
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('fails when an explicit vitest config cannot be loaded', async () => {
+        const root = makeRepo();
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['totally/unrelated/path.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    vitestArgs: ['--config', 'missing.vitest.config.ts'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: false,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(1);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(cap.stderr()).toContain('failed to load missing.vitest.config.ts');
+            expect(cap.stderr()).not.toContain('no affected evals');
+        } finally {
+            cap.restore();
+        }
+    });
+
     it('--quiet suppresses the run-start summary but not errors', async () => {
         const root = makeRepo();
         mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
@@ -149,7 +217,7 @@ describe('runChanged — pathgrade run --changed orchestration', () => {
     it('git-resolution failure exits non-zero and never spawns vitest', async () => {
         const root = makeRepo();
         mockedResolve.mockReturnValue({
-            error: 'pathgrade: merge-base resolution failed — ensure the `actions/checkout` step has `fetch-depth: 0`',
+            error: 'pathgrade: merge-base resolution failed — ensure `actions/checkout@v4` has `fetch-depth: 0`',
         });
 
         const cap = captureStd();
@@ -195,6 +263,87 @@ describe('runChanged — pathgrade run --changed orchestration', () => {
             cap.restore();
             const { argv } = fakeSpawn.mock.calls[0][0];
             expect(argv).toEqual(['run', 'skills/alpha/a.eval.ts', '--grep', 'foo']);
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('rejects --passWithNoTests because selected evals must not be masked as no-tests', async () => {
+        const root = makeRepo();
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    vitestArgs: ['--passWithNoTests'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: true,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(1);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(cap.stderr()).toContain('--passWithNoTests cannot be used with pathgrade run --changed');
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('rejects explicit truthy --passWithNoTests values', async () => {
+        const root = makeRepo();
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    vitestArgs: ['--passWithNoTests=true'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: true,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(1);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('allows explicit false --passWithNoTests values', async () => {
+        const root = makeRepo();
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    vitestArgs: ['--passWithNoTests=false'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: true,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(0);
+            expect(fakeSpawn).toHaveBeenCalledTimes(1);
+            const { argv } = fakeSpawn.mock.calls[0][0];
+            expect(argv).toEqual(['run', 'skills/alpha/a.eval.ts', '--passWithNoTests=false']);
         } finally {
             cap.restore();
         }

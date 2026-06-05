@@ -15,6 +15,7 @@ import type {
     Agent,
     AgentOptions,
 } from './types.js';
+import type { McpSafetyOptions } from './mcp-safety.js';
 import { resolveAgentName, resolveCodexTransport } from './agent-resolution.js';
 import { lifecycle } from '../plugin/lifecycle.js';
 import { ChatSessionImpl } from './chat.js';
@@ -60,8 +61,9 @@ class AgentImpl implements Agent {
     private lastConversationResult: ConversationResult | null = null;
     readonly verbose: VerboseEmitter;
     private transport?: AgentTransport;
+    private mcpSafety?: McpSafetyOptions;
 
-    constructor(ws: Workspace, agentName: AgentName, llm: LLMPort, timeoutSetting: number | 'auto', conversationWindow: ConversationWindowConfig | false | undefined, modelOpt: string | undefined, debugOpt: boolean | string | undefined, debugName: string, debugBaseDir: string, verbose: VerboseEmitter, transport?: AgentTransport) {
+    constructor(ws: Workspace, agentName: AgentName, llm: LLMPort, timeoutSetting: number | 'auto', conversationWindow: ConversationWindowConfig | false | undefined, modelOpt: string | undefined, debugOpt: boolean | string | undefined, debugName: string, debugBaseDir: string, verbose: VerboseEmitter, transport?: AgentTransport, mcpSafety?: McpSafetyOptions) {
         this.ws = ws;
         this.agentName = agentName;
         this.llm = llm;
@@ -73,6 +75,7 @@ class AgentImpl implements Agent {
         this.debugBaseDir = debugBaseDir;
         this.verbose = verbose;
         this.transport = transport;
+        this.mcpSafety = mcpSafety;
     }
 
     get messages(): Message[] {
@@ -108,6 +111,7 @@ class AgentImpl implements Agent {
             llm: this.llm,
             ...(askUserTimeoutMs !== undefined ? { askUserTimeoutMs } : {}),
             ...(this.transport !== undefined ? { transport: this.transport } : {}),
+            ...(this.mcpSafety !== undefined ? { mcpSafety: this.mcpSafety } : {}),
         });
     }
 
@@ -414,11 +418,11 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
     // Capture test context now, while vitest state is available
     const testCtx = opts.debug ? resolveTestContext() : { name: '', dir: '' };
 
-    const { timeout: _, mcpMock, agent: __, debug: ___, model: ____, transport: _____, ...rest } = opts;
+    const { timeout: _, mcpMock, mcpConfigFile, agent: __, debug: ___, model: ____, transport: _____, mcpSafety: ______, ...rest } = opts;
     const workspace = await prepareWorkspace({
         ...rest,
         agent: agentName,
-        mcp: mcpMock ? { mock: mcpMock } : undefined,
+        mcp: mcpConfigFile ? { configFile: mcpConfigFile } : mcpMock ? { mock: mcpMock } : undefined,
     });
 
     // Create agent LLM once, using the fully-resolved sandbox env (includes
@@ -436,7 +440,7 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
         testName: testCtx.name || undefined,
     });
 
-    const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport);
+    const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety);
     lifecycle.trackAgent(agent);
     return agent;
 }

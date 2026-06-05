@@ -1,7 +1,5 @@
 import type { ToolEvent } from '../tool-events.js';
 
-type ProcessSignal = string;
-
 /**
  * Error thrown by an agent driver when the subprocess dies mid-turn under a
  * stateful transport (e.g. Codex `app-server`). Carries enough diagnostic
@@ -9,7 +7,7 @@ type ProcessSignal = string;
  */
 export class AgentCrashError extends Error {
     readonly pid?: number;
-    readonly signal?: ProcessSignal | null;
+    readonly signal?: NodeJS.Signals | null;
     readonly exitCode?: number | null;
     /** Non-ask-user tool events captured before the crash, if available. */
     partialToolEvents?: ToolEvent[];
@@ -18,7 +16,7 @@ export class AgentCrashError extends Error {
         message: string,
         info: {
             pid?: number;
-            signal?: ProcessSignal | string | null;
+            signal?: NodeJS.Signals | string | null;
             exitCode?: number | null;
             partialToolEvents?: ToolEvent[];
         },
@@ -26,7 +24,7 @@ export class AgentCrashError extends Error {
         super(message);
         this.name = 'AgentCrashError';
         this.pid = info.pid;
-        this.signal = info.signal as ProcessSignal | null | undefined;
+        this.signal = info.signal as NodeJS.Signals | null | undefined;
         this.exitCode = info.exitCode ?? null;
         this.partialToolEvents = info.partialToolEvents;
     }

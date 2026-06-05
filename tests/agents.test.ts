@@ -131,7 +131,7 @@ describe('CodexAgent', () => {
 
     expect(commands).toHaveLength(1);
     expect(commands[0]).toContain('-m');
-    expect(commands[0]).toContain('gpt-5.3-codex');
+    expect(commands[0]).toContain('gpt-5.4');
   });
 
   it('uses the session model override when provided', async () => {

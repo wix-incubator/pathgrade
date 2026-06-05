@@ -2,12 +2,12 @@ import fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import { createSandbox, type SandboxConfig } from './sandbox.js';
-import { writeMcpConfig } from './mcp-config.js';
+import { stageMcpConfig } from './mcp-config.js';
 import { sandboxExec } from './sandbox-exec.js';
 import { resolveCredentials } from './credentials.js';
 import type { CommandResult } from '../types.js';
 
-export type { McpSpec } from './mcp-config.js';
+export type { McpDeclaration } from './mcp-config.js';
 
 export interface Workspace {
     readonly path: string;
@@ -53,7 +53,7 @@ export async function prepareWorkspace(spec: SandboxConfig): Promise<Workspace> 
         await copyPathsFromHostHome(creds.copyFromHome, homePath);
         await linkPathsFromHostHome(creds.linkFromHome ?? [], homePath);
 
-        const { mcpConfigPath } = await writeMcpConfig(workspacePath, mcp);
+        const { mcpConfigPath } = await stageMcpConfig(workspacePath, mcp);
 
         let disposed = false;
 

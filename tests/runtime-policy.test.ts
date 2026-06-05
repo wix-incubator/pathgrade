@@ -12,7 +12,7 @@ describe('runtime policy planning', () => {
   });
 
   it('plans the non-interactive runtime policy for Codex transcript sessions', () => {
-    expect(planRuntimePolicies('codex')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
+    expect(planRuntimePolicies('codex', 'exec')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
   });
 
   it('renders the Claude policy as a hard execution contract', () => {

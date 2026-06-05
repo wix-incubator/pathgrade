@@ -1,6 +1,7 @@
 import { AgentCommandRunner, AgentSessionOptions, AgentTurnResult } from '../types.js';
 import { ToolAction, ToolEvent, TOOL_NAME_MAP, buildSummary, inferCodexExecAction, enrichSkillEvents } from '../tool-events.js';
 import { TranscriptAgent } from './transcript-agent.js';
+import { assertMcpRuntimeMountingSupportedForCodexExec } from '../providers/mcp-runtime-mounting.js';
 
 export class CodexAgent extends TranscriptAgent {
     protected async runTurn(
@@ -8,6 +9,9 @@ export class CodexAgent extends TranscriptAgent {
         runCommand: AgentCommandRunner,
         options?: AgentSessionOptions,
     ): Promise<AgentTurnResult> {
+        await assertMcpRuntimeMountingSupportedForCodexExec({
+            mcpConfigPath: options?.mcpConfigPath,
+        });
         const promptPath = await this.writePromptFile(instruction, runCommand);
         const command = buildCodexExecCommand(promptPath, options?.model);
         const result = await runCommand(command);
@@ -32,7 +36,7 @@ export class CodexAgent extends TranscriptAgent {
     }
 }
 
-const DEFAULT_CODEX_MODEL = 'gpt-5.3-codex';
+const DEFAULT_CODEX_MODEL = 'gpt-5.4';
 const CODEX_PROXY_PROVIDER_ID = 'pathgrade_openai_proxy';
 
 function buildCodexExecCommand(promptPath: string, model: string = DEFAULT_CODEX_MODEL): string {

@@ -23,9 +23,12 @@ import { createJiti } from 'jiti';
 
 export interface AffectedConfig {
     global: string[];
+    include?: string[];
+    exclude?: string[];
 }
 
 export interface LoadOptions {
+    configPath?: string;
     onWarning?: (message: string) => void;
 }
 
@@ -60,9 +63,11 @@ export async function loadAffectedConfig(
         }
     }
 
-    const configPath = VITEST_CONFIG_CANDIDATES
-        .map(c => path.join(repoRoot, c))
-        .find(p => fs.existsSync(p));
+    const configPath = options.configPath
+        ? path.resolve(repoRoot, options.configPath)
+        : VITEST_CONFIG_CANDIDATES
+            .map(c => path.join(repoRoot, c))
+            .find(p => fs.existsSync(p));
     if (!configPath) return { global: [] };
 
     let loaded: unknown;
@@ -70,7 +75,11 @@ export async function loadAffectedConfig(
         const jiti = createJiti(repoRoot, { interopDefault: true });
         loaded = await jiti.import(configPath, { default: true });
     } catch (err) {
-        warn(`pathgrade: failed to load ${path.relative(repoRoot, configPath)}: ${errMsg(err)}`);
+        const message = `pathgrade: failed to load ${path.relative(repoRoot, configPath)}: ${errMsg(err)}`;
+        if (options.configPath) {
+            throw new Error(message);
+        }
+        warn(message);
         return { global: [] };
     }
 
@@ -91,7 +100,13 @@ export async function loadAffectedConfig(
 
     const opts = (pathgradePlugin as any).__pathgradeOptions ?? {};
     const global = opts.affected?.global;
-    return { global: Array.isArray(global) ? global : [] };
+    const include = opts.include;
+    const exclude = opts.exclude;
+    return {
+        global: Array.isArray(global) ? global : [],
+        ...(Array.isArray(include) ? { include } : {}),
+        ...(Array.isArray(exclude) ? { exclude } : {}),
+    };
 }
 
 /**

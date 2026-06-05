@@ -11,7 +11,7 @@ import type {
     SpawnedProcess,
     SpawnOptions as SdkSpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { McpServersObject } from '../../providers/mcp-config.js';
+import type { McpServersObject } from '../../providers/mcp-runtime-mounting.js';
 
 /**
  * Per-workspace Claude config/home dir. Set via `Options.env.CLAUDE_CONFIG_DIR`
@@ -51,8 +51,10 @@ export interface ClaudeSdkOptionsInputs {
      * `session_id` on every turn after.
      */
     resume?: string;
-    /** MCP servers in the SDK's object form, from `loadMcpServersForSdk`. */
+    /** MCP servers in the SDK's object form, from `mountMcpForClaudeSdk`. */
     mcpServers?: McpServersObject;
+    /** Per-turn cancellation controller linked to PathGrade's turn timeout. */
+    abortController?: AbortController;
 }
 
 /**
@@ -101,6 +103,7 @@ export function buildClaudeSdkOptions(inputs: ClaudeSdkOptionsInputs): Options {
     }
     if (inputs.resume !== undefined) opts.resume = inputs.resume;
     if (inputs.mcpServers !== undefined) opts.mcpServers = inputs.mcpServers;
+    if (inputs.abortController !== undefined) opts.abortController = inputs.abortController;
 
     // Env composition ownership: the driver does NOT pluck specific keys.
     // `prepareWorkspace` curates the runtime env (safe host vars, sandbox

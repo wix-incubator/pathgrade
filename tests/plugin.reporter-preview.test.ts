@@ -55,6 +55,33 @@ function makeTestCase(overrides?: { sessionLog?: any[]; conversation?: any }) {
     };
 }
 
+function makeSkippedTestCase() {
+    const skipped = makeTestCase();
+    return {
+        ...skipped,
+        name: 'skipped trial',
+        meta: () => ({
+            pathgrade: [{
+                score: 0,
+                scorers: [],
+                trial: {
+                    trial_id: 1,
+                    reward: 0,
+                    scorer_results: [],
+                    duration_ms: 0,
+                    n_commands: 0,
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    session_log: [],
+                },
+            }],
+        }),
+        result: () => ({
+            state: 'skipped',
+        }),
+    };
+}
+
 describe('PathgradeReporter consolidated output', () => {
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -73,6 +100,7 @@ describe('PathgradeReporter consolidated output', () => {
         vi.mocked(fs.ensureDir).mockResolvedValue(undefined);
         vi.mocked(fs.writeFile).mockResolvedValue(undefined);
         const writeJsonSpy = vi.mocked(fs.writeJson).mockResolvedValue(undefined);
+        writeJsonSpy.mockClear();
 
         const reporter = new PathgradeReporter({ reporter: 'cli' });
         const testModules = [{
@@ -113,6 +141,7 @@ describe('PathgradeReporter consolidated output', () => {
         vi.mocked(fs.ensureDir).mockResolvedValue(undefined);
         vi.mocked(fs.writeFile).mockResolvedValue(undefined);
         const writeJsonSpy = vi.mocked(fs.writeJson).mockResolvedValue(undefined);
+        writeJsonSpy.mockClear();
 
         const reporter = new PathgradeReporter({ reporter: 'cli' });
         const testModules = [{
@@ -167,6 +196,35 @@ describe('PathgradeReporter consolidated output', () => {
         // But reward and scorer_results should still be present
         expect(trial.reward).toBe(0.75);
         expect(trial.scorer_results).toBeDefined();
+
+        cwdSpy.mockRestore();
+    });
+
+    it('excludes skipped tests from consolidated metrics and report rows', async () => {
+        const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/tmp/my-project');
+        const { PathgradeReporter } = await import('../src/plugin/reporter.js');
+        const fs = (await import('fs-extra')).default;
+        vi.mocked(fs.ensureDir).mockResolvedValue(undefined);
+        vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+        const writeJsonSpy = vi.mocked(fs.writeJson).mockResolvedValue(undefined);
+        writeJsonSpy.mockClear();
+
+        const reporter = new PathgradeReporter({ reporter: 'cli' });
+        const testModules = [{
+            children: { allTests: () => [makeTestCase(), makeSkippedTestCase()] },
+        }] as any;
+
+        await reporter.onTestRunEnd(testModules);
+
+        const resultsCall = writeJsonSpy.mock.calls.findLast(
+            ([p]) => typeof p === 'string' && p.endsWith('results.json'),
+        );
+        const [, report] = resultsCall!;
+        expect(report.overall_pass_rate).toBe(0.75);
+        expect(report.status).toBe('pass');
+        expect(report.groups).toHaveLength(1);
+        expect(report.groups[0].trials).toHaveLength(1);
+        expect(report.groups[0].trials[0].name).toBe('trial 1');
 
         cwdSpy.mockRestore();
     });

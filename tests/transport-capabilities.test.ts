@@ -7,13 +7,13 @@ import {
 } from '../src/sdk/runtime-policy.js';
 
 describe('getAgentCapabilities', () => {
-    it('returns noninteractive ask-user transport for codex + exec (default)', () => {
+    it('returns noninteractive ask-user transport for codex + exec', () => {
         expect(getAgentCapabilities('codex', 'exec').interactiveQuestionTransport).toBe('noninteractive');
-        expect(getAgentCapabilities('codex').interactiveQuestionTransport).toBe('noninteractive');
     });
 
-    it('returns reliable ask-user transport for codex + app-server', () => {
+    it('returns reliable ask-user transport for codex app-server/default runtime', () => {
         expect(getAgentCapabilities('codex', 'app-server').interactiveQuestionTransport).toBe('reliable');
+        expect(getAgentCapabilities('codex').interactiveQuestionTransport).toBe('reliable');
     });
 
     it('returns reliable ask-user transport for claude regardless of transport', () => {
@@ -32,22 +32,23 @@ describe('getAgentCapabilities', () => {
         expect(getAgentCapabilities('cursor', 'app-server' as AgentTransport).interactiveQuestionTransport).toBe('noninteractive');
     });
 
-    it('keeps mcp/nativeSession flags stable across all four combinations', () => {
+    it('reports mcp runtime mounting by selected codex transport', () => {
         expect(getAgentCapabilities('codex', 'exec')).toMatchObject({ mcp: false, nativeSession: true });
-        expect(getAgentCapabilities('codex', 'app-server')).toMatchObject({ mcp: false, nativeSession: true });
+        expect(getAgentCapabilities('codex', 'app-server')).toMatchObject({ mcp: true, nativeSession: true });
+        expect(getAgentCapabilities('codex')).toMatchObject({ mcp: true, nativeSession: true });
         expect(getAgentCapabilities('claude')).toMatchObject({ mcp: true, nativeSession: true });
         expect(getAgentCapabilities('cursor')).toMatchObject({ mcp: true, nativeSession: true });
     });
 });
 
 describe('planRuntimePolicies transport-aware', () => {
-    it('still plans the noninteractive policy for codex under undefined/exec transport', () => {
-        expect(planRuntimePolicies('codex')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
-        expect(planRuntimePolicies('codex', 'exec')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
+    it('plans no runtime policy for codex default/app-server transport', () => {
+        expect(planRuntimePolicies('codex')).toEqual([]);
+        expect(planRuntimePolicies('codex', 'app-server')).toEqual([]);
     });
 
-    it('plans no runtime policy for codex under app-server (transport reaches the agent)', () => {
-        expect(planRuntimePolicies('codex', 'app-server')).toEqual([]);
+    it('still plans the noninteractive policy for codex under explicit exec transport', () => {
+        expect(planRuntimePolicies('codex', 'exec')).toEqual([NONINTERACTIVE_RUNTIME_POLICY]);
     });
 
     it('plans no runtime policy for claude — capability is reliable', () => {

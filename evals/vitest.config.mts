@@ -1,9 +1,15 @@
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from '../../src/plugin/index.js';
+import { pathgrade } from '../src/plugin/index.js';
 
 export default defineConfig({
     plugins: [pathgrade({
-        include: ['examples/sdk-regression/test/**/*.eval.ts'],
+        include: [
+            'examples/sdk-showcase/test/**/*.eval.ts',
+            'evals/sdk-regression/test/**/*.eval.ts',
+        ],
+        exclude: [
+            'examples/sdk-showcase/test/auth-connectivity.eval.ts',
+        ],
         timeout: 1200,
     })],
     test: {

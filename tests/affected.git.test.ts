@@ -76,19 +76,9 @@ describe('resolveBaseRef — PRD precedence', () => {
         expect(result).toEqual({ base: 'origin/main', sha: 'mainbase' });
     });
 
-    it('falls back to origin/master when origin/main is unavailable', () => {
-        makeExec({
-            'merge-base HEAD origin/main': new Error('fatal: Not a valid object name'),
-            'merge-base HEAD origin/master': 'masterbase\n',
-        });
-        const result = resolveBaseRef({});
-        expect(result).toEqual({ base: 'origin/master', sha: 'masterbase' });
-    });
-
     it('surfaces a remediation-style error when merge-base fails (shallow clone)', () => {
         makeExec({
             'merge-base HEAD origin/main': new Error('fatal: Not a valid object name'),
-            'merge-base HEAD origin/master': new Error('fatal: Not a valid object name'),
         });
         const result = resolveBaseRef({});
         expect('error' in result).toBe(true);

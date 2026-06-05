@@ -4,8 +4,7 @@ import type { MockMcpServerDescriptor } from '../core/mcp-mock.types.js';
 import type { TrialResult } from '../types.js';
 import type { DiagnosticsReport } from '../reporters/diagnostics.js';
 import type { LLMPort } from '../utils/llm-types.js';
-
-type ProcessSignal = string;
+import type { McpSafetyOptions } from './mcp-safety.js';
 
 // --- Agent ---
 
@@ -22,6 +21,7 @@ export interface AgentOptions {
     copyFromHome?: string[];
     env?: Record<string, string>;
     mcpMock?: MockMcpServerDescriptor | MockMcpServerDescriptor[];
+    mcpConfigFile?: string;
     /** Configure the conversation window for transcript-based agents. Set false to disable. */
     conversationWindow?: ConversationWindowConfig | false;
     /** Copy workspace to a persistent location before cleanup. true = ./pathgrade-debug/{test-name}/, string = custom path. */
@@ -39,7 +39,20 @@ export interface AgentOptions {
      * in v1 (documented but not enforced).
      */
     transport?: AgentTransport;
+    /**
+     * Live MCP Server Safety policy. `live-readonly` requires explicit
+     * `liveOptIn` plus an inspectable allow/deny policy before tools are
+     * approved by supported live harnesses.
+     */
+    mcpSafety?: McpSafetyOptions;
 }
+
+export type {
+    McpRunMode,
+    McpSafetyOptions,
+    McpToolPolicy,
+    McpToolPolicyRule,
+} from './mcp-safety.js';
 
 export interface ConversationWindowConfig {
     /** Number of recent messages to keep verbatim. Default: 4 */
@@ -244,7 +257,7 @@ export interface ConversationResult {
      */
     crashDiagnostic?: {
         pid?: number;
-        signal?: ProcessSignal | null;
+        signal?: NodeJS.Signals | null;
         exitCode?: number | null;
         lastTurnNumber: number;
         partialAsks: readonly import('./ask-bus/types.js').AskBatchSnapshot[];
@@ -410,8 +423,9 @@ export interface AgentCapabilities {
 
 /**
  * Codex-specific transport. Claude and Cursor ignore this.
- * `app-server` unlocks `interactiveQuestionTransport: 'reliable'` for Codex;
- * `exec` (the default) keeps the `'noninteractive'` channel.
+ * `app-server` unlocks MCP Runtime Mounting and
+ * `interactiveQuestionTransport: 'reliable'` for Codex; `exec` keeps the
+ * `'noninteractive'` channel and has no MCP Runtime Mounting support.
  */
 export type AgentTransport = 'exec' | 'app-server';
 
@@ -426,8 +440,8 @@ export function getAgentCapabilities(
     transport?: AgentTransport,
 ): AgentCapabilities {
     const base = BASE_CAPABILITIES[agent];
-    if (agent === 'codex' && transport === 'app-server') {
-        return { ...base, interactiveQuestionTransport: 'reliable' };
+    if (agent === 'codex' && (transport ?? 'app-server') === 'app-server') {
+        return { ...base, mcp: true, interactiveQuestionTransport: 'reliable' };
     }
     return base;
 }

@@ -2,11 +2,32 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
-import { writeMcpConfig, loadMcpServersForSdk } from '../src/providers/mcp-config.js';
-import type { McpSpec } from '../src/providers/mcp-config.js';
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import {
+  stageMcpConfig,
+} from '../src/providers/mcp-config.js';
+import type { McpDeclaration } from '../src/providers/mcp-config.js';
 import type { MockMcpServerDescriptor } from '../src/core/mcp-mock.types.js';
 
-describe('writeMcpConfig', () => {
+async function readJsonLine(proc: ChildProcessWithoutNullStreams, timeoutMs = 3000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout waiting for mock server response')), timeoutMs);
+    const onData = (chunk: Buffer) => {
+      const lines = chunk.toString().split('\n').filter((line) => line.trim());
+      for (const line of lines) {
+        try {
+          clearTimeout(timer);
+          proc.stdout.off('data', onData);
+          resolve(JSON.parse(line));
+          return;
+        } catch {}
+      }
+    };
+    proc.stdout.on('data', onData);
+  });
+}
+
+describe('stageMcpConfig', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -18,7 +39,7 @@ describe('writeMcpConfig', () => {
   });
 
   it('returns undefined mcpConfigPath when mcp is undefined', async () => {
-    const result = await writeMcpConfig(tmpDir, undefined);
+    const result = await stageMcpConfig(tmpDir, undefined);
     expect(result.mcpConfigPath).toBeUndefined();
   });
 
@@ -29,8 +50,8 @@ describe('writeMcpConfig', () => {
     const workDir = path.join(tmpDir, 'workspace');
     await fs.ensureDir(workDir);
 
-    const spec: McpSpec = { configFile: srcFile };
-    const result = await writeMcpConfig(workDir, spec);
+    const spec: McpDeclaration = { configFile: srcFile };
+    const result = await stageMcpConfig(workDir, spec);
 
     expect(result.mcpConfigPath).toBe('.pathgrade-mcp.json');
     const copied = await fs.readJson(path.join(workDir, '.pathgrade-mcp.json'));
@@ -41,8 +62,8 @@ describe('writeMcpConfig', () => {
     const workDir = path.join(tmpDir, 'workspace');
     await fs.ensureDir(workDir);
 
-    const spec: McpSpec = { configFile: path.join(tmpDir, 'nonexistent.json') };
-    await expect(writeMcpConfig(workDir, spec)).rejects.toThrow(/MCP config file not found/);
+    const spec: McpDeclaration = { configFile: path.join(tmpDir, 'nonexistent.json') };
+    await expect(stageMcpConfig(workDir, spec)).rejects.toThrow(/MCP config file not found/);
   });
 
   it('assembles mcpServers config from mock descriptors', async () => {
@@ -57,8 +78,8 @@ describe('writeMcpConfig', () => {
       },
     };
 
-    const spec: McpSpec = { mock };
-    const result = await writeMcpConfig(workDir, spec);
+    const spec: McpDeclaration = { mock };
+    const result = await stageMcpConfig(workDir, spec);
 
     expect(result.mcpConfigPath).toBe('.pathgrade-mcp.json');
 
@@ -73,6 +94,39 @@ describe('writeMcpConfig', () => {
     const fixture = await fs.readJson(fixturePath);
     expect(fixture.name).toBe('test-server');
     expect(fixture.tools).toHaveLength(1);
+  });
+
+  it('emits a node-runnable mock server script path in source-mode Vitest', async () => {
+    const workDir = path.join(tmpDir, 'workspace');
+    await fs.ensureDir(workDir);
+
+    const mock: MockMcpServerDescriptor = {
+      __type: 'mock_mcp_server',
+      config: {
+        name: 'path-proof',
+        tools: [{ name: 'greet', response: 'hello' }],
+      },
+    };
+
+    await stageMcpConfig(workDir, { mock });
+
+    const mcpConfig = await fs.readJson(path.join(workDir, '.pathgrade-mcp.json'));
+    const serverScript = mcpConfig.mcpServers['path-proof'].args[0];
+    const fixturePath = mcpConfig.mcpServers['path-proof'].args[1];
+
+    expect(await fs.pathExists(serverScript)).toBe(true);
+    expect(serverScript).toBe(path.join(workDir, '.pathgrade-mcp-mock-server.cjs'));
+
+    const proc = spawn('node', [serverScript, fixturePath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    try {
+      proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) + '\n');
+      const response = await readJsonLine(proc);
+      expect(response.result.serverInfo.name).toBe('path-proof');
+    } finally {
+      proc.kill();
+    }
   });
 
   it('handles multiple mock descriptors', async () => {
@@ -90,8 +144,8 @@ describe('writeMcpConfig', () => {
       },
     ];
 
-    const spec: McpSpec = { mock: mocks };
-    const result = await writeMcpConfig(workDir, spec);
+    const spec: McpDeclaration = { mock: mocks };
+    const result = await stageMcpConfig(workDir, spec);
 
     const mcpConfig = await fs.readJson(path.join(workDir, result.mcpConfigPath!));
     expect(Object.keys(mcpConfig.mcpServers)).toEqual(['alpha', 'beta']);
@@ -112,8 +166,8 @@ describe('writeMcpConfig', () => {
       },
     ];
 
-    const spec: McpSpec = { mock: mocks };
-    await expect(writeMcpConfig(workDir, spec)).rejects.toThrow(/Duplicate mock MCP server name: "dup"/);
+    const spec: McpDeclaration = { mock: mocks };
+    await expect(stageMcpConfig(workDir, spec)).rejects.toThrow(/Duplicate mock MCP server name: "dup"/);
   });
 
   it('sanitizes server name in fixture filename', async () => {
@@ -128,8 +182,8 @@ describe('writeMcpConfig', () => {
       },
     };
 
-    const spec: McpSpec = { mock };
-    await writeMcpConfig(workDir, spec);
+    const spec: McpDeclaration = { mock };
+    await stageMcpConfig(workDir, spec);
 
     // "my server/v2.0" should become "my-server-v2-0"
     const sanitizedFixture = path.join(workDir, '.pathgrade-mcp-mock-my-server-v2-0.json');
@@ -138,82 +192,5 @@ describe('writeMcpConfig', () => {
     // The mcpServers key should still use the original name
     const mcpConfig = await fs.readJson(path.join(workDir, '.pathgrade-mcp.json'));
     expect(mcpConfig.mcpServers['my server/v2.0']).toBeDefined();
-  });
-});
-
-describe('loadMcpServersForSdk', () => {
-  let tmpDir: string;
-
-  beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-loader-test-'));
-  });
-
-  afterEach(async () => {
-    await fs.remove(tmpDir);
-  });
-
-  it('returns undefined when the workspace has no MCP config file', async () => {
-    // Mirrors the "no MCP" path through the driver: writeMcpConfig was a no-op
-    // because the fixture didn't declare an `mcp` spec.
-    const result = await loadMcpServersForSdk(tmpDir);
-    expect(result).toBeUndefined();
-  });
-
-  it('returns the inner mcpServers object from .pathgrade-mcp.json', async () => {
-    // Shape parity with what writeMcpConfig writes (`{ mcpServers: { ... } }`).
-    // The SDK's `Options.mcpServers: Record<string, McpStdioServerConfig>`
-    // accepts this shape directly: `{ command, args }` is the stdio form, and
-    // the `type: 'stdio'` discriminator is optional.
-    await fs.writeJson(path.join(tmpDir, '.pathgrade-mcp.json'), {
-      mcpServers: {
-        'mock-greeter': {
-          command: 'node',
-          args: ['/some/path/server.js', '/some/fixture.json'],
-        },
-      },
-    });
-
-    const result = await loadMcpServersForSdk(tmpDir);
-    expect(result).toEqual({
-      'mock-greeter': {
-        command: 'node',
-        args: ['/some/path/server.js', '/some/fixture.json'],
-      },
-    });
-  });
-
-  it('round-trips the file writeMcpConfig writes for mock descriptors', async () => {
-    const workDir = path.join(tmpDir, 'workspace');
-    await fs.ensureDir(workDir);
-
-    const mock: MockMcpServerDescriptor = {
-      __type: 'mock_mcp_server',
-      config: {
-        name: 'round-trip',
-        tools: [{ name: 'greet', response: 'hi' }],
-      },
-    };
-
-    await writeMcpConfig(workDir, { mock });
-    const result = await loadMcpServersForSdk(workDir);
-
-    expect(result).toBeDefined();
-    expect(result!['round-trip']).toBeDefined();
-    expect(result!['round-trip'].command).toBe('node');
-    expect(Array.isArray(result!['round-trip'].args)).toBe(true);
-  });
-
-  it('round-trips a passthrough configFile spec', async () => {
-    const srcFile = path.join(tmpDir, 'src-mcp.json');
-    await fs.writeJson(srcFile, {
-      mcpServers: { foo: { command: 'echo', args: ['ok'] } },
-    });
-    const workDir = path.join(tmpDir, 'workspace');
-    await fs.ensureDir(workDir);
-
-    await writeMcpConfig(workDir, { configFile: srcFile });
-    const result = await loadMcpServersForSdk(workDir);
-
-    expect(result).toEqual({ foo: { command: 'echo', args: ['ok'] } });
   });
 });

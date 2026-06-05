@@ -14,6 +14,7 @@
  */
 
 import * as fs from 'fs';
+import picomatch from 'picomatch';
 import { selectAffected } from '../affected/select.js';
 import { resolveBaseRef, computeChangedFiles } from '../affected/git.js';
 import { loadAffectedConfig } from '../affected/config.js';
@@ -70,12 +71,20 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     }
 
     // 2. Selection
-    const evalFiles = discoverEvalFiles(cwd);
-    const config = await loadAffectedConfig(cwd, {
-        onWarning: w => {
-            if (!parsed.quiet) process.stderr.write(`${w}\n`);
-        },
-    });
+    const configPath = findVitestConfigArg(parsed.vitestArgs);
+    let config: Awaited<ReturnType<typeof loadAffectedConfig>>;
+    try {
+        config = await loadAffectedConfig(cwd, {
+            configPath,
+            onWarning: w => {
+                if (!parsed.quiet) process.stderr.write(`${w}\n`);
+            },
+        });
+    } catch (err) {
+        process.stderr.write(`${errMsg(err)}\n`);
+        return 1;
+    }
+    const evalFiles = filterEvalFilesForConfig(discoverEvalFiles(cwd), config);
 
     let result: SelectionResult;
     try {
@@ -114,6 +123,14 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     }
 
     const selectedFiles = result.selected.map(s => s.file);
+    if (hasPassWithNoTests(parsed.vitestArgs)) {
+        process.stderr.write(
+            'pathgrade run: --passWithNoTests cannot be used with pathgrade run --changed. ' +
+            'The command already exits 0 when no evals are selected; if selected evals resolve to no Vitest files, CI must fail.\n',
+        );
+        return 1;
+    }
+
     const argv = ['run', ...selectedFiles, ...parsed.vitestArgs];
     if (!parsed.quiet) {
         process.stderr.write(`→ vitest run ${selectedFiles.join(' ')}\n`);
@@ -158,6 +175,37 @@ function readChangedFilesList(filePath: string): string[] {
 
 function errMsg(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+function hasPassWithNoTests(args: string[]): boolean {
+    return args.some(arg => {
+        if (arg === '--passWithNoTests') return true;
+        if (!arg.startsWith('--passWithNoTests=')) return false;
+        return arg.slice('--passWithNoTests='.length).toLowerCase() !== 'false';
+    });
+}
+
+function findVitestConfigArg(args: string[]): string | undefined {
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--config' || arg === '-c') return args[i + 1];
+        if (arg.startsWith('--config=')) return arg.slice('--config='.length);
+        if (arg.startsWith('-c=')) return arg.slice('-c='.length);
+    }
+    return undefined;
+}
+
+function filterEvalFilesForConfig(
+    evalFiles: string[],
+    config: { include?: string[]; exclude?: string[] },
+): string[] {
+    if (!config.include && !config.exclude) return evalFiles;
+    const includeMatchers = config.include?.map(g => picomatch(g, { dot: true }));
+    const excludeMatchers = config.exclude?.map(g => picomatch(g, { dot: true })) ?? [];
+    return evalFiles.filter(file => {
+        const included = includeMatchers ? includeMatchers.some(m => m(file)) : true;
+        return included && !excludeMatchers.some(m => m(file));
+    });
 }
 
 async function defaultSpawnVitest(req: SpawnVitestRequest): Promise<number> {

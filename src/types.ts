@@ -2,8 +2,6 @@ import type { DiagnosticsReport } from './reporters/diagnostics.js';
 import type { RuntimePolicyDescriptor } from './sdk/runtime-policy.js';
 import type { LLMPort } from './utils/llm-types.js';
 
-type ProcessSignal = string;
-
 export interface CommandResult {
     stdout: string;
     stderr: string;
@@ -350,7 +348,7 @@ export interface AgentTurnResult {
      */
     crashInfo?: {
         pid?: number;
-        signal?: ProcessSignal | string | null;
+        signal?: NodeJS.Signals | string | null;
         exitCode?: number | null;
     };
 }
@@ -400,6 +398,12 @@ export interface AgentSessionOptions {
      * only `lifecycle: 'post-hoc'` no-op when absent.
      */
     askBus?: import('./sdk/ask-bus/types.js').AskBus;
+    /** Public live MCP safety policy threaded from createAgent(). */
+    mcpSafety?: import('./sdk/mcp-safety.js').McpSafetyOptions;
+    /** Per-turn timeout/cancellation signal owned by the managed session. */
+    abortSignal?: AbortSignal;
+    /** Supplies the current timeout/cancellation signal for reused sessions. */
+    getAbortSignal?: () => AbortSignal | undefined;
 }
 
 export abstract class BaseAgent {

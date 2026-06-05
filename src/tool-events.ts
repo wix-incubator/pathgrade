@@ -12,6 +12,7 @@ export type ToolAction =
   // the other actions. Scorers that enumerate ToolAction to mean "the agent
   // did something external" should exclude it explicitly.
   | 'update_todos'
+  | 'mcp_tool_call'
   | 'unknown';
 
 export interface ToolEvent {

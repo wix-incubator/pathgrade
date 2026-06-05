@@ -10,7 +10,7 @@ export interface SandboxConfig {
     skillDir?: string;
     copyFromHome?: string[];
     env?: Record<string, string>;
-    mcp?: import('./mcp-config.js').McpSpec;
+    mcp?: import('./mcp-config.js').McpDeclaration;
     /**
      * Glob patterns to ignore when copying workspace and skill directories.
      * Replaces the default ignore list entirely. Pass `[]` to disable filtering.
@@ -58,7 +58,8 @@ export async function createSandbox(spec: SandboxConfig): Promise<Sandbox> {
         const skillName = path.basename(skillPath);
         const skillFilter = (src: string) => {
             const rel = path.relative(skillPath, src);
-            if (rel === 'test' || rel.startsWith(`test${path.sep}`)) {
+            const [topLevelDir] = rel.split(path.sep);
+            if (topLevelDir === 'test' || topLevelDir === 'tests') {
                 return false;
             }
             return copyFilter(src);

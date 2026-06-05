@@ -11,6 +11,7 @@ import { createAgentEnvironment } from '../agents/registry.js';
 import { withAbortTimeout } from '../utils/timeout.js';
 import type { Workspace } from '../providers/workspace.js';
 import type { AgentName, AgentTransport, Message } from './types.js';
+import type { McpSafetyOptions } from './mcp-safety.js';
 import type { LLMPort } from '../utils/llm-types.js';
 import { buildModelAgentResultLogEntry } from './agent-result-log.js';
 import { planRuntimePolicies } from './runtime-policy.js';
@@ -43,6 +44,8 @@ export interface ManagedSessionDeps {
      * driver capabilities fall back to the default (`exec` semantics).
      */
     transport?: AgentTransport;
+    /** Live MCP Server Safety policy to enforce in supported harnesses. */
+    mcpSafety?: McpSafetyOptions;
 }
 
 export interface ManagedSession {
@@ -83,6 +86,8 @@ export function createManagedSession(deps: ManagedSessionDeps): ManagedSession {
         ...(llm ? { llm } : {}),
         askBus,
         ...(transport !== undefined ? { transport } : {}),
+        ...(deps.mcpSafety !== undefined ? { mcpSafety: deps.mcpSafety } : {}),
+        getAbortSignal: () => currentSignal,
     };
 
     let session: AgentSession | null = null;

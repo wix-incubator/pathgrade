@@ -29,6 +29,8 @@ const SDK_ERROR_SUBTYPES: readonly SdkErrorSubtype[] = [
 import type { ToolEvent } from '../../tool-events.js';
 import { TOOL_NAME_MAP, buildSummary, enrichSkillEvents } from '../../tool-events.js';
 import type { AskUserAnswerStore } from './ask-user-answer-store.js';
+import { parseClaudeSdkMcpToolName } from './mcp-tool-name.js';
+import type { ClaudeDeniedMcpEventStore } from './denied-mcp-event-store.js';
 
 export interface ProjectTurnInput {
     /** Buffered typed-message stream from one `query()` call. */
@@ -46,6 +48,10 @@ export interface ProjectTurnInput {
      * `answerSource: 'unknown'` it stamped before the bridge existed.
      */
     answerStore?: AskUserAnswerStore;
+    /** Staged MCP server names from the Claude SDK mount boundary. */
+    mcpServerNames?: readonly string[];
+    /** Policy-denied MCP events recorded by the per-turn permission bridge. */
+    deniedMcpEvents?: ClaudeDeniedMcpEventStore;
 }
 
 export interface ProjectedTurn {
@@ -90,7 +96,14 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
                         continue;
                     }
                     if (block.type === 'tool_use') {
-                        toolEvents.push(buildToolEvent(block, input.turnNumber, input.answerStore));
+                        const event = buildToolEvent(
+                            block,
+                            input.turnNumber,
+                            input.answerStore,
+                            input.mcpServerNames ?? [],
+                            input.deniedMcpEvents,
+                        );
+                        if (event) toolEvents.push(event);
                     }
                 }
                 break;
@@ -152,7 +165,10 @@ export function projectSdkMessages(input: ProjectTurnInput): ProjectedTurn {
     const visible = isError ? '' : (trimmedAssistant || trimmedResult);
     const rawOutput = resultText || assistantText;
 
-    const enriched = enrichSkillEvents(toolEvents);
+    const enriched = enrichSkillEvents([
+        ...toolEvents,
+        ...(input.deniedMcpEvents?.all() ?? []),
+    ]);
     const finalToolEvents = prependSlashCommandSkillEvent(
         enriched,
         input.firstMessage,
@@ -216,10 +232,33 @@ function buildToolEvent(
     block: Record<string, unknown>,
     turnNumber: number | undefined,
     answerStore: AskUserAnswerStore | undefined,
-): ToolEvent {
+    mcpServerNames: readonly string[],
+    deniedMcpEvents: ClaudeDeniedMcpEventStore | undefined,
+): ToolEvent | undefined {
     const providerToolName = String(block.name || 'unknown');
     const rawInput = (block.input as Record<string, unknown> | undefined) ?? undefined;
     const toolUseId = typeof block.id === 'string' ? block.id : undefined;
+    const mcpTool = parseClaudeSdkMcpToolName(providerToolName, mcpServerNames);
+    if (mcpTool.kind === 'mcp') {
+        if (deniedMcpEvents?.get(toolUseId)) return undefined;
+        const normalizedProviderToolName = `${mcpTool.server}.${mcpTool.tool}`;
+        const args = {
+            ...(rawInput ?? {}),
+            server: mcpTool.server,
+            tool: mcpTool.tool,
+            status: 'completed',
+        };
+        return {
+            action: 'mcp_tool_call',
+            provider: 'claude',
+            providerToolName: normalizedProviderToolName,
+            turnNumber,
+            arguments: args,
+            summary: `MCP tool ${normalizedProviderToolName} completed`,
+            confidence: 'high',
+            rawSnippet: JSON.stringify(block).slice(0, 200),
+        };
+    }
     const action = TOOL_NAME_MAP[providerToolName] ?? 'unknown';
     const args = action === 'ask_user'
         ? buildAskUserArguments(rawInput, answerStore?.get(toolUseId))

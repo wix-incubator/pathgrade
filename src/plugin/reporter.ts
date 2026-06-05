@@ -76,6 +76,7 @@ export class PathgradeReporter implements Reporter {
             for (const testCase of mod.children.allTests()) {
                 const groupKey = this.getGroupKey(testCase);
                 const entry = this.toTestEntry(testCase);
+                if (!this.isReportableEntry(entry)) continue;
 
                 if (!groupMap.has(groupKey)) {
                     groupMap.set(groupKey, []);
@@ -136,6 +137,10 @@ export class PathgradeReporter implements Reporter {
             trial,
             diagnostics,
         };
+    }
+
+    private isReportableEntry(entry: TestEntry): boolean {
+        return entry.state !== 'skipped' && entry.state !== 'pending';
     }
 
     private printCliSummary(groups: GroupedResult[]): void {

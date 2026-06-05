@@ -6,11 +6,12 @@ after SDK changes.
 
 Run one agent:
 
-    npx vitest run --config examples/sdk-regression/vitest.config.mts \
-      examples/sdk-regression/test/sdk-regression-codex.eval.ts
+    npx vitest run --config evals/vitest.config.mts \
+      evals/sdk-regression/test/sdk-regression-codex.eval.ts
 
 Run the whole suite (all three agents + offline surface smoke):
 
-    npx vitest run --config examples/sdk-regression/vitest.config.mts
+    npx vitest run --config evals/vitest.config.mts \
+      evals/sdk-regression/test
 
 Features covered (see `test/shared.ts` for the coverage matrix).

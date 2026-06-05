@@ -5,14 +5,29 @@ import {
     AgentTurnResult,
     BaseAgent,
     EnvironmentHandle,
+    getRuntimeEnv,
     getWorkspacePath,
 } from '../../types.js';
-import type { ToolEvent } from '../../tool-events.js';
+import { mountMcpForCodexAppServer } from '../../providers/mcp-runtime-mounting.js';
+import { assertMcpSecretReferencesReady } from '../../providers/mcp-config.js';
+import {
+    buildSummary,
+    enrichSkillEvents,
+    extractSkillNameFromPath,
+    inferCodexExecAction,
+    type ToolEvent,
+} from '../../tool-events.js';
 import {
     requireAskBusForLiveBatches,
 } from '../../sdk/ask-bus/bus.js';
 import { toAskUserToolEvent } from '../../sdk/ask-bus/projection.js';
 import type { AskBus, AskQuestion } from '../../sdk/ask-bus/types.js';
+import {
+    decideMcpToolCall,
+    redactMcpSecrets,
+    type McpSafetyOptions,
+    type McpToolPolicyDecision,
+} from '../../sdk/mcp-safety.js';
 import {
     createAppServerSessionHandle,
     spawnAppServerTransport,
@@ -29,7 +44,7 @@ import type {
     ToolRequestUserInputParams,
 } from './protocol/index.js';
 
-const DEFAULT_MODEL = 'gpt-5.3-codex';
+const DEFAULT_MODEL = 'gpt-5.4';
 const TURN_COMPLETED_METHOD = 'turn/completed';
 
 type SandboxMode = 'workspace-write' | 'danger-full-access';
@@ -51,7 +66,10 @@ export interface CodexAppServerAgentDeps {
      * {@link createAppServerSessionHandle} with `child: null` — dispose() then
      * only closes the transport and does not attempt any kill sequence.
      */
-    createTransport?: (ctx: { workspacePath: string }) => Promise<AppServerSessionHandle>;
+    createTransport?: (ctx: {
+        workspacePath: string;
+        env: NodeJS.ProcessEnv;
+    }) => Promise<AppServerSessionHandle>;
     /** Sandbox mode for `thread/start`. Default: 'workspace-write'. */
     sandboxMode?: SandboxMode;
     /** Observer for per-grant audit entries (§7 of design decisions). */
@@ -70,11 +88,24 @@ interface ActiveTurnState {
     signalFailure?: (message: string) => void;
 }
 
+interface McpServerStartupStatusParams {
+    name?: string;
+    status?: string;
+    error?: string | null;
+}
+
 interface CodexAgentMessageItem {
     type: 'agentMessage';
     id: string;
     text: string;
     phase?: string;
+}
+
+interface CodexCommandExecutionAction {
+    type?: string;
+    name?: string;
+    path?: string;
+    command?: string;
 }
 
 interface CodexCommandExecutionItem {
@@ -83,6 +114,7 @@ interface CodexCommandExecutionItem {
     command: string;
     status?: 'inProgress' | 'completed' | 'failed';
     cwd?: string;
+    commandActions?: CodexCommandExecutionAction[];
 }
 
 interface CodexFileChangeItem {
@@ -91,16 +123,88 @@ interface CodexFileChangeItem {
     changes: Array<{ path: string; kind?: unknown; diff?: string }>;
 }
 
+interface CodexMcpToolCallItem {
+    type: 'mcpToolCall';
+    id: string;
+    server: string;
+    tool: string;
+    status?: string;
+    arguments?: unknown;
+    result?: unknown;
+    error?: { message?: string } | null;
+    durationMs?: number | null;
+}
+
 type CodexItem =
     | CodexAgentMessageItem
     | CodexCommandExecutionItem
     | CodexFileChangeItem
+    | CodexMcpToolCallItem
     | { type: string; id?: string };
 
 interface ItemCompletedParams {
     item: CodexItem;
     threadId?: string;
     turnId?: string;
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+    }
+    return {};
+}
+
+function isMcpToolCallApprovalRequest(params: unknown): boolean {
+    const meta = recordFromUnknown(recordFromUnknown(params)._meta);
+    return meta.codex_approval_kind === 'mcp_tool_call';
+}
+
+function extractMcpToolApprovalRequest(params: unknown): {
+    serverName: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+} | undefined {
+    if (!isMcpToolCallApprovalRequest(params)) return undefined;
+    const record = recordFromUnknown(params);
+    const meta = recordFromUnknown(record._meta);
+    const serverName = typeof record.serverName === 'string' ? record.serverName : undefined;
+    const toolName =
+        typeof meta.toolName === 'string' ? meta.toolName
+            : typeof meta.tool_name === 'string' ? meta.tool_name
+                : typeof meta.name === 'string' ? meta.name
+                    : typeof record.message === 'string' ? parseToolNameFromApprovalMessage(record.message)
+                        : undefined;
+    if (!serverName || !toolName) return undefined;
+    return {
+        serverName,
+        toolName,
+        arguments: recordFromUnknown(meta.tool_params),
+    };
+}
+
+function parseToolNameFromApprovalMessage(message: string): string | undefined {
+    return message.match(/tool\s+"([^"]+)"/i)?.[1];
+}
+
+function extractCommandActionSkillName(action: CodexCommandExecutionAction): string | undefined {
+    if (typeof action.path === 'string') {
+        const direct = extractSkillNameFromPath(action.path);
+        if (direct) return direct;
+        const embedded = extractSkillNameFromText(action.path);
+        if (embedded) return embedded;
+    }
+    return typeof action.command === 'string' ? extractSkillNameFromText(action.command) : undefined;
+}
+
+function extractSkillNameFromText(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    return value.match(/(?:^|[/\s"'])\.(?:agents|claude)\/skills\/([^/\s"']+)\/SKILL\.md(?:$|[\s"'])/)?.[1];
+}
+
+function extractSkillPathFromText(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    return value.match(/(?:^|[\s"'])(?<path>(?:\/|\.{1,2}\/)?[^\s"']*(?:\.agents|\.claude)\/skills\/[^/\s"']+\/SKILL\.md)(?:$|[\s"'])/)?.groups?.path;
 }
 
 function projectItemIntoTurn(item: CodexItem, turn: ActiveTurnState): void {
@@ -113,16 +217,39 @@ function projectItemIntoTurn(item: CodexItem, turn: ActiveTurnState): void {
     }
     if (item.type === 'commandExecution') {
         const cmd = item as CodexCommandExecutionItem;
+        const action = inferCodexExecAction(cmd.command);
+        const skillPath = extractSkillPathFromText(cmd.command);
+        const args: Record<string, unknown> = {
+            command: cmd.command,
+            ...(skillPath ? { path: skillPath } : {}),
+        };
         turn.nonAskToolEvents.push({
-            action: 'run_shell',
+            action,
             provider: 'codex',
             providerToolName: 'commandExecution',
             turnNumber: turn.turnNumber,
-            arguments: { command: cmd.command },
-            summary: `run_shell: ${cmd.command}`,
+            arguments: args,
+            summary: buildSummary(action, 'commandExecution', args),
             confidence: 'high',
             rawSnippet: JSON.stringify(cmd),
         });
+        const recordedSkills = new Set<string>();
+        for (const action of cmd.commandActions ?? []) {
+            const skillName = extractCommandActionSkillName(action) ?? extractSkillNameFromText(cmd.command);
+            if (!skillName || recordedSkills.has(skillName)) continue;
+            recordedSkills.add(skillName);
+            turn.nonAskToolEvents.push({
+                action: 'use_skill',
+                provider: 'codex',
+                providerToolName: `commandExecution.commandActions.${action.type ?? 'unknown'}`,
+                turnNumber: turn.turnNumber,
+                arguments: { path: action.path, name: action.name },
+                summary: `use_skill ${skillName}`,
+                confidence: 'high',
+                rawSnippet: JSON.stringify(action),
+                skillName,
+            });
+        }
         return;
     }
     if (item.type === 'fileChange') {
@@ -141,6 +268,94 @@ function projectItemIntoTurn(item: CodexItem, turn: ActiveTurnState): void {
         }
         return;
     }
+    if (item.type === 'mcpToolCall') {
+        const call = item as CodexMcpToolCallItem;
+        const args = recordFromUnknown(call.arguments);
+        const providerToolName = `${call.server}.${call.tool}`;
+        turn.nonAskToolEvents.push({
+            action: 'mcp_tool_call',
+            provider: 'codex',
+            providerToolName,
+            turnNumber: turn.turnNumber,
+            arguments: {
+                ...args,
+                server: call.server,
+                tool: call.tool,
+                status: call.status ?? 'unknown',
+            },
+            summary: `MCP tool ${providerToolName} ${call.status ?? 'unknown'}`,
+            confidence: 'high',
+            rawSnippet: JSON.stringify(call),
+        });
+        return;
+    }
+}
+
+function projectMcpStartupStatusIntoTurn(
+    params: McpServerStartupStatusParams,
+    turn: ActiveTurnState,
+): void {
+    const name = params.name ?? 'unknown';
+    const status = params.status ?? 'unknown';
+    const error = typeof params.error === 'string' ? params.error : undefined;
+
+    turn.nonAskToolEvents.push({
+        action: 'unknown',
+        provider: 'codex',
+        providerToolName: 'mcpServer/startupStatus/updated',
+        turnNumber: turn.turnNumber,
+        arguments: {
+            name,
+            status,
+            ...(error ? { error } : {}),
+        },
+        summary: `MCP server ${name} startup ${status}`,
+        confidence: 'high',
+        rawSnippet: JSON.stringify(params),
+    });
+
+    if (status === 'failed') {
+        const message = `MCP server ${name} failed to start${error ? `: ${error}` : ''}`;
+        turn.turnFailed = true;
+        turn.failureMessage = message;
+        turn.signalFailure?.(message);
+    }
+}
+
+function recordPolicyDeniedMcpToolCall(
+    turn: ActiveTurnState | null,
+    request: { serverName: string; toolName: string; arguments: Record<string, unknown> },
+    decision: Extract<McpToolPolicyDecision, { action: 'deny' }>,
+    rawParams: unknown,
+): void {
+    if (!turn) return;
+    const args = redactMcpSecrets(request.arguments);
+    const providerToolName = `${request.serverName}.${request.toolName}`;
+    turn.nonAskToolEvents.push({
+        action: 'mcp_tool_call',
+        provider: 'codex',
+        providerToolName,
+        turnNumber: turn.turnNumber,
+        arguments: {
+            ...args,
+            server: request.serverName,
+            tool: request.toolName,
+            status: 'policy_denied',
+            policyResult: {
+                action: 'deny',
+                reason: decision.reason,
+                message: decision.message,
+            },
+        },
+        summary: `MCP tool ${providerToolName} policy_denied`,
+        confidence: 'high',
+        rawSnippet: JSON.stringify(redactMcpSecrets(rawParams)),
+    });
+}
+
+function isLiveMcpSafetyMode(options: McpSafetyOptions | undefined): boolean {
+    const runMode = options?.runMode ?? 'mock';
+    return runMode === 'live-readonly' || runMode === 'live-sandbox' || runMode === 'live';
 }
 
 export class CodexAppServerAgent extends BaseAgent {
@@ -155,6 +370,7 @@ export class CodexAppServerAgent extends BaseAgent {
     ): Promise<AgentSession> {
         const askBus = requireAskBusForLiveBatches(options, 'CodexAppServerAgent');
         const workspacePath = getWorkspacePath(runtime);
+        const runtimeEnv = getRuntimeEnv(runtime) as NodeJS.ProcessEnv;
         const model = options?.model ?? DEFAULT_MODEL;
         const sandboxMode: SandboxMode = this.deps.sandboxMode ?? 'workspace-write';
 
@@ -169,14 +385,16 @@ export class CodexAppServerAgent extends BaseAgent {
             if (disposed) throw new Error('CodexAppServerAgent session disposed');
             if (handle) return handle.transport;
             const factory = this.deps.createTransport
-                ?? (async (ctx: { workspacePath: string }) => spawnAppServerTransport({ cwd: ctx.workspacePath }));
-            handle = await factory({ workspacePath });
+                ?? (async (ctx: { workspacePath: string; env: NodeJS.ProcessEnv }) =>
+                    spawnAppServerTransport({ cwd: ctx.workspacePath, env: ctx.env }));
+            handle = await factory({ workspacePath, env: runtimeEnv });
             const transport = handle.transport;
             transport.onServerRequest((req) => this.dispatchServerRequest(req, {
                 transport,
                 askBus,
                 activeTurn: () => activeTurn,
                 onPermissionGrant: this.deps.onPermissionGrant,
+                mcpSafety: options?.mcpSafety,
             }));
             transport.onClose((info) => {
                 closeInfo = info;
@@ -184,6 +402,16 @@ export class CodexAppServerAgent extends BaseAgent {
             transport.onNotification((n) => {
                 if (process.env.PATHGRADE_CODEX_DEBUG) {
                     console.error(`[codex app-server] notification method=${n.method} params=${JSON.stringify(n.params).slice(0, 300)}`);
+                }
+                if (n.method === 'mcpServer/startupStatus/updated') {
+                    const turn = activeTurn;
+                    if (turn) {
+                        projectMcpStartupStatusIntoTurn(
+                            (n.params ?? {}) as McpServerStartupStatusParams,
+                            turn,
+                        );
+                    }
+                    return;
                 }
                 if (n.method !== 'item/completed') return;
                 const turn = activeTurn;
@@ -217,9 +445,22 @@ export class CodexAppServerAgent extends BaseAgent {
 
             try {
                 if (threadId === null) {
+                    if (options?.mcpConfigPath && isLiveMcpSafetyMode(options.mcpSafety)) {
+                        await assertMcpSecretReferencesReady({
+                            workspacePath,
+                            mcpConfigPath: options.mcpConfigPath,
+                            env: runtimeEnv,
+                        });
+                    }
+                    const mcpConfig = options?.mcpConfigPath
+                        ? await mountMcpForCodexAppServer({
+                            workspacePath,
+                            mcpConfigPath: options.mcpConfigPath,
+                        })
+                        : undefined;
                     const resp = await t.sendRequest<{ thread: { id: string } }>(
                         'thread/start',
-                        buildThreadStartParams({ cwd: workspacePath, model, sandboxMode }),
+                        buildThreadStartParams({ cwd: workspacePath, model, sandboxMode, mcpConfig }),
                     );
                     threadId = resp.thread.id;
                 }
@@ -258,6 +499,9 @@ export class CodexAppServerAgent extends BaseAgent {
                         turn.failureMessage = msg;
                         resolve();
                     };
+                    if (turn.turnFailed) {
+                        turn.signalFailure(turn.failureMessage ?? 'turn failed');
+                    }
                     // If already closed, settle immediately.
                     if (closeInfo) {
                         if (!settled) {
@@ -373,9 +617,10 @@ export class CodexAppServerAgent extends BaseAgent {
             askBus: AskBus;
             activeTurn: () => ActiveTurnState | null;
             onPermissionGrant?: (entry: PermissionGrantLogEntry) => void;
+            mcpSafety?: McpSafetyOptions;
         },
     ): void {
-        const { transport, askBus, activeTurn, onPermissionGrant } = ctx;
+        const { transport, askBus, activeTurn, onPermissionGrant, mcpSafety } = ctx;
 
         switch (req.method) {
             case 'item/tool/requestUserInput':
@@ -410,7 +655,29 @@ export class CodexAppServerAgent extends BaseAgent {
                 transport.sendResponse(req.id, { status: 'declined' });
                 return;
             case 'mcpServer/elicitation/request':
-                transport.sendResponse(req.id, { action: 'decline' });
+                if (isMcpToolCallApprovalRequest(req.params)) {
+                    const toolRequest = extractMcpToolApprovalRequest(req.params);
+                    if (toolRequest) {
+                        const decision = decideMcpToolCall(mcpSafety, toolRequest);
+                        if (decision.action === 'deny') {
+                            recordPolicyDeniedMcpToolCall(activeTurn(), toolRequest, decision, req.params);
+                            transport.sendResponse(req.id, {
+                                action: 'decline',
+                                content: null,
+                                _meta: {
+                                    pathgrade_policy_denial: {
+                                        reason: decision.reason,
+                                        message: decision.message,
+                                    },
+                                },
+                            });
+                            return;
+                        }
+                    }
+                    transport.sendResponse(req.id, { action: 'accept', content: {}, _meta: null });
+                } else {
+                    transport.sendResponse(req.id, { action: 'decline', content: null, _meta: null });
+                }
                 return;
             case 'account/chatgptAuthTokens/refresh': {
                 const message =
@@ -483,6 +750,7 @@ function buildThreadStartParams(opts: {
     cwd: string;
     model: string;
     sandboxMode: SandboxMode;
+    mcpConfig?: Record<string, unknown>;
 }): Record<string, unknown> {
     return {
         cwd: opts.cwd,
@@ -492,6 +760,7 @@ function buildThreadStartParams(opts: {
         experimentalRawEvents: false,
         persistExtendedHistory: false,
         model: opts.model,
+        ...(opts.mcpConfig ? { config: opts.mcpConfig } : {}),
     };
 }
 
@@ -510,7 +779,7 @@ function assembleTurnResult(args: {
         .filter((s) => askBatchIds.has(s.batchId))
         .map((s) => toAskUserToolEvent(s) as unknown as ToolEvent);
 
-    const toolEvents: ToolEvent[] = [...askEvents, ...activeTurn.nonAskToolEvents];
+    const toolEvents: ToolEvent[] = enrichSkillEvents([...askEvents, ...activeTurn.nonAskToolEvents]);
     const rawOutput = exitCode === 0
         ? message
         : [
