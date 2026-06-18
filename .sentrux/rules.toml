@@ -1,0 +1,30 @@
+# Pathgrade architecture rules for the runner-agnostic core refactor.
+#
+# Pillar 1 is intentionally narrow: result capture may live next to the SDK,
+# but it must stay independent from Vitest/plugin lifecycle ownership.
+
+[constraints]
+max_cycles = 2
+max_cc = 50
+max_file_lines = 2000
+no_god_files = false
+
+[[boundaries]]
+from = "src/sdk/result-capture.ts"
+to = "src/plugin/*"
+reason = "Pillar 1 result capture must stay SDK-adjacent and must not depend on the Vitest plugin lifecycle."
+
+[[boundaries]]
+from = "src/sdk/result-capture/*"
+to = "src/plugin/*"
+reason = "Pillar 1 result capture must stay SDK-adjacent and must not depend on the Vitest plugin lifecycle."
+
+[[boundaries]]
+from = "src/sdk/result-capture.ts"
+to = "src/reporters/*"
+reason = "Result capture emits plain events; reporting consumes later normalized data."
+
+[[boundaries]]
+from = "src/sdk/result-capture/*"
+to = "src/reporters/*"
+reason = "Result capture emits plain events; reporting consumes later normalized data."

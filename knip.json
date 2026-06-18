@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    "bin/pathgrade.js",
+    "src/pathgrade.ts",
+    "src/sdk/index.ts",
+    "src/plugin/index.ts",
+    "src/core/mcp-mock.ts",
+    "vitest.config.ts",
+    "evals/vitest.config.mts",
+    "examples/**/vitest.config.mts",
+    "scripts/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "evals/**/*.ts",
+    "examples/**/*.ts",
+    "scripts/**/*.ts",
+    "scorers/**/*.ts"
+  ],
+  "ignore": [
+    "tests/fixtures/**"
+  ]
+}
