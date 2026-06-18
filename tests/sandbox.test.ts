@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
+import * as net from 'net';
 import { createSandbox } from '../src/providers/sandbox.js';
 
 describe('createSandbox', () => {
@@ -857,6 +858,36 @@ describe('createSandbox', () => {
             expect(await fs.readFile(path.join(copiedDir, 'settings.json'), 'utf-8')).toBe('{}');
         } finally {
             process.env.HOME = originalHome;
+            await fs.remove(fakeHome);
+        }
+    });
+
+    it('copyFromHome skips transient socket files inside copied directories', async () => {
+        const fakeHome = path.join(os.tmpdir(), `pg-home-${Math.random().toString(36).slice(2)}`);
+        const socketPath = path.join(fakeHome, '.codex', 'vendor_imports', 'skills', '.git', 'fsmonitor--daemon.ipc');
+        await fs.ensureDir(path.dirname(socketPath));
+        await fs.writeFile(path.join(fakeHome, '.codex', 'auth.json'), '{"auth_mode":"chatgpt"}');
+
+        const server = net.createServer();
+        await new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(socketPath, resolve);
+        });
+
+        const originalHome = process.env.HOME;
+        process.env.HOME = fakeHome;
+        try {
+            const sandbox = await createSandbox({
+                agent: 'codex',
+                copyFromHome: ['.codex'],
+            });
+            sandboxes.push(sandbox.rootDir);
+
+            expect(await fs.readFile(path.join(sandbox.homePath, '.codex', 'auth.json'), 'utf-8')).toBe('{"auth_mode":"chatgpt"}');
+            expect(await fs.pathExists(path.join(sandbox.homePath, '.codex', 'vendor_imports', 'skills', '.git', 'fsmonitor--daemon.ipc'))).toBe(false);
+        } finally {
+            process.env.HOME = originalHome;
+            await new Promise<void>((resolve) => server.close(() => resolve()));
             await fs.remove(fakeHome);
         }
     });

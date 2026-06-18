@@ -5,6 +5,7 @@
  * when copying workspace/skill directories into the sandbox.
  */
 import * as path from 'path';
+import * as fs from 'fs';
 import picomatch from 'picomatch';
 
 /**
@@ -67,4 +68,13 @@ export function createCopyFilter(ignorePatterns: readonly string[]): (src: strin
         }
         return true;
     };
+}
+
+/**
+ * fs-extra cannot copy sockets, FIFOs, or device files. Host config caches can
+ * contain transient sockets, so filter them out before copy() reaches them.
+ */
+export function isPortableCopyEntry(src: string): boolean {
+    const stat = fs.lstatSync(src);
+    return stat.isFile() || stat.isDirectory() || stat.isSymbolicLink();
 }

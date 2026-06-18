@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
-import { DEFAULT_COPY_IGNORE, createCopyFilter } from './copy-filter.js';
+import { DEFAULT_COPY_IGNORE, createCopyFilter, isPortableCopyEntry } from './copy-filter.js';
 
 
 export interface SandboxConfig {
@@ -90,7 +90,7 @@ export async function createSandbox(spec: SandboxConfig): Promise<Sandbox> {
             if (await fs.pathExists(srcPath)) {
                 const destPath = path.join(homePath, relPath);
                 await fs.ensureDir(path.dirname(destPath));
-                await fs.copy(srcPath, destPath);
+                await fs.copy(srcPath, destPath, { filter: isPortableCopyEntry });
             }
         }
     }

@@ -6,6 +6,7 @@ import { stageMcpConfig } from './mcp-config.js';
 import { sandboxExec } from './sandbox-exec.js';
 import { resolveCredentials } from './credentials.js';
 import type { CommandResult } from '../types.js';
+import { isPortableCopyEntry } from './copy-filter.js';
 
 export type { McpDeclaration } from './mcp-config.js';
 
@@ -25,7 +26,7 @@ async function copyPathsFromHostHome(pathsToCopy: string[], sandboxHomePath: str
         if (!await fs.pathExists(srcPath)) continue;
         const destPath = path.join(sandboxHomePath, relPath);
         await fs.ensureDir(path.dirname(destPath));
-        await fs.copy(srcPath, destPath);
+        await fs.copy(srcPath, destPath, { filter: isPortableCopyEntry });
     }
 }
 
