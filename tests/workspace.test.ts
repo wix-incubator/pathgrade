@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
-import { prepareWorkspace, linkPathsFromHostHome, Workspace } from '../src/providers/workspace.js';
+import { prepareWorkspace, linkPathsFromHostHome, removeSandboxRoot, Workspace } from '../src/providers/workspace.js';
 
 describe('prepareWorkspace — MCP config', () => {
     let workspace: Workspace | undefined;
@@ -57,6 +57,44 @@ describe('prepareWorkspace — env passthrough', () => {
 
         const result = await workspace.exec('echo $MY_API_KEY');
         expect(result.stdout.trim()).toBe('secret123');
+    });
+});
+
+describe('removeSandboxRoot', () => {
+    it('keeps retrying transient ENOTEMPTY cleanup races beyond the old short retry window', async () => {
+        let attempts = 0;
+        const remove = vi.fn(async () => {
+            attempts++;
+            if (attempts <= 6) {
+                throw Object.assign(new Error('directory not empty'), { code: 'ENOTEMPTY' });
+            }
+        });
+        const sleep = vi.fn(async () => {});
+
+        await removeSandboxRoot('/tmp/pathgrade-racy-cleanup', {
+            remove,
+            sleep,
+            retryDelaysMs: [1, 2, 3, 4, 5, 6],
+        });
+
+        expect(remove).toHaveBeenCalledTimes(7);
+        expect(sleep).toHaveBeenCalledTimes(6);
+    });
+
+    it('does not retry non-cleanup errors', async () => {
+        const error = Object.assign(new Error('permission denied by policy'), { code: 'EACCES' });
+        const remove = vi.fn(async () => {
+            throw error;
+        });
+        const sleep = vi.fn(async () => {});
+
+        await expect(removeSandboxRoot('/tmp/pathgrade-bad-cleanup', {
+            remove,
+            sleep,
+        })).rejects.toBe(error);
+
+        expect(remove).toHaveBeenCalledTimes(1);
+        expect(sleep).not.toHaveBeenCalled();
     });
 });
 

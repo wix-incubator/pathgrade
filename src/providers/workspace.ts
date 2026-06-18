@@ -19,6 +19,49 @@ export interface Workspace {
     dispose(): Promise<void>;
 }
 
+const SANDBOX_REMOVE_RETRY_DELAYS_MS = [
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    2_000,
+    3_000,
+    5_000,
+];
+
+interface RemoveSandboxRootOptions {
+    remove?: (target: string) => Promise<void>;
+    sleep?: (ms: number) => Promise<void>;
+    retryDelaysMs?: readonly number[];
+}
+
+function isRetryableRemoveError(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ENOTEMPTY' || code === 'EBUSY' || code === 'EPERM';
+}
+
+export async function removeSandboxRoot(
+    rootDir: string,
+    opts: RemoveSandboxRootOptions = {},
+): Promise<void> {
+    const remove = opts.remove ?? ((target) => fs.remove(target));
+    const sleep = opts.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const retryDelaysMs = opts.retryDelaysMs ?? SANDBOX_REMOVE_RETRY_DELAYS_MS;
+
+    for (let attempt = 0; ; attempt++) {
+        try {
+            await remove(rootDir);
+            return;
+        } catch (error) {
+            if (!isRetryableRemoveError(error) || attempt >= retryDelaysMs.length) {
+                throw error;
+            }
+            await sleep(retryDelaysMs[attempt]);
+        }
+    }
+}
+
 async function copyPathsFromHostHome(pathsToCopy: string[], sandboxHomePath: string): Promise<void> {
     const realHome = os.homedir();
     for (const relPath of pathsToCopy) {
@@ -71,17 +114,7 @@ export async function prepareWorkspace(spec: SandboxConfig): Promise<Workspace> 
                 if (disposed) return;
                 disposed = true;
 
-                for (let attempt = 0; attempt < 4; attempt++) {
-                    try {
-                        await fs.remove(rootDir);
-                        return;
-                    } catch (error) {
-                        const code = (error as NodeJS.ErrnoException).code;
-                        const retryable = code === 'ENOTEMPTY' || code === 'EBUSY' || code === 'EPERM';
-                        if (!retryable || attempt === 3) throw error;
-                        await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
-                    }
-                }
+                await removeSandboxRoot(rootDir);
             },
         };
     } catch (error) {
