@@ -43,6 +43,12 @@ export type {
     AskUserToolEventQuestionArgument,
 } from './ask-bus/projection.js';
 export { buildAskBatchLogEntries } from './agent-result-log.js';
+export {
+    emitEvalResult,
+    resetAllResultObserversForTests,
+    resetUserResultObservers,
+    subscribeToEvalResults,
+} from './result-capture.js';
 export { getAgentCapabilities } from './types.js';
 export type {
     AgentTransport,
@@ -127,6 +133,13 @@ export type { ConversationWindow, ConversationWindowOptions } from './conversati
 export type { JudgePipelineOptions } from './judge-pipeline.js';
 export type { RunScorerOptions } from './run-scorer.js';
 export type { OnScorerErrorMode } from './evaluate.js';
+export type {
+    EvalResultEvent,
+    EvalResultObserver,
+    ResultObserverHandle,
+    ResultObserverOptions,
+    ResultObserverOwner,
+} from './result-capture.js';
 export type { RunSnapshot } from './snapshots.js';
 export type {
     ExpectedMcpStartupStatus,

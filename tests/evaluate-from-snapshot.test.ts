@@ -6,6 +6,7 @@ import type { Agent, JudgeScorer, Scorer } from '../src/sdk/types.js';
 import type { CommandResult, LogEntry } from '../src/types.js';
 import type { ToolEvent } from '../src/tool-events.js';
 import { buildRunSnapshot, evaluate, setRuntime, resetRuntime } from '../src/sdk/index.js';
+import { resetAllResultObserversForTests, subscribeToEvalResults } from '../src/sdk/result-capture.js';
 import { createMockLLM } from '../src/utils/llm-mocks.js';
 
 const mockLLMCall = vi.fn().mockResolvedValue({
@@ -59,6 +60,7 @@ describe('evaluate.fromSnapshot', () => {
 
     afterEach(async () => {
         resetRuntime();
+        resetAllResultObserversForTests();
         for (const tempPath of tempPaths) {
             await fs.remove(tempPath).catch(() => {});
         }
@@ -133,6 +135,36 @@ describe('evaluate.fromSnapshot', () => {
 
         expect(replayed.score).toBe(live.score);
         expect(replayed.scorers).toEqual(live.scorers);
+    });
+
+    it('does not emit live result-capture events during offline replay', async () => {
+        const snapshotDir = path.join(os.tmpdir(), `pg-from-snapshot-capture-${Math.random().toString(36).slice(2)}`);
+        tempPaths.push(snapshotDir);
+        await fs.ensureDir(snapshotDir);
+        const snapshotPath = path.join(snapshotDir, 'run-snapshot.json');
+        await fs.writeJSON(snapshotPath, buildRunSnapshot({
+            agent: 'codex',
+            messages: [
+                { role: 'user', content: 'Do the thing' },
+                { role: 'agent', content: 'Done' },
+            ],
+            log: [],
+            conversationResult: {
+                turns: 1,
+                completionReason: 'until',
+                turnTimings: [{ turn: 1, durationMs: 25 }],
+                stepResults: [],
+            },
+            workspace: snapshotDir,
+        }), { spaces: 2 });
+        const events: unknown[] = [];
+
+        subscribeToEvalResults((event) => events.push(event));
+        await evaluate.fromSnapshot(snapshotPath, [
+            { type: 'check', name: 'passes', weight: 1, fn: () => true },
+        ]);
+
+        expect(events).toEqual([]);
     });
 
     it('uses the reconstructed transcript for judge scorers', async () => {

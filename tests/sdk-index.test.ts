@@ -13,6 +13,12 @@ describe('sdk public exports', () => {
         expect(sdk.AskBusTimeoutError).toBeTypeOf('function');
     });
 
+    it('exports result-capture observer helpers from the public SDK entrypoint', async () => {
+        const sdk = await import('../src/sdk/index.js');
+        expect(sdk.subscribeToEvalResults).toBeTypeOf('function');
+        expect(sdk.resetUserResultObservers).toBeTypeOf('function');
+    });
+
     it('requireAskBusForLiveBatches throws when askBus is missing', async () => {
         const { requireAskBusForLiveBatches } = await import('../src/sdk/index.js');
         expect(() => requireAskBusForLiveBatches(undefined, 'TestDriver')).toThrow(/TestDriver/);

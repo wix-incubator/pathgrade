@@ -12,6 +12,7 @@ import type { ToolEvent } from '../tool-events.js';
 import { extractSkillsFromLog } from '../tool-events.js';
 import type { TrialResult, ScorerResult } from '../types.js';
 import { getRuntime } from './eval-runtime.js';
+import { emitEvalResult } from './result-capture.js';
 import { runJudgePipeline } from './judge-pipeline.js';
 import { runScorer } from './run-scorer.js';
 import { createLLMClient } from '../utils/llm.js';
@@ -121,7 +122,7 @@ function makeEvaluateAgent() {
                 conversationCost,
             ),
         };
-        getRuntime().onResult(recordedResult, agent);
+        emitEvalResult({ result: recordedResult, agent });
         maybeThrowOnScorerErrors(recordedResult, opts?.onScorerError ?? 'skip');
         return recordedResult;
     };

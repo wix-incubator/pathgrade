@@ -1,5 +1,5 @@
-import { setRuntime } from '../sdk/eval-runtime.js';
 import type { Agent, PathgradeTestMeta, RecordedEvalResult } from '../sdk/types.js';
+import { subscribeToEvalResults, type ResultObserverHandle } from '../sdk/result-capture.js';
 import { buildDiagnosticsReport } from '../reporters/diagnostics.js';
 
 // Extend vitest's TaskMeta to carry pathgrade results from worker → reporter.
@@ -18,6 +18,7 @@ type AfterAllFn = (fn: () => Promise<void>) => void;
 const pendingAgents: Set<Agent> = new Set();
 const agentTaskIds = new WeakMap<Agent, string>();
 const agentResults = new WeakMap<Agent, PathgradeTestMeta[]>();
+let resultCaptureHandle: ResultObserverHandle | null = null;
 
 function currentTaskId(): string {
     try {
@@ -152,10 +153,15 @@ async function flushAll(): Promise<void> {
 
 function reset(): void {
     pendingAgents.clear();
+    resultCaptureHandle?.unsubscribe();
+    resultCaptureHandle = null;
 }
 
 function install(afterEach: AfterEachFn, afterAll?: AfterAllFn): void {
-    setRuntime({ onResult });
+    resultCaptureHandle = subscribeToEvalResults(
+        ({ result, agent }) => onResult(result, agent),
+        { owner: 'adapter', key: 'vitest-lifecycle' },
+    );
     afterEach(async ({ task }) => flush(task));
     if (afterAll) afterAll(async () => flushAll());
 }

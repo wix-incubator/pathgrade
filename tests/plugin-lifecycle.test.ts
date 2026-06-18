@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { lifecycle } from '../src/plugin/lifecycle.js';
-import { getRuntime, resetRuntime } from '../src/sdk/eval-runtime.js';
+import { resetRuntime } from '../src/sdk/eval-runtime.js';
+import { emitEvalResult, resetAllResultObserversForTests } from '../src/sdk/result-capture.js';
 import { createMockLLM } from '../src/utils/llm-mocks.js';
 import type { Agent, RecordedEvalResult, PathgradeTestMeta } from '../src/sdk/types.js';
 
 afterEach(async () => {
     lifecycle.reset();
     resetRuntime();
+    resetAllResultObserversForTests();
 });
 
 function fakeResult(score: number): RecordedEvalResult {
@@ -124,14 +126,14 @@ describe('plugin lifecycle', () => {
         expect(results[1].score).toBe(0.3);
     });
 
-    it('install() wires runtime onResult to the lifecycle callback', async () => {
+    it('install() subscribes adapter capture that survives runtime reset', async () => {
         lifecycle.install(afterEach);
 
         const agent = fakeAgent();
         lifecycle.trackAgent(agent);
 
-        const runtime = getRuntime();
-        runtime.onResult(fakeResult(0.42), agent);
+        resetRuntime();
+        emitEvalResult({ result: fakeResult(0.42), agent });
 
         const task = fakeTask();
         await lifecycle.flush(task);
