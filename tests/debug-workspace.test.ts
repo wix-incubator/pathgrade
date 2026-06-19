@@ -1,8 +1,10 @@
+import '../src/plugin/setup.js';
 import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
 import { createAgent } from '../src/sdk/index.js';
+import { runWithCaseContext } from '../src/sdk/case-context.js';
 import type { Agent } from '../src/sdk/types.js';
 
 describe('debug workspace persistence', () => {
@@ -49,6 +51,29 @@ describe('debug workspace persistence', () => {
 
         expect(await fs.pathExists(path.join(customDest, 'report.txt'))).toBe(true);
         expect(await fs.readFile(path.join(customDest, 'report.txt'), 'utf-8')).toBe('hello');
+    });
+
+    it('debug: true uses neutral case context when a runner case is active', async () => {
+        const fakeEvalDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-debug-context-eval-'));
+        debugDirs.push(fakeEvalDir);
+        debugDirs.push(path.join(__dirname, 'pathgrade-debug'));
+        const fakeEvalFile = path.join(fakeEvalDir, 'context-driven.eval.ts');
+
+        agent = await runWithCaseContext({
+            caseId: 'case-debug-context',
+            caseName: 'Context Driven Debug Name',
+            filePath: fakeEvalFile,
+            scope: 'runner-case',
+        }, () => createAgent({ debug: true }));
+
+        await fs.writeFile(path.join(agent.workspace, 'context.txt'), 'from context');
+
+        await agent.dispose();
+        agent = undefined;
+
+        const copied = path.join(fakeEvalDir, 'pathgrade-debug', 'context-driven-debug-name', 'context.txt');
+        expect(await fs.pathExists(copied)).toBe(true);
+        expect(await fs.readFile(copied, 'utf-8')).toBe('from context');
     });
 
     it('no debug option — workspace cleaned up, no debug dir created', async () => {

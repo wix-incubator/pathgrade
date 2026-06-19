@@ -28,6 +28,7 @@ import type { LLMPort } from '../utils/llm-types.js';
 import { buildRunSnapshot } from './snapshots.js';
 import { buildModelAgentResultLogEntry } from './agent-result-log.js';
 import { getVisibleAssistantMessage } from './visible-turn.js';
+import { getCurrentCaseContext } from './case-context.js';
 import { createVerboseEmitter, type VerboseEmitter, type VerboseSink } from '../reporters/verbose-emitter.js';
 import fs from 'fs-extra';
 import * as path from 'path';
@@ -357,9 +358,9 @@ class AgentImpl implements Agent {
     async dispose(): Promise<void> {
         if (this.disposed) return;
         this.disposed = true;
-        // Do NOT call lifecycle.untrackAgent here — flush() in afterEach needs
-        // the agent to still be in pendingAgents so it can collect results
-        // (token usage, scorers, diagnostics) into task.meta.pathgrade.
+        // Runner-owned agents stay tracked until flush consumes metadata.
+        // Manual agents have no runner flush, so dispose releases them.
+        lifecycle.releaseAgent(this);
 
         if (this.debugOpt) {
             const dest = typeof this.debugOpt === 'string'
@@ -397,15 +398,14 @@ function slugify(s: string): string {
         .toLowerCase();
 }
 
-function resolveTestContext(): { name: string; dir: string } {
-    try {
-        const worker = (globalThis as any).__vitest_worker__;
-        const name = worker?.current?.name ? slugify(worker.current.name) : '';
-        const dir = worker?.filepath ? path.dirname(worker.filepath) : '';
-        return { name, dir };
-    } catch {
-        return { name: '', dir: '' };
-    }
+function resolveCaseDebugContext(): { name: string; dir: string } {
+    const current = getCurrentCaseContext();
+    if (current.status !== 'active') return { name: '', dir: '' };
+
+    return {
+        name: current.context.caseName ? slugify(current.context.caseName) : '',
+        dir: current.context.filePath ? path.dirname(current.context.filePath) : '',
+    };
 }
 
 export async function createAgent(opts: AgentOptions): Promise<Agent> {
@@ -415,8 +415,8 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
         : undefined;
     const timeoutSetting = opts.timeout ?? 300;
 
-    // Capture test context now, while vitest state is available
-    const testCtx = opts.debug ? resolveTestContext() : { name: '', dir: '' };
+    // Capture runner context now; adapters own installation and restoration.
+    const testCtx = opts.debug ? resolveCaseDebugContext() : { name: '', dir: '' };
 
     const { timeout: _, mcpMock, mcpConfigFile, agent: __, debug: ___, model: ____, transport: _____, mcpSafety: ______, ...rest } = opts;
     const workspace = await prepareWorkspace({
