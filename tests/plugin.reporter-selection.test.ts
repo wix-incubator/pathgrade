@@ -132,6 +132,31 @@ describe('PathgradeReporter — selection sidecar merge (Issue 11)', () => {
         expect(warnSpy).toHaveBeenCalled();
         cwdSpy.mockRestore();
     });
+
+    it('does not read selection sidecars when there are no reportable cases', async () => {
+        const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/tmp/p4');
+        const { PathgradeReporter } = await import('../src/plugin/reporter.js');
+        const fs = (await import('fs-extra')).default;
+        vi.mocked(fs.pathExists).mockResolvedValue(true as any);
+        vi.mocked(fs.readJSON).mockRejectedValue(new Error('unexpected token'));
+
+        const reporter = new PathgradeReporter({ reporter: 'cli' });
+        await reporter.onTestRunEnd([{
+            children: {
+                allTests: () => [{
+                    ...makeTestCase(),
+                    meta: () => ({ pathgrade: [] }),
+                    result: () => ({ state: 'skipped' }),
+                }],
+            },
+        }] as any);
+
+        expect(fs.readJSON).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+            '  [pathgrade] warning: empty results for "trial 1" — evaluate() may not have been called',
+        );
+        cwdSpy.mockRestore();
+    });
 });
 
 // Silence unused import warning — path is useful for future reference.
