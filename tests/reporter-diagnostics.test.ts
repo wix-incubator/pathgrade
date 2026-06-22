@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as path from 'path';
-import { buildDiagnosticsReport } from '../src/reporters/diagnostics.js';
+import { buildDiagnosticsReport } from '../src/sdk/diagnostics.js';
 
 vi.mock('fs-extra', () => {
     const mock = {

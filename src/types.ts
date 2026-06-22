@@ -1,4 +1,4 @@
-import type { DiagnosticsReport } from './reporters/diagnostics.js';
+import type { DiagnosticsReport } from './sdk/diagnostics.js';
 import type { RuntimePolicyDescriptor } from './sdk/runtime-policy.js';
 import type { LLMPort } from './utils/llm-types.js';
 

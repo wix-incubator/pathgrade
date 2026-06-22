@@ -17,7 +17,7 @@ import type {
 } from './types.js';
 import type { McpSafetyOptions } from './mcp-safety.js';
 import { resolveAgentName, resolveCodexTransport } from './agent-resolution.js';
-import { lifecycle } from '../plugin/lifecycle.js';
+import { lifecycleCore } from './lifecycle.js';
 import { ChatSessionImpl } from './chat.js';
 import { runConversation } from './converse.js';
 import { createPersona } from './persona.js';
@@ -360,7 +360,7 @@ class AgentImpl implements Agent {
         this.disposed = true;
         // Runner-owned agents stay tracked until flush consumes metadata.
         // Manual agents have no runner flush, so dispose releases them.
-        lifecycle.releaseAgent(this);
+        lifecycleCore.releaseAgent(this);
 
         if (this.debugOpt) {
             const dest = typeof this.debugOpt === 'string'
@@ -441,6 +441,6 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
     });
 
     const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety);
-    lifecycle.trackAgent(agent);
+    lifecycleCore.registerAgent(agent);
     return agent;
 }

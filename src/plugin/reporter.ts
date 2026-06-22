@@ -4,7 +4,7 @@ import type { Reporter, TestModule, TestCase, TestSuite } from 'vitest/node';
 import type { PathgradePluginOptions } from '../sdk/types.js';
 import type { PathgradeTestMeta } from '../sdk/types.js';
 import type { EvalReport, PathgradeGroupReport, PathgradeReport, StrippedTrialResult, TrialResult } from '../types.js';
-import type { DiagnosticsReport } from '../reporters/diagnostics.js';
+import type { DiagnosticsReport } from '../sdk/diagnostics.js';
 import { extractSkillsFromLog } from '../tool-events.js';
 import { fmt, header } from '../utils/cli.js';
 import { getPathgradeDir } from '../reporters/results-path.js';

@@ -23,7 +23,7 @@ allowlist_cap() {
     tests/codex-app-server-agent.test.ts) echo 1285 ;;
     tests/converse.test.ts) echo 608 ;;
     tests/grading-pipeline.test.ts) echo 691 ;;
-    tests/sandbox.test.ts) echo 885 ;;
+    tests/sandbox.test.ts) echo 916 ;;
     *)
       return 1
       ;;

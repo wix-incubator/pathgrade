@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildDiagnosticsReport, formatDiagnostics } from '../src/reporters/diagnostics.js';
+import { buildDiagnosticsReport } from '../src/sdk/diagnostics.js';
+import { formatDiagnostics } from '../src/reporters/diagnostics.js';
 import type { LogEntry } from '../src/types.js';
 
 describe('unified diagnostics module', () => {

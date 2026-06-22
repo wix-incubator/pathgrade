@@ -2,7 +2,7 @@ import type { CommandResult, LogEntry } from '../types.js';
 import type { ToolAction } from '../tool-events.js';
 import type { MockMcpServerDescriptor } from '../core/mcp-mock.types.js';
 import type { TrialResult } from '../types.js';
-import type { DiagnosticsReport } from '../reporters/diagnostics.js';
+import type { DiagnosticsReport } from './diagnostics.js';
 import type { LLMPort } from '../utils/llm-types.js';
 import type { McpSafetyOptions } from './mcp-safety.js';
 

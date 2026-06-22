@@ -7,7 +7,7 @@ import {
     type CaseContext,
     type CaseContextProviderHandle,
 } from '../sdk/case-context.js';
-import { buildDiagnosticsReport } from '../reporters/diagnostics.js';
+import { lifecycleCore, type LifecycleAgentOwner } from '../sdk/lifecycle.js';
 import path from 'node:path';
 
 // Extend vitest's TaskMeta to carry pathgrade results from worker → reporter.
@@ -27,22 +27,6 @@ type AroundEachFn = (
     ) => Promise<void>,
 ) => void;
 
-// Agent tracking: each test creates its own agent(s) and calls evaluate() on them.
-// Results are keyed by agent reference, which is unique per test.
-const pendingAgents: Set<Agent> = new Set();
-type AgentOwner =
-    | { type: 'runner-case'; caseId: string }
-    | { type: 'runner-suite-shared'; caseId: string }
-    | { type: 'manual' };
-interface PendingAgentResult {
-    attribution:
-        | { type: 'runner-case'; caseId: string }
-        | { type: 'unattributed-runner' }
-        | { type: 'legacy-unowned' };
-    meta: PathgradeTestMeta;
-}
-const agentOwners = new WeakMap<Agent, AgentOwner>();
-const agentResults = new WeakMap<Agent, PendingAgentResult[]>();
 let resultCaptureHandle: ResultObserverHandle | null = null;
 let fileContextHandle: CaseContextProviderHandle | null = null;
 
@@ -94,7 +78,7 @@ function currentFileContext(): CaseContext | null {
     };
 }
 
-function currentAgentOwner(): AgentOwner {
+function currentAgentOwner(): LifecycleAgentOwner | null {
     const current = getCurrentCaseContext();
     if (current.status === 'active') {
         return current.context.scope === 'runner-case'
@@ -103,53 +87,20 @@ function currentAgentOwner(): AgentOwner {
     }
 
     const taskId = currentTaskId();
+    if (resultCaptureHandle) return null;
     return taskId ? { type: 'runner-case', caseId: taskId } : { type: 'manual' };
 }
 
-function belongsToTask(owner: AgentOwner | undefined, taskId: string): boolean {
-    return owner?.type === 'runner-case' && owner.caseId === taskId;
-}
-
-function canFlushResultsToTask(owner: AgentOwner | undefined, taskId: string): boolean {
-    if (!owner) return true;
-    if (owner.type === 'runner-case') return owner.caseId === taskId;
-    if (owner.type === 'runner-suite-shared') return true;
-    return false;
-}
-
-function currentResultAttribution(owner: AgentOwner | undefined): PendingAgentResult['attribution'] {
-    const current = getCurrentCaseContext();
-    if (current.status === 'active' && current.context.scope === 'runner-case') {
-        return { type: 'runner-case', caseId: current.context.caseId };
-    }
-    if (owner?.type === 'runner-case') return { type: 'runner-case', caseId: owner.caseId };
-
-    const taskId = currentTaskId();
-    if (taskId) return { type: 'runner-case', caseId: taskId };
-    return owner ? { type: 'unattributed-runner' } : { type: 'legacy-unowned' };
-}
-
-function resultMatchesTask(entry: PendingAgentResult, taskId: string): boolean {
-    if (entry.attribution.type === 'runner-case') return entry.attribution.caseId === taskId;
-    return entry.attribution.type === 'legacy-unowned';
-}
-
 function trackAgent(agent: Agent): void {
-    pendingAgents.add(agent);
-    agentOwners.set(agent, currentAgentOwner());
+    lifecycleCore.registerAgent(agent, currentAgentOwner());
 }
 
 function untrackAgent(agent: Agent): void {
-    pendingAgents.delete(agent);
+    lifecycleCore.untrackAgent(agent);
 }
 
 function releaseAgent(agent: Agent): void {
-    const owner = agentOwners.get(agent);
-    if (owner?.type !== 'manual') return;
-
-    pendingAgents.delete(agent);
-    agentResults.delete(agent);
-    agentOwners.delete(agent);
+    lifecycleCore.releaseAgent(agent);
 }
 
 /**
@@ -159,111 +110,27 @@ function releaseAgent(agent: Agent): void {
  * flushed but are kept alive for subsequent tests.
  */
 async function flush(task: { id: string; meta: Pick<import('vitest').TaskMeta, 'pathgrade'> }): Promise<void> {
-    const results: PathgradeTestMeta[] = [];
-    const toDispose: Agent[] = [];
-
-    for (const agent of pendingAgents) {
-        const owner = agentOwners.get(agent);
-        const belongsToThisTest = belongsToTask(owner, task.id);
-
-        const meta = agentResults.get(agent);
-        const matchingMeta = meta?.filter((entry) => resultMatchesTask(entry, task.id));
-        if (matchingMeta && matchingMeta.length > 0 && canFlushResultsToTask(owner, task.id)) {
-            // Always flush pending results, even for shared agents
-            results.push(...matchingMeta.map((entry) => entry.meta));
-            const remainingMeta = meta?.filter((entry) => !resultMatchesTask(entry, task.id)) ?? [];
-            if (remainingMeta.length > 0) {
-                agentResults.set(agent, remainingMeta);
-            } else {
-                agentResults.delete(agent);
-            }
-        }
-
-        if (belongsToThisTest) {
-            const hasResultsForTask = matchingMeta && matchingMeta.length > 0;
-            if (!hasResultsForTask) {
-                // evaluate() was never called — synthesize a trial from agent data
-                // so the reporter still surfaces token usage and command counts.
-                const synthTrial = synthesizeTrialFromAgent(agent);
-                if (synthTrial) {
-                    results.push(synthTrial);
-                }
-            }
-            pendingAgents.delete(agent);
-            toDispose.push(agent);
-        }
-    }
+    const results: PathgradeTestMeta[] = await lifecycleCore.flushCase({ caseId: task.id });
 
     if (results.length > 0) {
         task.meta.pathgrade = results;
     }
-
-    await Promise.all(toDispose.map((a) => a.dispose().catch(() => {})));
 }
 
 function onResult(result: RecordedEvalResult, agent: Agent): void {
-    if (!agentResults.has(agent)) {
-        agentResults.set(agent, []);
+    const current = getCurrentCaseContext();
+    const taskId = currentTaskId();
+    const owner = lifecycleCore.getAgentOwner(agent);
+    if (owner?.type !== 'runner-case' && (current.status !== 'active' || current.context.scope !== 'runner-case')) {
+        if (!taskId) {
+            lifecycleCore.recordResult(result, agent);
+            return;
+        }
+        lifecycleCore.recordResult(result, agent, { type: 'runner-case', caseId: taskId });
+        return;
     }
-    const owner = agentOwners.get(agent);
-    const conversationEnd = [...agent.log].reverse().find((entry) => entry.type === 'conversation_end');
-    const completionReason = conversationEnd?.completion_reason ?? (agent.log.some((entry) => entry.type === 'agent_result') ? 'completed' : undefined);
 
-    agentResults.get(agent)!.push({
-        attribution: currentResultAttribution(owner),
-        meta: {
-            score: result.score,
-            scorers: result.scorers,
-            trial: result.trial,
-            diagnostics: buildDiagnosticsReport({
-                completionReason,
-                completionDetail: conversationEnd?.completion_detail,
-                turnDetails: conversationEnd?.turn_details,
-                reactionsFired: conversationEnd?.reactions_fired,
-                score: result.score,
-                scorers: result.scorers,
-                log: agent.log,
-            }),
-        },
-    });
-}
-
-/**
- * When evaluate() is never called, synthesize a minimal trial from the agent's
- * log so the reporter still surfaces command count and token usage.
- */
-function synthesizeTrialFromAgent(agent: Agent): PathgradeTestMeta | null {
-    // Only synthesize if the agent actually ran (has log entries)
-    if (agent.log.length === 0) return null;
-
-    const nCommands = agent.log.filter((e) => e.type === 'command').length;
-    const tokenUsage = agent.llm.tokenUsage;
-    const conversationEnd = [...agent.log].reverse().find((entry) => entry.type === 'conversation_end');
-    const completionReason = conversationEnd?.completion_reason ?? (agent.log.some((entry) => entry.type === 'agent_result') ? 'completed' : undefined);
-
-    return {
-        score: 1, // Will be overridden by vitest pass/fail in the reporter
-        scorers: [],
-        trial: {
-            trial_id: 0,
-            reward: 1,
-            scorer_results: [],
-            duration_ms: 0,
-            n_commands: nCommands,
-            input_tokens: tokenUsage?.inputTokens ?? 0,
-            output_tokens: tokenUsage?.outputTokens ?? 0,
-            session_log: [...agent.log],
-        },
-        diagnostics: buildDiagnosticsReport({
-            completionReason,
-            completionDetail: conversationEnd?.completion_detail,
-            turnDetails: conversationEnd?.turn_details,
-            reactionsFired: conversationEnd?.reactions_fired,
-            score: 1,
-            scorers: [],
-            log: agent.log,
-        }),
-    };
+    lifecycleCore.recordResult(result, agent);
 }
 
 /**
@@ -273,13 +140,11 @@ function synthesizeTrialFromAgent(agent: Agent): PathgradeTestMeta | null {
  * Without this, sandboxes leak and `debug: true` folders never get written.
  */
 async function flushAll(): Promise<void> {
-    const toDispose = [...pendingAgents];
-    pendingAgents.clear();
-    await Promise.all(toDispose.map((a) => a.dispose().catch(() => {})));
+    await lifecycleCore.cleanupAll();
 }
 
 function reset(): void {
-    pendingAgents.clear();
+    lifecycleCore.reset();
     resultCaptureHandle?.unsubscribe();
     resultCaptureHandle = null;
     fileContextHandle?.restore();
