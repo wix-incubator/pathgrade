@@ -9,8 +9,16 @@ import type { JudgeScorer, ScorerContext } from '../src/sdk/types.js';
 import type { ToolCapableLLMPort } from '../src/utils/llm-types.js';
 import type { CommandResult } from '../src/types.js';
 
-/** Env-gated: runs only when APP_ANTHROPIC_API_KEY is set. */
-describe.runIf(!!process.env.APP_ANTHROPIC_API_KEY)(
+const hasDirectAnthropicKey = !!process.env.ANTHROPIC_API_KEY
+    && process.env.ANTHROPIC_API_KEY !== process.env.APP_ANTHROPIC_API_KEY;
+
+/**
+ * Env-gated: runs only when a direct Anthropic-compatible key is set. The
+ * project Vitest config maps APP_ANTHROPIC_* proxy variables into
+ * ANTHROPIC_* for ordinary tests; those proxy credentials are covered by
+ * provider unit tests and can fail independently of this live Anthropic e2e.
+ */
+describe.runIf(hasDirectAnthropicKey)(
     'runJudgeWithTools against real Anthropic',
     () => {
         it('scores a spec fixture in a sensible band using readFile', async () => {

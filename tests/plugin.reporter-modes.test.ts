@@ -108,4 +108,26 @@ describe('PathgradeReporter modes and threshold behavior', () => {
         expect(output).toContain('avg score 0.250 < threshold 0.8');
         expect(process.exitCode).toBe(1);
     });
+
+    it('preserves a nonzero adapter exit code', async () => {
+        vi.resetModules();
+        vi.doMock('../src/runners/orchestrator.js', () => ({
+            runWithAdapter: vi.fn().mockResolvedValue(9),
+        }));
+        vi.doMock('../src/runners/vitest-adapter.js', () => ({
+            createVitestAdapter: vi.fn(() => ({ name: 'mock-vitest' })),
+        }));
+
+        try {
+            const { PathgradeReporter } = await import('../src/plugin/reporter.js');
+
+            const reporter = new PathgradeReporter({ reporter: 'json' });
+            await reporter.onTestRunEnd([{ children: { allTests: () => [makeTestCase(1)] } }] as any);
+
+            expect(process.exitCode).toBe(9);
+        } finally {
+            vi.doUnmock('../src/runners/orchestrator.js');
+            vi.doUnmock('../src/runners/vitest-adapter.js');
+        }
+    });
 });

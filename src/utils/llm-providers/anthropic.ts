@@ -23,11 +23,18 @@ interface AnthropicResponse {
 }
 
 function getApiKey(env?: Record<string, string>): string | undefined {
-    return env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+    return env?.ANTHROPIC_API_KEY
+        || env?.APP_ANTHROPIC_API_KEY
+        || process.env.ANTHROPIC_API_KEY
+        || process.env.APP_ANTHROPIC_API_KEY;
 }
 
 function resolveBaseUrl(env?: Record<string, string>): string {
-    return env?.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+    return env?.ANTHROPIC_BASE_URL
+        || env?.APP_ANTHROPIC_BASE_URL
+        || process.env.ANTHROPIC_BASE_URL
+        || process.env.APP_ANTHROPIC_BASE_URL
+        || 'https://api.anthropic.com';
 }
 
 function buildHeaders(apiKey: string, useCache: boolean): Record<string, string> {

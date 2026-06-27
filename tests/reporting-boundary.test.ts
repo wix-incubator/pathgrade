@@ -12,15 +12,19 @@ describe('reporting dependency boundary', () => {
         }
     });
 
-    it('keeps the Vitest reporter as translation and presentation glue', () => {
+    it('routes the Vitest reporter through the adapter and Pathgrade-owned orchestrator', () => {
         const source = fs.readFileSync(path.join(process.cwd(), 'src/plugin/reporter.ts'), 'utf8');
 
-        expect(source).toContain("from '../reporting/vitest-edge.js'");
-        expect(source).toContain("from '../reporting/core.js'");
-        expect(source).toContain("from '../reporting/artifacts.js'");
-        expect(source).toContain('collectVitestReportGroups(testModules)');
-        expect(source).toContain('buildPathgradeReport({');
-        expect(source).toContain('writePathgradeArtifacts(outputDir, built)');
+        expect(source).toContain("from '../runners/vitest-adapter.js'");
+        expect(source).toContain("from '../runners/orchestrator.js'");
+        expect(source).toContain('createVitestAdapter({ testModules })');
+        expect(source).toContain('runWithAdapter({');
+        expect(source).not.toContain("from '../reporting/vitest-edge.js'");
+        expect(source).not.toContain("from '../reporting/core.js'");
+        expect(source).not.toContain("from '../reporting/artifacts.js'");
+        expect(source).not.toContain('collectVitestReportGroups(testModules)');
+        expect(source).not.toContain('buildPathgradeReport({');
+        expect(source).not.toContain('writePathgradeArtifacts(outputDir, built)');
         expect(source).not.toContain('private collectGroups');
         expect(source).not.toContain('private buildEvalReport');
         expect(source).not.toContain('private toTrialResult');

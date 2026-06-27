@@ -17,9 +17,7 @@ import {
     inferCodexExecAction,
     type ToolEvent,
 } from '../../tool-events.js';
-import {
-    requireAskBusForLiveBatches,
-} from '../../sdk/ask-bus/bus.js';
+import { requireAskBusForLiveBatches } from '../../sdk/ask-bus/bus.js';
 import { toAskUserToolEvent } from '../../sdk/ask-bus/projection.js';
 import type { AskBus, AskQuestion } from '../../sdk/ask-bus/types.js';
 import {
@@ -40,9 +38,8 @@ import {
     normalizeUpstreamQuestion,
     toWireAnswerMap,
 } from './wire-translators.js';
-import type {
-    ToolRequestUserInputParams,
-} from './protocol/index.js';
+import { extractTurnCompletionFailure } from './turn-completion.js';
+import type { ToolRequestUserInputParams } from './protocol/index.js';
 
 const DEFAULT_MODEL = 'gpt-5.4';
 const TURN_COMPLETED_METHOD = 'turn/completed';
@@ -474,6 +471,8 @@ export class CodexAppServerAgent extends BaseAgent {
                             settled = true;
                             off();
                             closeOff();
+                            const failure = extractTurnCompletionFailure(n.params);
+                            if (failure) Object.assign(turn, { turnFailed: true, failureMessage: failure });
                             resolve();
                         }
                     });

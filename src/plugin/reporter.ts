@@ -5,10 +5,9 @@ import type { PathgradePluginOptions } from '../sdk/types.js';
 import { fmt } from '../utils/cli.js';
 import { getPathgradeDir } from '../reporters/results-path.js';
 import { readSidecar } from '../affected/sidecar.js';
-import { collectVitestReportGroups } from '../reporting/vitest-edge.js';
-import { buildPathgradeReport } from '../reporting/core.js';
-import { writePathgradeArtifacts } from '../reporting/artifacts.js';
 import { printReportSummary } from '../reporters/report-summary.js';
+import { createVitestAdapter } from '../runners/vitest-adapter.js';
+import { runWithAdapter } from '../runners/orchestrator.js';
 
 /**
  * Custom vitest reporter that layers pathgrade aggregate statistics
@@ -22,50 +21,46 @@ export class PathgradeReporter implements Reporter {
     }
 
     async onTestRunEnd(testModules: ReadonlyArray<TestModule>): Promise<void> {
-        const groups = collectVitestReportGroups(testModules);
-        const built = buildPathgradeReport({
-            threshold: this.opts.ci?.threshold,
-            groups,
-        });
-
-        for (const warning of built.warnings) {
-            console.warn(`  [pathgrade] warning: ${warning}`);
-        }
-
-        if (built.report.groups.length === 0) return;
-
-        const selection = await readSidecar(process.cwd(), msg => {
-            console.warn(`[pathgrade] ${msg}`);
-        });
-        if (selection) {
-            built.report.selection = selection;
-        }
-
+        const cwd = process.cwd();
         const mode = this.opts.reporter ?? 'cli';
+        const outputDir = getPathgradeDir(cwd);
+        const adapter = createVitestAdapter({ testModules });
 
-        if (mode === 'cli' || mode === 'browser') {
-            printReportSummary(built.summaries, {
-                forceVerbose: this.opts.diagnostics === true || process.env.PATHGRADE_DIAGNOSTICS === '1',
-                currentTimeoutMs: this.opts.timeout != null ? this.opts.timeout * 1000 : undefined,
-            });
-        }
-
-        const outputDir = getPathgradeDir(process.cwd());
-        await writePathgradeArtifacts(outputDir, built);
-        console.log(`\n  ${fmt.dim('Results written to')} ${outputDir}\n`);
-
-        if (mode === 'browser') {
-            this.openBrowserViewer();
-        }
-
-        if (this.opts.ci?.threshold != null) {
-            const avg = built.report.overall_pass_rate;
-            if (built.report.status === 'fail') {
-                console.log(
-                    `\n  ${fmt.fail('CI THRESHOLD FAILED')}  avg score ${fmt.bold(avg.toFixed(3))} < threshold ${fmt.bold(String(this.opts.ci.threshold))}\n`,
-                );
-                process.exitCode = 1;
-            }
+        const exitCode = await runWithAdapter({
+            adapter,
+            options: {
+                cwd,
+                discovery: { cwd },
+                runnerArgs: [],
+                env: process.env,
+                artifactRoot: outputDir,
+                reporterMode: mode,
+                threshold: this.opts.ci?.threshold,
+                writeEmptyReport: false,
+                warn: warning => console.warn(warning),
+                log: () => console.log(`\n  ${fmt.dim('Results written to')} ${outputDir}\n`),
+                loadSelection: async () => (await readSidecar(cwd, msg => {
+                    console.warn(`[pathgrade] ${msg}`);
+                })) ?? undefined,
+                printSummary: summaries => {
+                    printReportSummary(summaries, {
+                        forceVerbose: this.opts.diagnostics === true || process.env.PATHGRADE_DIAGNOSTICS === '1',
+                        currentTimeoutMs: this.opts.timeout != null ? this.opts.timeout * 1000 : undefined,
+                    });
+                },
+                openBrowser: () => this.openBrowserViewer(),
+                onThresholdFailure: ({ overallPassRate, threshold }) => {
+                    const avg = overallPassRate;
+                    const configuredThreshold = this.opts.ci?.threshold ?? threshold;
+                    process.exitCode = 1;
+                    console.log(
+                        `\n  ${fmt.fail('CI THRESHOLD FAILED')}  avg score ${fmt.bold(avg.toFixed(3))} < threshold ${fmt.bold(String(configuredThreshold))}\n`,
+                    );
+                },
+            },
+        });
+        if (exitCode !== 0 && (process.exitCode === undefined || process.exitCode === 0)) {
+            process.exitCode = exitCode;
         }
     }
 

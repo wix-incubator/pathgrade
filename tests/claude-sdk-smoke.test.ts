@@ -2,7 +2,8 @@
  * Smoke test for `@anthropic-ai/claude-agent-sdk`.
  *
  * Confirms the SDK can complete one turn end-to-end against each of the two
- * auth modes pathgrade needs to support:
+ * auth modes pathgrade needs to support when explicitly enabled with
+ * `PATHGRADE_CLAUDE_SDK_SMOKE=1`:
  *
  *   1. OAuth — local `claude login` keychain credentials. Run with
  *      `ANTHROPIC_*` env vars stripped so the bundled binary falls back to
@@ -120,8 +121,16 @@ function looksLikeOAuthIsConfigured(): boolean {
     }
 }
 
+function liveClaudeSdkSmokeEnabled(): boolean {
+    return process.env.PATHGRADE_CLAUDE_SDK_SMOKE === '1';
+}
+
+const canRunOAuthSmoke = liveClaudeSdkSmokeEnabled() && looksLikeOAuthIsConfigured();
+const canRunAppAnthropicSmoke = liveClaudeSdkSmokeEnabled() && !!process.env.APP_ANTHROPIC_API_KEY;
+const hasAnyAuth = canRunOAuthSmoke || canRunAppAnthropicSmoke;
+
 describe('Claude Agent SDK smoke test', () => {
-    describe.runIf(looksLikeOAuthIsConfigured())(
+    describe.runIf(canRunOAuthSmoke)(
         'local Claude login (OAuth)',
         () => {
             it('completes one turn using keychain credentials', async () => {
@@ -135,7 +144,7 @@ describe('Claude Agent SDK smoke test', () => {
         },
     );
 
-    describe.runIf(!!process.env.APP_ANTHROPIC_API_KEY)(
+    describe.runIf(canRunAppAnthropicSmoke)(
         'APP_ANTHROPIC_* env vars',
         () => {
             it('completes one turn using the proxied API key', async () => {
@@ -162,9 +171,6 @@ describe('Claude Agent SDK smoke test', () => {
      * callback supplies a synthesized answer so the SDK can complete
      * the turn cleanly.
      */
-    const hasAnyAuth =
-        looksLikeOAuthIsConfigured() || !!process.env.APP_ANTHROPIC_API_KEY;
-
     describe.runIf(hasAnyAuth)(
         'AskUserQuestion routes through canUseTool',
         () => {

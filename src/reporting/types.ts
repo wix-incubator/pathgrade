@@ -15,9 +15,14 @@ export interface ReportGroupInput {
 }
 
 export interface ReportCaseInput {
+    caseId?: string;
     name: string;
     state: ReportCaseState;
     runnerDurationMs: number;
+    sourceRef?: string;
+    filePath?: string;
+    groupName?: string;
+    runnerCaseId?: string;
     evaluations?: readonly ReportEvaluationInput[];
     diagnostics?: DiagnosticsReport;
 }

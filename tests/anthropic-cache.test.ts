@@ -60,6 +60,20 @@ describe('Anthropic prompt caching', () => {
         const url = mockFetch.mock.calls[0][0];
         expect(url).toBe('https://custom.api.com/v1/messages');
     });
+
+    it('4: falls back to APP_ANTHROPIC_* environment variables used by live eval gates', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', '');
+        vi.stubEnv('ANTHROPIC_BASE_URL', '');
+        vi.stubEnv('APP_ANTHROPIC_API_KEY', 'app-key');
+        vi.stubEnv('APP_ANTHROPIC_BASE_URL', 'https://app-proxy.example');
+
+        await anthropicProvider.call('test prompt', {});
+
+        const url = mockFetch.mock.calls[0][0];
+        const headers = mockFetch.mock.calls[0][1].headers;
+        expect(url).toBe('https://app-proxy.example/v1/messages');
+        expect(headers['x-api-key']).toBe('app-key');
+    });
 });
 
 describe('Anthropic callWithTools', () => {
