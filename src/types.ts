@@ -242,7 +242,7 @@ export interface PathgradeSelectionReport {
 export interface PathgradeReport {
     version: 1;
     timestamp: string;
-    /** `ci.threshold` from the plugin config, if configured. */
+    /** `ci.threshold` from Pathgrade config or legacy plugin config, if configured. */
     threshold?: number;
     /** Weighted average of every individual trial score across all groups. */
     overall_pass_rate: number;

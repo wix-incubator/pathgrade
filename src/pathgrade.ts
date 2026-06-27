@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * pathgrade CLI — thin wrapper around vitest
+ * pathgrade CLI — runner-neutral wrapper around Pathgrade adapters
  *
  * Usage:
- *   pathgrade run [-- vitest-args]   Run evals via vitest (loads .env, validates API keys)
+ *   pathgrade run [-- runner-args]   Run evals via the selected adapter
  *   pathgrade init [--force]         Generate eval scaffolding
  *   pathgrade preview [browser]      View results (CLI default, or browser)
  */
@@ -12,7 +12,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { spawn } from 'child_process';
 import { runInit } from './commands/init.js';
 import { runAnalyze } from './commands/analyze.js';
 import { runValidate, runValidateAffected } from './commands/validate.js';
@@ -23,6 +22,9 @@ import { runReport } from './commands/report.js';
 import { runAffected } from './commands/affected.js';
 import { runChanged } from './commands/run-changed.js';
 import { clearSidecar } from './affected/sidecar.js';
+import { resolvePathgradeConfig } from './config/pathgrade.js';
+import { resolveRunnerAdapter } from './runners/selection.js';
+import { createVitestInvocationAdapter } from './runners/vitest-invocation.js';
 import { fmt } from './utils/cli.js';
 import { shutdown } from './utils/shutdown.js';
 
@@ -165,7 +167,7 @@ async function main() {
     }
 
     if (command === 'run' || !command || command.startsWith('-')) {
-        // pathgrade run [--changed [--since=…|--changed-files=…]] [--] [vitest-args]
+        // pathgrade run [--changed [--since=…|--changed-files=…]] [--] [runner-args]
         loadDotenv();
         validateApiKeys();
 
@@ -179,18 +181,6 @@ async function main() {
             const exitCode = await runChanged({
                 cwd: process.cwd(),
                 parsed,
-                spawnVitest: ({ argv }) => new Promise<number>(resolve => {
-                    const child = spawn('npx', ['vitest', ...argv], {
-                        stdio: 'inherit',
-                        env: {
-                            ...process.env,
-                            ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
-                            ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
-                        },
-                        shell: true,
-                    });
-                    child.on('close', code => resolve(code ?? 0));
-                }),
             });
             process.exitCode = exitCode;
             return;
@@ -201,19 +191,29 @@ async function main() {
         // run (the reporter would otherwise merge old metadata).
         await clearSidecar(process.cwd());
 
-        const child = spawn('npx', ['vitest', 'run', ...parsed.vitestArgs], {
-            stdio: 'inherit',
-            env: {
-                ...process.env,
-                ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
-                ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
-            },
-            shell: true,
-        });
-
-        child.on('close', (code) => {
-            process.exitCode = code ?? 0;
-        });
+        const env = {
+            ...process.env,
+            ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
+            ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
+        };
+        try {
+            const config = await resolvePathgradeConfig({ cwd: process.cwd() });
+            const selected = resolveRunnerAdapter({
+                adapterName: parsed.adapterName ?? config.runner.adapter,
+            });
+            const runner = createVitestInvocationAdapter();
+            if (runner.name !== selected.name) {
+                throw new Error(`Unsupported Pathgrade runner adapter: ${selected.name}`);
+            }
+            process.exitCode = await runner.run({
+                cwd: process.cwd(),
+                runnerArgs: [...config.runner.args, ...parsed.runnerArgs],
+                env,
+            });
+        } catch (err) {
+            console.error(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+        }
         return;
     }
 
@@ -224,13 +224,14 @@ async function main() {
 
 function printHelp() {
     console.log(`
-  pathgrade - Evaluate AI agent skills with vitest
+  pathgrade - Evaluate AI agent skills with a runner adapter
 
   Usage:
-    pathgrade run [-- vitest-args]   Run evals (loads .env, delegates to vitest)
+    pathgrade run [-- runner-args]   Run evals (loads .env, delegates to the selected adapter)
                      [--changed]               Run only evals affected by the current PR/change-set
                      [--since=<ref>]           Override base ref (implies git mode)
                      [--changed-files=<path>]  Use an explicit newline-delimited file list
+                     [--adapter=vitest]        Select runner adapter (only vitest is supported)
                      [--quiet]                 Suppress the run-start summary
                      [--verbose|-v]            Stream live per-turn events to stderr during the run
     pathgrade init [--force]         Generate eval scaffolding

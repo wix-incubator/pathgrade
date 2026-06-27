@@ -16,6 +16,10 @@
       "types": "./dist/plugin/index.d.ts",
       "default": "./dist/plugin/index.js"
     },
+    "./plugin/vitest": {
+      "types": "./dist/adapters/vitest/index.d.ts",
+      "default": "./dist/adapters/vitest/index.js"
+    },
     "./mcp-mock": {
       "types": "./dist/core/mcp-mock.d.ts",
       "default": "./dist/core/mcp-mock.js"
@@ -70,6 +74,11 @@
   },
   "peerDependencies": {
     "vitest": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

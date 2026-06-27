@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from '../src/plugin/index.js';
+import { pathgrade } from '../src/adapters/vitest/index.js';
 
 export default defineConfig({
     plugins: [pathgrade({

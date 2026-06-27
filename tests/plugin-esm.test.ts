@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pathgrade } from '@wix/pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin/vitest';
 
 describe('ESM plugin integration', () => {
     it('returns valid config with setupFiles when imported as ESM', () => {

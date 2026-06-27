@@ -72,6 +72,39 @@ describe('runAffected (pathgrade affected command)', () => {
         }
     });
 
+    it('uses pathgrade.config.ts include settings before selecting affected evals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-affected-config-'));
+        fs.mkdirSync(path.join(root, 'skills/alpha/test'), { recursive: true });
+        fs.mkdirSync(path.join(root, 'skills/beta/test'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'skills/alpha/SKILL.md'), '# alpha');
+        fs.writeFileSync(path.join(root, 'skills/beta/SKILL.md'), '# beta');
+        fs.writeFileSync(
+            path.join(root, 'skills/alpha/test/alpha.eval.ts'),
+            "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n",
+        );
+        fs.writeFileSync(
+            path.join(root, 'skills/beta/test/beta.eval.ts'),
+            "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n",
+        );
+        fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
+export default {
+    evals: { include: ['skills/alpha/**/*.eval.ts'] },
+};
+`);
+        fs.writeFileSync(changedFilesPath, 'skills/beta/src/x.ts\n');
+
+        const cap = captureStd();
+        try {
+            const code = await runAffected({ cwd: root, changedFilesPath });
+            cap.restore();
+            expect(code).toBe(0);
+            expect(cap.stdout().trim()).toBe('');
+        } finally {
+            cap.restore();
+            try { fs.unlinkSync(changedFilesPath); } catch {}
+        }
+    });
+
     it('empty changed-files file → empty stdout, exit 0', async () => {
         fs.writeFileSync(changedFilesPath, '');
 

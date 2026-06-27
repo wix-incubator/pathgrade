@@ -8,7 +8,7 @@ describe('parsePathgradeRunArgs', () => {
             forceVerbose: false,
             changed: false,
             quiet: false,
-            vitestArgs: ['--grep', 'smoke'],
+            runnerArgs: ['--grep', 'smoke'],
         });
     });
 
@@ -18,14 +18,14 @@ describe('parsePathgradeRunArgs', () => {
             forceVerbose: false,
             changed: false,
             quiet: false,
-            vitestArgs: ['--reporter=dot'],
+            runnerArgs: ['--reporter=dot'],
         });
     });
 
     it('recognizes --changed without forwarding it to vitest', () => {
         const parsed = parsePathgradeRunArgs(['--changed']);
         expect(parsed.changed).toBe(true);
-        expect(parsed.vitestArgs).toEqual([]);
+        expect(parsed.runnerArgs).toEqual([]);
     });
 
     it('recognizes --since=<ref> and --changed-files=<path>', () => {
@@ -37,13 +37,19 @@ describe('parsePathgradeRunArgs', () => {
         expect(parsed.changed).toBe(true);
         expect(parsed.since).toBe('HEAD~3');
         expect(parsed.changedFilesPath).toBe('/tmp/c.txt');
-        expect(parsed.vitestArgs).toEqual([]);
+        expect(parsed.runnerArgs).toEqual([]);
     });
 
     it('recognizes --quiet', () => {
         const parsed = parsePathgradeRunArgs(['--changed', '--quiet']);
         expect(parsed.quiet).toBe(true);
-        expect(parsed.vitestArgs).toEqual([]);
+        expect(parsed.runnerArgs).toEqual([]);
+    });
+
+    it('recognizes --adapter=<name> without forwarding it to the runner', () => {
+        const parsed = parsePathgradeRunArgs(['--adapter=vitest', '--grep', 'smoke']);
+        expect(parsed.adapterName).toBe('vitest');
+        expect(parsed.runnerArgs).toEqual(['--grep', 'smoke']);
     });
 
     it('forwards args after `--` verbatim to vitest', () => {
@@ -54,7 +60,7 @@ describe('parsePathgradeRunArgs', () => {
             'foo',
         ]);
         expect(parsed.changed).toBe(true);
-        expect(parsed.vitestArgs).toEqual(['--grep', 'foo']);
+        expect(parsed.runnerArgs).toEqual(['--grep', 'foo']);
     });
 
     it('warns when --since is passed without --changed', () => {
@@ -85,19 +91,19 @@ describe('parsePathgradeRunArgs', () => {
     it('extracts --verbose as forceVerbose=true and strips it', () => {
         const parsed = parsePathgradeRunArgs(['--verbose', '--grep', 'smoke']);
         expect(parsed.forceVerbose).toBe(true);
-        expect(parsed.vitestArgs).toEqual(['--grep', 'smoke']);
+        expect(parsed.runnerArgs).toEqual(['--grep', 'smoke']);
     });
 
     it('extracts -v as forceVerbose=true and strips it', () => {
         const parsed = parsePathgradeRunArgs(['-v']);
         expect(parsed.forceVerbose).toBe(true);
-        expect(parsed.vitestArgs).toEqual([]);
+        expect(parsed.runnerArgs).toEqual([]);
     });
 
     it('does not capture --verbose=<value> — forwards it to vitest', () => {
         const parsed = parsePathgradeRunArgs(['--verbose=bar']);
         expect(parsed.forceVerbose).toBe(false);
-        expect(parsed.vitestArgs).toEqual(['--verbose=bar']);
+        expect(parsed.runnerArgs).toEqual(['--verbose=bar']);
     });
 
     it('defaults forceVerbose to false when --verbose is not passed', () => {
@@ -108,6 +114,6 @@ describe('parsePathgradeRunArgs', () => {
     it('passes args after -- verbatim even if they look like --verbose', () => {
         const parsed = parsePathgradeRunArgs(['--', '--verbose', '-v']);
         expect(parsed.forceVerbose).toBe(false);
-        expect(parsed.vitestArgs).toEqual(['--verbose', '-v']);
+        expect(parsed.runnerArgs).toEqual(['--verbose', '-v']);
     });
 });

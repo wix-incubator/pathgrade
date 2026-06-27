@@ -13,10 +13,10 @@ describe('reporting dependency boundary', () => {
     });
 
     it('routes the Vitest reporter through the adapter and Pathgrade-owned orchestrator', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/plugin/reporter.ts'), 'utf8');
+        const source = fs.readFileSync(path.join(process.cwd(), 'src/adapters/vitest/reporter.ts'), 'utf8');
 
-        expect(source).toContain("from '../runners/vitest-adapter.js'");
-        expect(source).toContain("from '../runners/orchestrator.js'");
+        expect(source).toContain("from '../../runners/vitest-adapter.js'");
+        expect(source).toContain("from '../../runners/orchestrator.js'");
         expect(source).toContain('createVitestAdapter({ testModules })');
         expect(source).toContain('runWithAdapter({');
         expect(source).not.toContain("from '../reporting/vitest-edge.js'");

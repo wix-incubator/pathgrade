@@ -14,14 +14,16 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { configDefaults } from 'vitest/config';
-import picomatch from 'picomatch';
 import { selectAffected } from '../affected/select.js';
 import { resolveBaseRef, computeChangedFiles } from '../affected/git.js';
-import { loadAffectedConfig } from '../affected/config.js';
 import { formatExplain, formatJson } from '../affected/format.js';
 import type { SelectionResult } from '../affected/types.js';
 import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
+import {
+    DEFAULT_EVAL_EXCLUDE,
+    DEFAULT_EVAL_INCLUDE,
+    resolvePathgradeConfig,
+} from '../config/pathgrade.js';
 
 export interface RunAffectedOptions {
     /** Absolute path to the repo root (CLI passes `process.cwd()`). */
@@ -35,14 +37,6 @@ export interface RunAffectedOptions {
     /** Emit structured JSON to stdout instead of the plain list. */
     json?: boolean;
 }
-
-const DEFAULT_EXCLUDE = [
-    ...configDefaults.exclude,
-    '.worktrees/**',
-    'worktrees/**',
-    '**/node_modules/**',
-    '**/fixtures/**',
-];
 
 interface ResolvedChanges {
     baseRef: string;
@@ -72,10 +66,20 @@ export async function runAffected(opts: RunAffectedOptions): Promise<number> {
         process.stderr.write(`${changes.baseRefLine}\n`);
     }
 
-    const evalFiles = discoverEvalFiles(cwd);
-
-    const config = await loadAffectedConfig(cwd, {
-        onWarning: w => process.stderr.write(`${w}\n`),
+    let config: Awaited<ReturnType<typeof resolvePathgradeConfig>>;
+    try {
+        config = await resolvePathgradeConfig({
+            cwd,
+            warn: w => process.stderr.write(`${w}\n`),
+        });
+    } catch (err) {
+        process.stderr.write(`pathgrade affected: ${errMsg(err)}\n`);
+        return 1;
+    }
+    const evalFiles = discoverPathgradeEvalFiles({
+        cwd,
+        include: config.evals.include,
+        exclude: config.evals.exclude,
     });
 
     let result: SelectionResult;
@@ -85,7 +89,7 @@ export async function runAffected(opts: RunAffectedOptions): Promise<number> {
             changedFiles: changes.changedFiles,
             repoRoot: cwd,
             baseRef: changes.baseRef,
-            global: config.global,
+            global: config.affected.global,
         });
     } catch (err) {
         // Malformed `__pathgradeMeta` — the PRD requires a hard error.
@@ -169,6 +173,10 @@ function readChangedFilesList(filePath: string): string[] {
         .filter(l => l.length > 0);
 }
 
+function errMsg(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Discover repo-relative `*.eval.ts` files under `cwd`, honoring the same
  * exclude defaults the vitest plugin uses.
@@ -176,8 +184,8 @@ function readChangedFilesList(filePath: string): string[] {
 export function discoverEvalFiles(cwd: string): string[] {
     return discoverPathgradeEvalFiles({
         cwd,
-        include: ['**/*.eval.ts'],
-        exclude: DEFAULT_EXCLUDE,
+        include: DEFAULT_EVAL_INCLUDE,
+        exclude: DEFAULT_EVAL_EXCLUDE,
     });
 }
 

@@ -10,6 +10,7 @@
     "paths": {
       "@wix/pathgrade": ["src/sdk/index.ts"],
       "@wix/pathgrade/plugin": ["src/plugin/index.ts"],
+      "@wix/pathgrade/plugin/vitest": ["src/adapters/vitest/index.ts"],
       "@wix/pathgrade/mcp-mock": ["src/core/mcp-mock.ts"]
     },
     "esModuleInterop": true,

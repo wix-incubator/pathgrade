@@ -14,31 +14,50 @@
  */
 
 import * as fs from 'fs';
-import picomatch from 'picomatch';
 import { selectAffected } from '../affected/select.js';
 import { resolveBaseRef, computeChangedFiles } from '../affected/git.js';
-import { loadAffectedConfig } from '../affected/config.js';
 import { writeSidecar } from '../affected/sidecar.js';
-import { discoverEvalFiles } from './affected.js';
+import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
+import { resolvePathgradeConfig } from '../config/pathgrade.js';
+import { resolveRunnerAdapter } from '../runners/selection.js';
+import type { RunnerInvocationAdapter } from '../runners/invocation.js';
+import { createVitestInvocationAdapter, type SpawnVitest } from '../runners/vitest-invocation.js';
 import type { SelectionResult } from '../affected/types.js';
 import type { PathgradeRunArgs } from './run-args.js';
 
-export interface SpawnVitestRequest {
-    argv: string[];
-}
-
-export type SpawnVitest = (req: SpawnVitestRequest) => Promise<number> | number;
+export type { SpawnVitest };
 
 export interface RunChangedOptions {
     cwd: string;
     parsed: PathgradeRunArgs;
     /** Override for tests; default spawns `npx vitest` inheriting stdio. */
     spawnVitest?: SpawnVitest;
+    runnerInvocation?: RunnerInvocationAdapter;
 }
 
 export async function runChanged(opts: RunChangedOptions): Promise<number> {
     const { cwd, parsed } = opts;
-    const spawnVitest = opts.spawnVitest ?? defaultSpawnVitest;
+    const runnerEnv = {
+        ...process.env,
+        ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
+        ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
+    };
+    const configPath = findVitestConfigArg(parsed.runnerArgs);
+
+    let config: Awaited<ReturnType<typeof resolvePathgradeConfig>>;
+    try {
+        config = await resolvePathgradeConfig({
+            cwd,
+            legacyVitestConfigPath: configPath,
+            warn: w => {
+                if (!parsed.quiet) process.stderr.write(`${w}\n`);
+            },
+        });
+        resolveRunnerAdapter({ adapterName: parsed.adapterName ?? config.runner.adapter });
+    } catch (err) {
+        process.stderr.write(`${errMsg(err)}\n`);
+        return 1;
+    }
 
     // 1. Change-set
     let baseRef: string;
@@ -71,20 +90,11 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     }
 
     // 2. Selection
-    const configPath = findVitestConfigArg(parsed.vitestArgs);
-    let config: Awaited<ReturnType<typeof loadAffectedConfig>>;
-    try {
-        config = await loadAffectedConfig(cwd, {
-            configPath,
-            onWarning: w => {
-                if (!parsed.quiet) process.stderr.write(`${w}\n`);
-            },
-        });
-    } catch (err) {
-        process.stderr.write(`${errMsg(err)}\n`);
-        return 1;
-    }
-    const evalFiles = filterEvalFilesForConfig(discoverEvalFiles(cwd), config);
+    const evalFiles = discoverPathgradeEvalFiles({
+        cwd,
+        include: config.evals.include,
+        exclude: config.evals.exclude,
+    });
 
     let result: SelectionResult;
     try {
@@ -93,7 +103,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
             changedFiles,
             repoRoot: cwd,
             baseRef,
-            global: config.global,
+            global: config.affected.global,
         });
     } catch (err) {
         process.stderr.write(`pathgrade run: ${errMsg(err)}\n`);
@@ -123,19 +133,18 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     }
 
     const selectedFiles = result.selected.map(s => s.file);
-    if (hasPassWithNoTests(parsed.vitestArgs)) {
-        process.stderr.write(
-            'pathgrade run: --passWithNoTests cannot be used with pathgrade run --changed. ' +
-            'The command already exits 0 when no evals are selected; if selected evals resolve to no Vitest files, CI must fail.\n',
-        );
-        return 1;
-    }
-
-    const argv = ['run', ...selectedFiles, ...parsed.vitestArgs];
+    const runnerArgs = [...config.runner.args, ...parsed.runnerArgs];
+    const runnerInvocation = opts.runnerInvocation
+        ?? createVitestInvocationAdapter({ spawnVitest: opts.spawnVitest });
     if (!parsed.quiet) {
-        process.stderr.write(`→ vitest run ${selectedFiles.join(' ')}\n`);
+        process.stderr.write(`→ ${runnerInvocation.name} run ${selectedFiles.join(' ')}\n`);
     }
-    return await spawnVitest({ argv });
+    return await runnerInvocation.run({
+        cwd,
+        runnerArgs,
+        selectedFiles,
+        env: runnerEnv,
+    });
 }
 
 interface SummaryInput {
@@ -177,14 +186,6 @@ function errMsg(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
-function hasPassWithNoTests(args: string[]): boolean {
-    return args.some(arg => {
-        if (arg === '--passWithNoTests') return true;
-        if (!arg.startsWith('--passWithNoTests=')) return false;
-        return arg.slice('--passWithNoTests='.length).toLowerCase() !== 'false';
-    });
-}
-
 function findVitestConfigArg(args: string[]): string | undefined {
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -193,28 +194,4 @@ function findVitestConfigArg(args: string[]): string | undefined {
         if (arg.startsWith('-c=')) return arg.slice('-c='.length);
     }
     return undefined;
-}
-
-function filterEvalFilesForConfig(
-    evalFiles: string[],
-    config: { include?: string[]; exclude?: string[] },
-): string[] {
-    if (!config.include && !config.exclude) return evalFiles;
-    const includeMatchers = config.include?.map(g => picomatch(g, { dot: true }));
-    const excludeMatchers = config.exclude?.map(g => picomatch(g, { dot: true })) ?? [];
-    return evalFiles.filter(file => {
-        const included = includeMatchers ? includeMatchers.some(m => m(file)) : true;
-        return included && !excludeMatchers.some(m => m(file));
-    });
-}
-
-async function defaultSpawnVitest(req: SpawnVitestRequest): Promise<number> {
-    const { spawn } = await import('child_process');
-    return await new Promise(resolve => {
-        const child = spawn('npx', ['vitest', ...req.argv], {
-            stdio: 'inherit',
-            shell: true,
-        });
-        child.on('close', code => resolve(code ?? 0));
-    });
 }

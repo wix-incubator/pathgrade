@@ -74,11 +74,11 @@ Migrating from `exec` to `app-server`:
 
 ### Plugin Setup
 
-Create a `vitest.config.ts` with the Pathgrade plugin:
+Create a `vitest.config.ts` with the built-in Vitest adapter plugin:
 
 ```typescript
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from '@wix/pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/plugin/vitest';
 
 export default defineConfig({
     plugins: [pathgrade({ timeout: 120 })],
@@ -86,6 +86,24 @@ export default defineConfig({
 ```
 
 The plugin registers the setup hooks Pathgrade needs, wires in the reporter, and automatically cleans up agent workspaces after each test.
+
+For Pathgrade CLI behavior, use `pathgrade.config.ts`:
+
+```typescript
+export default {
+    runner: {
+        adapter: 'vitest', // only supported adapter before Pillar 7
+        args: [],
+    },
+    evals: {
+        include: ['**/*.eval.ts'],
+        exclude: ['**/fixtures/**'],
+    },
+    affected: {
+        global: ['package.json', 'yarn.lock'],
+    },
+};
+```
 
 ### First Eval
 
@@ -299,7 +317,7 @@ const agent = await createAgent({ agent: 'claude', mcpMock: mock });
 ## CLI
 
 ```bash
-pathgrade run [--changed] [--diagnostics] [--verbose] [-- vitest-args]
+pathgrade run [--changed] [--adapter=vitest] [--diagnostics] [--verbose] [-- runner-args]
 pathgrade init [--force]
 pathgrade validate <file.eval.ts>
 pathgrade validate --affected
@@ -312,36 +330,53 @@ pathgrade report [--results-path=<path>] [--no-comment] [--comment-id=<id>]
 
 Useful details:
 
-- `pathgrade run --changed` computes affected evals first, writes selection metadata to `.pathgrade/selection.json`, and only then launches Vitest.
+- `pathgrade run --changed` computes affected evals first, writes selection metadata to `.pathgrade/selection.json`, and only then launches the selected runner adapter. Vitest is the default and only supported adapter in this release.
 - `pathgrade preview browser` starts a local viewer on `http://localhost:3847`.
 - `pathgrade report` posts or updates a PR comment in GitHub Actions; locally it prints the markdown report and then the numeric pass rate.
 - `pathgrade validate --affected` is a strict mode for CI: every discovered eval must either live under a `SKILL.md` anchor or export valid `__pathgradeMeta`.
 
 Run `pathgrade --help` for the full help text.
 
-## Plugin Options
+## Configuration
 
 ```typescript
-import { pathgrade } from '@wix/pathgrade/plugin';
+// pathgrade.config.ts
+export default {
+    runner: {
+        adapter: 'vitest',
+        args: [],
+    },
+    evals: {
+        include: ['**/*.eval.ts'],   // default
+        exclude: ['**/fixtures/**'], // replaces the default exclude list if set
+    },
+    affected: {
+        global: ['package.json', 'yarn.lock'],
+    },
+    ci: { threshold: 0.8 },
+};
+```
+
+Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name>` select the runner; `--adapter` wins over config. Only `vitest` is supported before Pillar 7.
+
+Vitest runner behavior still belongs in `vitest.config.ts`:
+
+```typescript
+import { pathgrade } from '@wix/pathgrade/plugin/vitest';
 
 pathgrade({
-    include: ['**/*.eval.ts'],   // default: ['**/*.eval.ts']
     timeout: 300,                // seconds, default: 300
     reporter: 'cli',             // 'cli' | 'browser' | 'json'
     diagnostics: false,          // print full diagnostics for passing evals too
     verbose: false,              // stream live per-turn events to stderr while evals run
-    ci: { threshold: 0.8 },      // fail when the mean test score drops below threshold
-    affected: {
-        global: ['package.json', 'yarn.lock'],
-    },
 });
 ```
 
 Notes:
 
-- `exclude` is also supported. If you set it, it replaces the default exclude list instead of merging with it.
+- Legacy `@wix/pathgrade/plugin` imports and legacy plugin `include` / `exclude` / `affected.global` settings remain as a compatibility fallback, but new config should use `@wix/pathgrade/plugin/vitest` and `pathgrade.config.*`.
 - `reporter: 'browser'` writes results JSON and opens the viewer automatically after the run.
-- `affected.global` is a repo-level "rerun everything" escape hatch for `pathgrade affected` and `pathgrade run --changed`.
+- SDK-only consumers can import `@wix/pathgrade` without installing Vitest. Vitest adapter users still need Vitest available.
 
 ## Environment Variables
 
@@ -401,7 +436,7 @@ jobs:
 
 - `fetch-depth: 0` is required for `--changed`; shallow clones break merge-base resolution.
 - Evals under a `SKILL.md` are tracked automatically; use `__pathgradeMeta` for cross-skill or non-standard dependencies.
-- Set `ci: { threshold: 0.8 }` in the plugin config to fail the run when the mean test score drops below your threshold.
+- Set `ci: { threshold: 0.8 }` in `pathgrade.config.ts` to fail the run when the mean test score drops below your threshold.
 
 See the [User Guide - CI Integration](packages/pathgrade/docs/USER_GUIDE.md#ci-integration) for the full reference.
 

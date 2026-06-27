@@ -10,6 +10,7 @@ vi.mock('../src/affected/git.js', () => ({
 
 import { runChanged, type SpawnVitest } from '../src/commands/run-changed.js';
 import { resolveBaseRef, computeChangedFiles } from '../src/affected/git.js';
+import type { RunnerInvocationAdapter } from '../src/runners/invocation.js';
 
 const mockedResolve = vi.mocked(resolveBaseRef);
 const mockedChanged = vi.mocked(computeChangedFiles);
@@ -70,7 +71,7 @@ describe('runChanged — pathgrade run --changed orchestration', () => {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: [],
+                    runnerArgs: [],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -104,7 +105,7 @@ describe('runChanged — pathgrade run --changed orchestration', () => {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: [],
+                    runnerArgs: [],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -143,7 +144,7 @@ export default {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: ['--config', 'pr-ci.vitest.config.ts'],
+                    runnerArgs: ['--config', 'pr-ci.vitest.config.ts'],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -161,6 +162,104 @@ export default {
         }
     });
 
+    it('uses pathgrade.config.ts include settings before spawning changed evals', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
+export default {
+    evals: { include: ['skills/alpha/**/*.eval.ts'] },
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/beta/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    runnerArgs: [],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: false,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(0);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(cap.stderr()).toContain('selected: 0 / 1 evals');
+            expect(cap.stderr()).toContain('no affected evals');
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('fails before selection or spawn when pathgrade.config.ts names an unsupported adapter', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
+export default {
+    runner: { adapter: 'node-test' },
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    runnerArgs: [],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: false,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(1);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(mockedChanged).not.toHaveBeenCalled();
+            expect(cap.stderr()).toContain('Unsupported Pathgrade runner adapter: node-test');
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('lets --adapter override runner.adapter from pathgrade.config.ts', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
+export default {
+    runner: { adapter: 'node-test' },
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    runnerArgs: [],
+                    adapterName: 'vitest',
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: true,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(0);
+            expect(fakeSpawn).toHaveBeenCalledTimes(1);
+        } finally {
+            cap.restore();
+        }
+    });
+
     it('fails when an explicit vitest config cannot be loaded', async () => {
         const root = makeRepo();
         mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
@@ -171,7 +270,7 @@ export default {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: ['--config', 'missing.vitest.config.ts'],
+                    runnerArgs: ['--config', 'missing.vitest.config.ts'],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -199,7 +298,7 @@ export default {
             await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: [],
+                    runnerArgs: [],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -225,7 +324,7 @@ export default {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: [],
+                    runnerArgs: [],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -252,7 +351,7 @@ export default {
             await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: ['--grep', 'foo'],
+                    runnerArgs: ['--grep', 'foo'],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -268,6 +367,83 @@ export default {
         }
     });
 
+    it('prepends runner.args from pathgrade.config.ts before CLI runner args', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
+export default {
+    runner: { args: ['--reporter=dot'] },
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+
+        const cap = captureStd();
+        try {
+            await runChanged({
+                cwd: root,
+                parsed: {
+                    runnerArgs: ['--grep', 'foo'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: true,
+                },
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            const { argv } = fakeSpawn.mock.calls[0][0];
+            expect(argv).toEqual([
+                'run',
+                'skills/alpha/a.eval.ts',
+                '--reporter=dot',
+                '--grep',
+                'foo',
+            ]);
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('dispatches selected files through the injected runner invocation adapter', async () => {
+        const root = makeRepo();
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+        const runnerInvocation: RunnerInvocationAdapter = {
+            name: 'vitest',
+            run: vi.fn(async () => 7),
+        };
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    runnerArgs: ['--grep', 'foo'],
+                    forceDiagnostics: true,
+                    forceVerbose: true,
+                    changed: true,
+                    quiet: true,
+                },
+                runnerInvocation,
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(7);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(runnerInvocation.run).toHaveBeenCalledWith({
+                cwd: root,
+                runnerArgs: ['--grep', 'foo'],
+                selectedFiles: ['skills/alpha/a.eval.ts'],
+                env: expect.objectContaining({
+                    PATHGRADE_DIAGNOSTICS: '1',
+                    PATHGRADE_VERBOSE: '1',
+                }),
+            });
+        } finally {
+            cap.restore();
+        }
+    });
+
     it('rejects --passWithNoTests because selected evals must not be masked as no-tests', async () => {
         const root = makeRepo();
         mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
@@ -278,7 +454,7 @@ export default {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: ['--passWithNoTests'],
+                    runnerArgs: ['--passWithNoTests'],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -305,7 +481,7 @@ export default {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: ['--passWithNoTests=true'],
+                    runnerArgs: ['--passWithNoTests=true'],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -331,7 +507,7 @@ export default {
             const code = await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: ['--passWithNoTests=false'],
+                    runnerArgs: ['--passWithNoTests=false'],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,
@@ -360,7 +536,7 @@ export default {
             await runChanged({
                 cwd: root,
                 parsed: {
-                    vitestArgs: [],
+                    runnerArgs: [],
                     forceDiagnostics: false,
                     forceVerbose: false,
                     changed: true,

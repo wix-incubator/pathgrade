@@ -1,6 +1,14 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@wix/pathgrade/plugin/vitest': path.resolve(__dirname, 'src/adapters/vitest/index.ts'),
+      '@wix/pathgrade/plugin': path.resolve(__dirname, 'src/plugin/index.ts'),
+      '@wix/pathgrade': path.resolve(__dirname, 'src/sdk/index.ts'),
+    },
+  },
   test: {
     include: ['tests/**/*.test.ts'],
     exclude: ['**/.worktrees/**'],
