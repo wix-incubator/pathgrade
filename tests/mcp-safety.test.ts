@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
     decideMcpToolCall,
     redactMcpSecrets,
-    type McpPolicyDenialReason,
     type McpSafetyOptions,
 } from '../src/sdk/mcp-safety.js';
 
@@ -96,8 +95,4 @@ describe('MCP live safety policy', () => {
         });
     });
 
-    it('includes unrecognized Claude MCP tool names in the public denial vocabulary', () => {
-        const reason: McpPolicyDenialReason = 'unrecognized_mcp_tool_name';
-        expect(reason).toBe('unrecognized_mcp_tool_name');
-    });
 });

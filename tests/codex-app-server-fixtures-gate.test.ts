@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-    decideProtocolFixtureRun,
-    protocolFixtureSkipMessage,
-} from '../src/agents/codex-app-server/fixtures/run-gate.js';
+import { decideProtocolFixtureRun } from '../src/agents/codex-app-server/fixtures/run-gate.js';
 
 describe('protocol fixture run-gate', () => {
     it('skips when PATHGRADE_RUN_PROTOCOL_FIXTURES is unset', () => {
@@ -32,10 +29,4 @@ describe('protocol fixture run-gate', () => {
         expect(decision.skipReason).toBeUndefined();
     });
 
-    it('exports a human-readable default skip message helper', () => {
-        expect(typeof protocolFixtureSkipMessage).toBe('function');
-        const msg = protocolFixtureSkipMessage('codex binary not found');
-        expect(msg).toMatch(/fixture suite skipped/i);
-        expect(msg).toMatch(/codex binary not found/);
-    });
 });

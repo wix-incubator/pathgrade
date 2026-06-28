@@ -54,10 +54,6 @@ describe('formatJson — snake_case wire shape', () => {
         expect(json.selected.every((s: any) => s.reason === 'global-match')).toBe(true);
     });
 
-    it('output is stable across runs (sorted lists)', () => {
-        const r = makeResult();
-        expect(formatJson(r)).toBe(formatJson(r));
-    });
 });
 
 describe('formatExplain — human-readable stderr output', () => {

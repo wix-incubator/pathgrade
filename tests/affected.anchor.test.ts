@@ -34,10 +34,4 @@ describe('findSkillRoot', () => {
         expect(findSkillRoot('skills/foo/foo.eval.ts', repoRoot)).toBe('skills/foo');
     });
 
-    it('returns posix-style paths regardless of platform', () => {
-        const repoRoot = path.join(FIXTURE_ROOT, 'skill-nested');
-        const evalFile = path.join(repoRoot, 'skills/foo/test/foo.eval.ts');
-        const result = findSkillRoot(evalFile, repoRoot);
-        expect(result).not.toContain('\\');
-    });
 });

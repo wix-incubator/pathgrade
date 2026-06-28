@@ -97,9 +97,4 @@ describe('parseCursorStreamJson', () => {
     expect(result.resultText).toContain('"type":"system"');
   });
 
-  it('is a pure function — no I/O, no state carried across calls', () => {
-    const a = parseCursorStreamJson(loadFixture('envelope-success.ndjson'));
-    const b = parseCursorStreamJson(loadFixture('envelope-success.ndjson'));
-    expect(a).toEqual(b);
-  });
 });

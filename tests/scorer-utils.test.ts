@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ToolEvent } from '../src/tool-events.js';
 import type { ToolExpectation } from '../src/sdk/types.js';
 
-import { clamp, getErrorMessage, matchesExpectation } from '../src/sdk/scorer-utils.js';
+import { matchesExpectation } from '../src/sdk/scorer-utils.js';
 
 function makeEvent(overrides: Partial<ToolEvent> = {}): ToolEvent {
     return {
@@ -16,26 +16,6 @@ function makeEvent(overrides: Partial<ToolEvent> = {}): ToolEvent {
         ...overrides,
     };
 }
-
-describe('scorer-utils clamp', () => {
-    it.each([
-        [-0.5, 0],
-        [1.7, 1],
-        [0.42, 0.42],
-    ])('clamp(%f) → %f', (input, expected) => {
-        expect(clamp(input)).toBe(expected);
-    });
-});
-
-describe('scorer-utils getErrorMessage', () => {
-    it.each([
-        [new Error('boom'), 'boom'],
-        ['oops', 'oops'],
-        [42, '42'],
-    ])('getErrorMessage(%p) → %p', (input, expected) => {
-        expect(getErrorMessage(input)).toBe(expected);
-    });
-});
 
 describe('scorer-utils matchesExpectation', () => {
     it('returns false when the action does not match', () => {

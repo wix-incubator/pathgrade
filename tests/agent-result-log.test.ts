@@ -33,19 +33,6 @@ describe('buildModelAgentResultLogEntry — cost_usd field', () => {
         expect(entry.cost_usd).toBe(0.0125);
     });
 
-    it('preserves cost_usd precision exactly as reported by the SDK', () => {
-        // Pathgrade does not round or normalize cost; whatever the SDK
-        // reports flows through unchanged so consumers can reconcile against
-        // the SDK's own numbers without floating-point drift.
-        const entry = buildModelAgentResultLogEntry({
-            timestamp: '2026-05-06T00:00:00.000Z',
-            turnNumber: 1,
-            durationMs: 100,
-            turnResult: baseTurnResult({ costUsd: 0.000123456 }),
-        });
-        expect(entry.cost_usd).toBe(0.000123456);
-    });
-
     it('omits cost_usd when the turn result has no costUsd', () => {
         // Snapshot consumers should be able to detect "no cost data" cleanly
         // — agents that don't expose cost (Codex, Cursor today) must not

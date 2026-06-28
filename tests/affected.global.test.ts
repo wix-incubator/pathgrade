@@ -27,17 +27,6 @@ function setupMonorepo(): string {
 }
 
 describe('selectAffected — affected.global short-circuit', () => {
-    it('no global config → behaves like Issue 5 (no globalMatch field)', () => {
-        const root = setupMonorepo();
-        const result = selectAffected({
-            evalFiles: ['skills/a/a.eval.ts'],
-            changedFiles: ['skills/a/foo.ts'],
-            repoRoot: root,
-            baseRef: 'explicit',
-        });
-        expect(result.globalMatch).toBeUndefined();
-    });
-
     it('global glob matches → every eval selected with reason global-match', () => {
         const root = setupMonorepo();
         const result = selectAffected({

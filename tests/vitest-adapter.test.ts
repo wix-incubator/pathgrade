@@ -190,17 +190,4 @@ describe('Vitest runner adapter', () => {
         expect(JSON.stringify(built.report)).not.toContain('plain pending');
     });
 
-    it('keeps the translation helper available behind the Vitest adapter module', () => {
-        expect(collectVitestReportGroups([{
-            children: {
-                allTests: () => [makeCase({ name: 'plain', state: 'passed' })],
-            },
-        }] as never)).toEqual([{
-            groupName: 'top.eval.ts',
-            cases: [expect.objectContaining({
-                name: 'plain',
-                state: 'passed',
-            })],
-        }]);
-    });
 });

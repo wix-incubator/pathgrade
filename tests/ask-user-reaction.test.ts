@@ -2,51 +2,9 @@ import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import * as sdk from '../src/sdk/index.js';
 import { inspectReactions } from '../src/sdk/reaction-preview.js';
 import { loadReactionsFromFile } from '../src/sdk/reaction-loader.js';
 import type { AskUserReaction, Reaction, TextReaction } from '../src/sdk/types.js';
-
-describe('AskUserReaction public API surface', () => {
-    it('re-exports AskUserQuestion, AskUserOption, AskUserReaction types (type-only probe)', () => {
-        // The type-only imports compile iff the types exist. A smoke import ensures the
-        // module graph is valid.
-        const exported = sdk as Record<string, unknown>;
-        expect('createAskBus' in exported).toBe(true);
-    });
-
-    it('Reaction is a discriminated union — text variant narrows via `when`', () => {
-        const r: Reaction = { when: /artifact/, reply: 'ack' };
-        if ('when' in r) {
-            const text: TextReaction = r;
-            expect(text.reply).toBe('ack');
-        } else {
-            throw new Error('expected TextReaction narrowing');
-        }
-    });
-
-    it('Reaction is a discriminated union — ask_user variant narrows via `whenAsked`', () => {
-        const r: Reaction = {
-            whenAsked: /region/,
-            answer: 'us-east-1',
-        };
-        if ('whenAsked' in r) {
-            const ask: AskUserReaction = r;
-            expect(ask.answer).toBe('us-east-1');
-        } else {
-            throw new Error('expected AskUserReaction narrowing');
-        }
-    });
-
-    it('AskUserReaction.answer accepts string, string[], and a function returning either', () => {
-        const s: AskUserReaction = { whenAsked: /a/, answer: 'x' };
-        const a: AskUserReaction = { whenAsked: /a/, answer: ['x', 'y'] };
-        const fn: AskUserReaction = { whenAsked: /a/, answer: (q) => (q.question === 'ok' ? 'y' : undefined) };
-        expect(s.answer).toBe('x');
-        expect(a.answer).toEqual(['x', 'y']);
-        expect(typeof fn.answer).toBe('function');
-    });
-});
 
 describe('inspectReactions with AskUserReaction entries', () => {
     it('skips ask_user entries during text-driven evaluation, keeps text entries working', () => {

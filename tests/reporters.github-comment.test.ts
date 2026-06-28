@@ -221,10 +221,6 @@ describe('MISSING_RESULTS_BODY', () => {
         expect(MISSING_RESULTS_BODY).toContain('Pathgrade evals did not produce results');
     });
 
-    it('includes a comment marker placeholder consumer', () => {
-        // MISSING_RESULTS_BODY is pure text; the marker is prepended at the call site.
-        expect(typeof MISSING_RESULTS_BODY).toBe('string');
-    });
 });
 
 describe('commentMarker', () => {

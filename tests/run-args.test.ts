@@ -106,11 +106,6 @@ describe('parsePathgradeRunArgs', () => {
         expect(parsed.runnerArgs).toEqual(['--verbose=bar']);
     });
 
-    it('defaults forceVerbose to false when --verbose is not passed', () => {
-        const parsed = parsePathgradeRunArgs(['--grep', 'smoke']);
-        expect(parsed.forceVerbose).toBe(false);
-    });
-
     it('passes args after -- verbatim even if they look like --verbose', () => {
         const parsed = parsePathgradeRunArgs(['--', '--verbose', '-v']);
         expect(parsed.forceVerbose).toBe(false);

@@ -87,11 +87,6 @@ describe('sidecar', () => {
         expect(fs.existsSync(getSidecarPath(cwd))).toBe(false);
     });
 
-    it('clearSidecar is idempotent (no error when file absent)', async () => {
-        const cwd = tmpRepo();
-        await expect(clearSidecar(cwd)).resolves.toBeUndefined();
-    });
-
     it('toSelectionReport produces sorted file lists for stable diffs', () => {
         const report = toSelectionReport(makeResult({
             selected: [

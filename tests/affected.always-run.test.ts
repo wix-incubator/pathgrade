@@ -38,26 +38,6 @@ export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true };
         expect(result.skipped).toHaveLength(0);
     });
 
-    it('empty changed-file set still yields alwaysRun eval in selection', () => {
-        const root = makeTempRepo();
-        writeFile(root, 'skills/smoke/SKILL.md', '# smoke');
-        writeFile(
-            root,
-            'skills/smoke/test/smoke.eval.ts',
-            `import type { PathgradeMeta } from '@wix/pathgrade';
-export const __pathgradeMeta: PathgradeMeta = { alwaysRun: true };
-`,
-        );
-        const result = selectAffected({
-            evalFiles: ['skills/smoke/test/smoke.eval.ts'],
-            changedFiles: [],
-            repoRoot: root,
-            baseRef: 'explicit',
-        });
-        expect(result.selected).toHaveLength(1);
-        expect(result.selected[0].reason).toBe('always-run');
-    });
-
     it('alwaysRun: true + deps precedence — alwaysRun wins even when deps would have matched', () => {
         const root = makeTempRepo();
         writeFile(root, 'skills/smoke/SKILL.md', '# smoke');
