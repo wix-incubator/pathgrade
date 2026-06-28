@@ -199,7 +199,7 @@ export default {
         const root = makeRepo();
         fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
 export default {
-    runner: { adapter: 'node-test' },
+    runner: { adapter: 'jest' },
 };
 `);
         mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
@@ -222,7 +222,7 @@ export default {
             expect(code).toBe(1);
             expect(fakeSpawn).not.toHaveBeenCalled();
             expect(mockedChanged).not.toHaveBeenCalled();
-            expect(cap.stderr()).toContain('Unsupported Pathgrade runner adapter: node-test');
+            expect(cap.stderr()).toContain('Unsupported Pathgrade runner adapter: jest');
         } finally {
             cap.restore();
         }
@@ -232,7 +232,7 @@ export default {
         const root = makeRepo();
         fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
 export default {
-    runner: { adapter: 'node-test' },
+    runner: { adapter: 'jest' },
 };
 `);
         mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
@@ -255,6 +255,49 @@ export default {
             cap.restore();
             expect(code).toBe(0);
             expect(fakeSpawn).toHaveBeenCalledTimes(1);
+        } finally {
+            cap.restore();
+        }
+    });
+
+    it('accepts node-test from pathgrade.config.ts and dispatches through the selected invocation adapter', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
+export default {
+    runner: { adapter: 'node-test' },
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+        const runnerInvocation: RunnerInvocationAdapter = {
+            name: 'node-test',
+            run: vi.fn(async () => 0),
+        };
+
+        const cap = captureStd();
+        try {
+            const code = await runChanged({
+                cwd: root,
+                parsed: {
+                    runnerArgs: ['--test-name-pattern=alpha'],
+                    forceDiagnostics: false,
+                    forceVerbose: false,
+                    changed: true,
+                    quiet: false,
+                },
+                runnerInvocation,
+                spawnVitest: fakeSpawn,
+            });
+            cap.restore();
+            expect(code).toBe(0);
+            expect(fakeSpawn).not.toHaveBeenCalled();
+            expect(runnerInvocation.run).toHaveBeenCalledWith({
+                cwd: root,
+                runnerArgs: ['--test-name-pattern=alpha'],
+                selectedFiles: ['skills/alpha/a.eval.ts'],
+                env: expect.any(Object),
+            });
+            expect(cap.stderr()).toContain('→ node-test run skills/alpha/a.eval.ts');
         } finally {
             cap.restore();
         }

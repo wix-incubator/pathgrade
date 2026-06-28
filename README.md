@@ -78,7 +78,7 @@ Create a `vitest.config.ts` with the built-in Vitest adapter plugin:
 
 ```typescript
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from '@wix/pathgrade/plugin/vitest';
+import { pathgrade } from '@wix/pathgrade/adapters/vitest';
 
 export default defineConfig({
     plugins: [pathgrade({ timeout: 120 })],
@@ -357,12 +357,12 @@ export default {
 };
 ```
 
-Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name>` select the runner; `--adapter` wins over config. Only `vitest` is supported before Pillar 7.
+Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name>` select the runner; `--adapter` wins over config. Built-in adapters currently include `vitest` and the narrow `node-test` proof adapter.
 
 Vitest runner behavior still belongs in `vitest.config.ts`:
 
 ```typescript
-import { pathgrade } from '@wix/pathgrade/plugin/vitest';
+import { pathgrade } from '@wix/pathgrade/adapters/vitest';
 
 pathgrade({
     timeout: 300,                // seconds, default: 300
@@ -374,7 +374,7 @@ pathgrade({
 
 Notes:
 
-- Legacy `@wix/pathgrade/plugin` imports and legacy plugin `include` / `exclude` / `affected.global` settings remain as a compatibility fallback, but new config should use `@wix/pathgrade/plugin/vitest` and `pathgrade.config.*`.
+- Legacy `@wix/pathgrade/plugin` and `@wix/pathgrade/plugin/vitest` imports remain as compatibility fallbacks, but new config should use `@wix/pathgrade/adapters/vitest` and `pathgrade.config.*`.
 - `reporter: 'browser'` writes results JSON and opens the viewer automatically after the run.
 - SDK-only consumers can import `@wix/pathgrade` without installing Vitest. Vitest adapter users still need Vitest available.
 
@@ -392,6 +392,28 @@ Notes:
 | `PATHGRADE_CODEX_TRANSPORT` | Fallback Codex transport (`exec` or `app-server`). `createAgent({ transport })` wins over this. |
 | `PATHGRADE_VERBOSE` | `1` enables live per-turn streaming to stderr |
 | `PATHGRADE_DIAGNOSTICS` | `1` prints full diagnostics for passing evals too |
+
+### Experimental `node:test` Adapter
+
+`node-test` is a small proof adapter for validating the runner boundary without Vitest. It is intentionally narrow: eval files import the `test` wrapper from `@wix/pathgrade/adapters/node-test`, run through Node's built-in test runner, and still produce the normal `.pathgrade/results.json` and trace artifacts.
+
+```ts
+import { test } from '@wix/pathgrade/adapters/node-test';
+import { createAgent, evaluate, check } from '@wix/pathgrade';
+
+test('minimal node proof', async () => {
+    const agent = await createAgent({ workspace: process.cwd() });
+    await evaluate(agent, [check('passes', () => true)]);
+});
+```
+
+Run it with:
+
+```bash
+pathgrade run --adapter=node-test
+```
+
+This proof validates Pathgrade's adapter, lifecycle, result capture, and reporting boundaries. It does not imply Jest, Mocha, Playwright, or runnerless CLI support.
 | `NO_COLOR` | Disable ANSI colors |
 
 `pathgrade run` loads `.env` from the working directory automatically.

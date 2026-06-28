@@ -21,6 +21,7 @@ import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
 import { resolvePathgradeConfig } from '../config/pathgrade.js';
 import { resolveRunnerAdapter } from '../runners/selection.js';
 import type { RunnerInvocationAdapter } from '../runners/invocation.js';
+import { createNodeTestInvocationAdapter } from '../adapters/node-test/invocation-adapter.js';
 import { createVitestInvocationAdapter, type SpawnVitest } from '../runners/vitest-invocation.js';
 import type { SelectionResult } from '../affected/types.js';
 import type { PathgradeRunArgs } from './run-args.js';
@@ -45,6 +46,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     const configPath = findVitestConfigArg(parsed.runnerArgs);
 
     let config: Awaited<ReturnType<typeof resolvePathgradeConfig>>;
+    let adapterName: string;
     try {
         config = await resolvePathgradeConfig({
             cwd,
@@ -53,7 +55,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
                 if (!parsed.quiet) process.stderr.write(`${w}\n`);
             },
         });
-        resolveRunnerAdapter({ adapterName: parsed.adapterName ?? config.runner.adapter });
+        adapterName = resolveRunnerAdapter({ adapterName: parsed.adapterName ?? config.runner.adapter }).name;
     } catch (err) {
         process.stderr.write(`${errMsg(err)}\n`);
         return 1;
@@ -135,7 +137,9 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     const selectedFiles = result.selected.map(s => s.file);
     const runnerArgs = [...config.runner.args, ...parsed.runnerArgs];
     const runnerInvocation = opts.runnerInvocation
-        ?? createVitestInvocationAdapter({ spawnVitest: opts.spawnVitest });
+        ?? (adapterName === 'node-test'
+            ? createNodeTestInvocationAdapter({ config })
+            : createVitestInvocationAdapter({ spawnVitest: opts.spawnVitest }));
     if (!parsed.quiet) {
         process.stderr.write(`→ ${runnerInvocation.name} run ${selectedFiles.join(' ')}\n`);
     }

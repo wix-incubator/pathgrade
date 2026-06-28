@@ -5,6 +5,13 @@ import { buildPathgradeReport } from '../src/reporting/core.js';
 import type { ReportGroupInput } from '../src/reporting/types.js';
 
 describe('adapter boundary regressions', () => {
+    it('keeps the node:test proof adapter implementation under the adapter package', () => {
+        const runnerFiles = fs.readdirSync(path.join(process.cwd(), 'src/runners'));
+
+        expect(runnerFiles.filter(file => file.startsWith('node-test')))
+            .toEqual([]);
+    });
+
     it('keeps report metrics, trace paths, artifact shape, and threshold status out of adapters', () => {
         const vitestAdapterSource = fs.readFileSync(path.join(process.cwd(), 'src/runners/vitest-adapter.ts'), 'utf8');
         const vitestLifecycleSource = fs.readFileSync(path.join(process.cwd(), 'src/runners/vitest-lifecycle.ts'), 'utf8');

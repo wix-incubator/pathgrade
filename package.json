@@ -20,6 +20,14 @@
       "types": "./dist/adapters/vitest/index.d.ts",
       "default": "./dist/adapters/vitest/index.js"
     },
+    "./adapters/vitest": {
+      "types": "./dist/adapters/vitest/index.d.ts",
+      "default": "./dist/adapters/vitest/index.js"
+    },
+    "./adapters/node-test": {
+      "types": "./dist/adapters/node-test/index.d.ts",
+      "default": "./dist/adapters/node-test/index.js"
+    },
     "./mcp-mock": {
       "types": "./dist/core/mcp-mock.d.ts",
       "default": "./dist/core/mcp-mock.js"
@@ -84,7 +92,6 @@
     "@types/fs-extra": "^11.0.4",
     "@types/picomatch": "^4.0.2",
     "@vitest/coverage-v8": "4.1.7",
-    "tsx": "4.22.3",
     "vitest": "4.1.7"
   },
   "dependencies": {
@@ -94,6 +101,7 @@
     "fs-extra": "11.3.3",
     "jiti": "2.6.1",
     "picomatch": "^4.0.4",
+    "tsx": "4.22.3",
     "typescript": "^5.9.3",
     "zod": "4.3.6"
   },

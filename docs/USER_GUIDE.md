@@ -65,12 +65,12 @@ npm i @wix/pathgrade vitest
 
 ## Quick Start
 
-1. Create a `vitest.config.ts` with the pathgrade plugin:
+1. Create a `vitest.config.ts` with the Pathgrade Vitest adapter plugin:
 
 ```typescript
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from '@wix/pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/adapters/vitest';
 
 export default defineConfig({
     plugins: [pathgrade({
@@ -145,7 +145,7 @@ import { describe, it, expect } from 'vitest';
 import { createAgent, evaluate, check, score, judge, toolUsage } from '@wix/pathgrade';
 ```
 
-All test API functions are imported from `@wix/pathgrade`. The vitest plugin is imported from `@wix/pathgrade/plugin`. MCP mocks are imported from `@wix/pathgrade/mcp-mock`.
+All test API functions are imported from `@wix/pathgrade`. The Vitest adapter plugin is imported from `@wix/pathgrade/adapters/vitest`. MCP mocks are imported from `@wix/pathgrade/mcp-mock`.
 
 ### createAgent
 
@@ -1048,7 +1048,7 @@ The `pathgrade()` plugin factory configures vitest for eval runs:
 ```typescript
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
-import { pathgrade } from '@wix/pathgrade/plugin';
+import { pathgrade } from '@wix/pathgrade/adapters/vitest';
 
 export default defineConfig({
     plugins: [pathgrade({

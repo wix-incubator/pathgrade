@@ -84,6 +84,7 @@ function resolveLocalAliases(): Record<string, string> | undefined {
         '@wix/pathgrade/mcp-mock': path.join(src, 'core', 'mcp-mock.ts'),
         '@wix/pathgrade/plugin': path.join(src, 'plugin', 'index.ts'),
         '@wix/pathgrade/plugin/vitest': path.join(src, 'adapters', 'vitest', 'index.ts'),
+        '@wix/pathgrade/adapters/vitest': path.join(src, 'adapters', 'vitest', 'index.ts'),
         '@wix/pathgrade': path.join(src, 'sdk', 'index.ts'),
     };
 }

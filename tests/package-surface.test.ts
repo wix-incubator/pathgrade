@@ -7,8 +7,16 @@ const packageJson = JSON.parse(
 );
 
 describe('package surface', () => {
-    it('exposes Vitest through the adapter plugin subpath and keeps the legacy plugin shim', () => {
+    it('exposes Vitest through the canonical adapter subpath and keeps plugin compatibility shims', () => {
         expect(packageJson.exports['.'].default).toBe('./dist/sdk/index.js');
+        expect(packageJson.exports['./adapters/vitest']).toEqual({
+            types: './dist/adapters/vitest/index.d.ts',
+            default: './dist/adapters/vitest/index.js',
+        });
+        expect(packageJson.exports['./adapters/node-test']).toEqual({
+            types: './dist/adapters/node-test/index.d.ts',
+            default: './dist/adapters/node-test/index.js',
+        });
         expect(packageJson.exports['./plugin/vitest']).toEqual({
             types: './dist/adapters/vitest/index.d.ts',
             default: './dist/adapters/vitest/index.js',

@@ -8,8 +8,14 @@ describe('resolveRunnerAdapter', () => {
         expect(adapter.name).toBe('vitest');
     });
 
+    it('selects the node:test proof adapter by name', () => {
+        const adapter = resolveRunnerAdapter({ adapterName: 'node-test' });
+
+        expect(adapter.name).toBe('node-test');
+    });
+
     it('rejects unsupported adapter names with the requested name in the message', () => {
-        expect(() => resolveRunnerAdapter({ adapterName: 'node-test' }))
-            .toThrow(/Unsupported Pathgrade runner adapter: node-test/);
+        expect(() => resolveRunnerAdapter({ adapterName: 'jest' }))
+            .toThrow(/Unsupported Pathgrade runner adapter: jest/);
     });
 });
