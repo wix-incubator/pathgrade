@@ -1,5 +1,6 @@
 import { buildPathgradeReport } from '../reporting/core.js';
 import { writePathgradeArtifacts } from '../reporting/artifacts.js';
+import { projectNormalizedRunSnapshotToReportInput } from './report-projection.js';
 import type { PathgradeSelectionReport } from '../types.js';
 import type { ReportSummaryGroup } from '../reporting/types.js';
 import type {
@@ -52,11 +53,13 @@ export async function runWithAdapter(input: {
             signal: options.signal,
         });
         const runExitCode = normalizeRunExitCode(run.status, run.exitCode);
-        const groups = await adapter.collectReportGroups(run);
+        const reportInput = projectNormalizedRunSnapshotToReportInput(
+            await adapter.collectNormalizedRunSnapshot(run),
+            { selection },
+        );
         let built = buildPathgradeReport({
             threshold: options.threshold,
-            selection,
-            groups,
+            ...reportInput,
         });
 
         for (const warning of built.warnings) {
@@ -72,7 +75,7 @@ export async function runWithAdapter(input: {
             built = buildPathgradeReport({
                 threshold: options.threshold,
                 selection: loadedSelection,
-                groups,
+                groups: reportInput.groups,
             });
         }
 

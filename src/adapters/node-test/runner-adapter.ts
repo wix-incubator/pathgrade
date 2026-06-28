@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import fs from 'fs-extra';
 import { discoverPathgradeEvalFiles } from '../../evals/discovery.js';
 import type { ReportCaseInput } from '../../reporting/types.js';
+import { buildNormalizedRunSnapshotFromReportGroups } from '../../runners/model-builders.js';
 import type {
     AdapterInvocationInput,
     AdapterRunHandle,
@@ -71,7 +72,7 @@ export function createNodeTestAdapter(): RunnerAdapter {
                 native: { resultsPath } satisfies NodeTestRunNative,
             };
         },
-        async collectReportGroups(run) {
+        async collectNormalizedRunSnapshot(run) {
             const native = readNodeTestRunNative(run);
             const cases = await readCases(native.resultsPath);
             const groupMap = new Map<string, ReportCaseInput[]>();
@@ -82,10 +83,13 @@ export function createNodeTestAdapter(): RunnerAdapter {
                 groupMap.get(groupName)!.push(testCase);
             }
 
-            return Array.from(groupMap.entries()).map(([groupName, groupedCases]) => ({
-                groupName,
-                cases: groupedCases,
-            }));
+            return buildNormalizedRunSnapshotFromReportGroups(
+                run,
+                Array.from(groupMap.entries()).map(([groupName, groupedCases]) => ({
+                    groupName,
+                    cases: groupedCases,
+                })),
+            );
         },
     };
 }

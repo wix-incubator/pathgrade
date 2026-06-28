@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import os from 'node:os';
 import type { RunnerAdapter } from '../src/runners/adapter.js';
+import { buildNormalizedRunSnapshotFromReportGroups } from '../src/runners/model-builders.js';
 import { runWithAdapter } from '../src/runners/orchestrator.js';
 
 describe('adapter run orchestrator', () => {
@@ -41,10 +42,10 @@ describe('adapter run orchestrator', () => {
                     native: { runnerSecret: 'opaque-to-orchestrator' },
                 };
             },
-            async collectReportGroups(run) {
+            async collectNormalizedRunSnapshot(run) {
                 events.push(`collect:${run.adapterName}:${run.status}:${run.exitCode}`);
                 expect(run.native).toEqual({ runnerSecret: 'opaque-to-orchestrator' });
-                return [{
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'fake group',
                     cases: [{
                         caseId: 'case-1',
@@ -54,7 +55,7 @@ describe('adapter run orchestrator', () => {
                         sourceRef: 'dataset://unit-1/case-1',
                         evaluations: [{ score: 0.75 }],
                     }],
-                }];
+                }]);
             },
         };
 
@@ -124,8 +125,8 @@ describe('adapter run orchestrator', () => {
             async invoke() {
                 return { adapterName: this.name, status: 'completed', exitCode: 0 };
             },
-            async collectReportGroups() {
-                return [{
+            async collectNormalizedRunSnapshot(run) {
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'selected group',
                     cases: [{
                         name: 'selected case',
@@ -133,7 +134,7 @@ describe('adapter run orchestrator', () => {
                         runnerDurationMs: 1,
                         evaluations: [{ score: 1 }],
                     }],
-                }];
+                }]);
             },
         };
         const selection = {
@@ -170,8 +171,8 @@ describe('adapter run orchestrator', () => {
             async invoke() {
                 return { adapterName: this.name, status: 'cancelled', exitCode: 0 };
             },
-            async collectReportGroups() {
-                return [{
+            async collectNormalizedRunSnapshot(run) {
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'cancelled group',
                     cases: [{
                         name: 'cancelled case',
@@ -179,7 +180,7 @@ describe('adapter run orchestrator', () => {
                         runnerDurationMs: 1,
                         evaluations: [{ score: 1 }],
                     }],
-                }];
+                }]);
             },
         };
 
@@ -193,5 +194,50 @@ describe('adapter run orchestrator', () => {
                 artifactRoot,
             },
         })).resolves.toBe(1);
+    });
+
+    it('treats timed-out and parked adapter runs as nonzero CI exits while reports stay pass or fail', async () => {
+        for (const status of ['timed_out', 'parked'] as const) {
+            const artifactRoot = await fs.mkdtemp(path.join(os.tmpdir(), `pathgrade-orchestrator-${status}-`));
+            const adapter: RunnerAdapter = {
+                name: `${status}-adapter`,
+                async discover() {
+                    return { units: [{ id: 'unit-1', displayName: 'unit one' }] };
+                },
+                async invoke() {
+                    return {
+                        adapterName: this.name,
+                        status,
+                        exitCode: 0,
+                        ...(status === 'parked' ? { diagnostics: [{ severity: 'warning' as const, message: 'terminal parked run' }] } : {}),
+                    };
+                },
+                async collectNormalizedRunSnapshot(run) {
+                    return buildNormalizedRunSnapshotFromReportGroups(run, [{
+                        groupName: `${status} group`,
+                        cases: [{
+                            name: `${status} case`,
+                            state: 'passed',
+                            runnerDurationMs: 1,
+                            evaluations: [{ score: 1 }],
+                        }],
+                    }]);
+                },
+            };
+
+            await expect(runWithAdapter({
+                adapter,
+                options: {
+                    cwd: process.cwd(),
+                    discovery: { cwd: process.cwd() },
+                    runnerArgs: [],
+                    env: {},
+                    artifactRoot,
+                },
+            })).resolves.toBe(1);
+
+            const report = await fs.readJson(path.join(artifactRoot, 'results.json'));
+            expect(['pass', 'fail']).toContain(report.status);
+        }
     });
 });

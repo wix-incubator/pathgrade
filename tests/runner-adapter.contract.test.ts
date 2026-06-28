@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { buildPathgradeReport } from '../src/reporting/core.js';
 import { runnerAdapterContractVersion } from '../src/runners/adapter.js';
+import { buildNormalizedRunSnapshotFromReportGroups } from '../src/runners/model-builders.js';
+import { validateNormalizedRunSnapshot } from '../src/runners/model-validation.js';
+import { projectNormalizedRunSnapshotToReportInput } from '../src/runners/report-projection.js';
 import type {
     AdapterDiscoveryResult,
     AdapterLifecycleHooks,
     AdapterRunHandle,
     RunnerAdapter,
 } from '../src/runners/adapter.js';
+import type { NormalizedRunSnapshot } from '../src/runners/model.js';
 
 function makeLifecycle(): AdapterLifecycleHooks {
     const activeCases: string[] = [];
@@ -24,6 +29,107 @@ function makeLifecycle(): AdapterLifecycleHooks {
 }
 
 describe('runner adapter contract', () => {
+    it('validates and projects one completed normalized local run into existing report output', () => {
+        const snapshot: NormalizedRunSnapshot = {
+            version: 1,
+            completeness: 'final',
+            model: {
+                run: {
+                    id: 'run-1',
+                    adapterName: 'fake-local',
+                    status: 'completed',
+                },
+                units: [{
+                    id: 'unit-1',
+                    runId: 'run-1',
+                    displayName: 'math.eval.ts',
+                }],
+                cases: [{
+                    id: 'case-1',
+                    runId: 'run-1',
+                    unitId: 'unit-1',
+                    name: 'adds numbers',
+                    state: 'passed',
+                    scoringPolicy: { kind: 'from-evaluations' },
+                    attempts: [{
+                        id: 'attempt-1',
+                        caseId: 'case-1',
+                        outcome: { kind: 'passed' },
+                        durationMs: 25,
+                        evaluations: [{
+                            id: 'evaluation-1',
+                            attemptId: 'attempt-1',
+                            score: 1,
+                        }],
+                    }],
+                }],
+            },
+        };
+
+        expect(validateNormalizedRunSnapshot(snapshot, { completeness: 'final' })).toEqual({
+            ok: true,
+            errors: [],
+        });
+
+        const reportInput = projectNormalizedRunSnapshotToReportInput(snapshot);
+
+        expect(reportInput).toEqual({
+            groups: [{
+                groupName: 'math.eval.ts',
+                cases: [{
+                    caseId: 'case-1',
+                    name: 'adds numbers',
+                    state: 'passed',
+                    runnerDurationMs: 25,
+                    evaluations: [{ score: 1 }],
+                }],
+            }],
+        });
+
+        const built = buildPathgradeReport(reportInput);
+
+        expect(built.report).toMatchObject({
+            version: 1,
+            overall_pass_rate: 1,
+            status: 'pass',
+            groups: [{
+                task: 'math.eval.ts',
+                pass_rate: 1,
+                pass_at_k: 1,
+                pass_pow_k: 1,
+                trace_file: 'traces/math-eval-ts.json',
+            }],
+        });
+        expect(built.report.groups[0].trials).toEqual([expect.objectContaining({
+            trial_id: 1,
+            name: 'adds numbers',
+            reward: 1,
+            duration_ms: 25,
+        })]);
+
+        const malformed: NormalizedRunSnapshot = {
+            version: 1,
+            completeness: 'final',
+            model: {
+                run: {
+                    id: '',
+                    adapterName: '',
+                    status: 'completed',
+                },
+                units: [],
+                cases: [],
+            },
+        };
+
+        expect(validateNormalizedRunSnapshot(malformed, { completeness: 'final' })).toMatchObject({
+            ok: false,
+            errors: expect.arrayContaining([
+                expect.objectContaining({ path: 'model.run.id' }),
+                expect.objectContaining({ path: 'model.run.adapterName' }),
+            ]),
+        });
+    });
+
     it('supports local events, remote jobs, durable streams, and node:test-style runners without Vitest concepts', async () => {
         expect(runnerAdapterContractVersion).toBe(1);
 
@@ -59,9 +165,9 @@ describe('runner adapter contract', () => {
                     native: { eventCursor: 1 },
                 };
             },
-            async collectReportGroups(run) {
+            async collectNormalizedRunSnapshot(run) {
                 expect(run.native).toEqual({ eventCursor: 1 });
-                return [{
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'local file',
                     cases: [{
                         name: 'local case',
@@ -71,7 +177,7 @@ describe('runner adapter contract', () => {
                         runnerCaseId: 'event-1',
                         evaluations: [{ score: 1 }],
                     }],
-                }];
+                }]);
             },
         };
 
@@ -102,9 +208,9 @@ describe('runner adapter contract', () => {
                     native: { jobId: 'job-123', status: 'remote-job-failed' },
                 };
             },
-            async collectReportGroups(run) {
+            async collectNormalizedRunSnapshot(run) {
                 expect(run.status).toBe('failed');
-                return [{
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'remote evaluator',
                     cases: [{
                         name: 'dataset item',
@@ -117,7 +223,7 @@ describe('runner adapter contract', () => {
                             diagnostics: { completionReason: 'remote-job-failed', score: 0 },
                         }],
                     }],
-                }];
+                }]);
             },
         };
 
@@ -150,8 +256,8 @@ describe('runner adapter contract', () => {
                     native: { streamOffset: 12 },
                 };
             },
-            async collectReportGroups() {
-                return [{
+            async collectNormalizedRunSnapshot(run) {
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'durable session',
                     cases: [
                         {
@@ -168,7 +274,7 @@ describe('runner adapter contract', () => {
                             evaluations: [{ score: 0 }],
                         },
                     ],
-                }];
+                }]);
             },
         };
 
@@ -185,16 +291,16 @@ describe('runner adapter contract', () => {
                     native: { events: [{ type: 'test:pass', nesting: 0 }] },
                 };
             },
-            async collectReportGroups(run) {
+            async collectNormalizedRunSnapshot(run) {
                 expect(run.native).toEqual({ events: [{ type: 'test:pass', nesting: 0 }] });
-                return [{
+                return buildNormalizedRunSnapshotFromReportGroups(run, [{
                     groupName: 'node events',
                     cases: [{
                         name: 'node event case',
                         state: 'skipped',
                         runnerDurationMs: 1,
                     }],
-                }];
+                }]);
             },
         };
 
@@ -216,11 +322,12 @@ describe('runner adapter contract', () => {
                 env: {},
                 lifecycle: makeLifecycle(),
             });
-            const groups = await adapter.collectReportGroups(run);
+            const snapshot = await adapter.collectNormalizedRunSnapshot(run);
+            const reportInput = projectNormalizedRunSnapshotToReportInput(snapshot);
 
             expect(run.adapterName).toBe(adapter.name);
             expect(['completed', 'failed', 'cancelled']).toContain(run.status);
-            expect(groups.every(group => group.cases.every(testCase => (
+            expect(reportInput.groups.every(group => group.cases.every(testCase => (
                 testCase.state === 'passed'
                 || testCase.state === 'failed'
                 || testCase.state === 'skipped'

@@ -1,7 +1,7 @@
 import type { PathgradeSelectionReport } from '../types.js';
 import type { Agent, PathgradeTestMeta, RecordedEvalResult } from '../sdk/types.js';
-import type { ReportGroupInput } from '../reporting/types.js';
 import type { CaseContextScope } from '../sdk/case-context.js';
+import type { NormalizedRunSnapshot } from './model.js';
 
 export const runnerAdapterContractVersion = 1;
 
@@ -12,7 +12,7 @@ export interface RunnerAdapter {
 
     invoke(input: AdapterInvocationInput): Promise<AdapterRunHandle>;
 
-    collectReportGroups(run: AdapterRunHandle): Promise<ReportGroupInput[]>;
+    collectNormalizedRunSnapshot(run: AdapterRunHandle): Promise<NormalizedRunSnapshot>;
 }
 
 export interface AdapterDiscoveryInput {
@@ -56,7 +56,7 @@ export interface AdapterRunHandle {
     diagnostics?: AdapterDiagnostic[];
 }
 
-export type AdapterRunStatus = 'completed' | 'failed' | 'cancelled';
+export type AdapterRunStatus = 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'parked';
 
 export interface AdapterLifecycleHooks {
     onResult(event: EvalResultEvent): void;

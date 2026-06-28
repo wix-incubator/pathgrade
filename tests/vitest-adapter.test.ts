@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs-extra';
 import path from 'node:path';
 import os from 'node:os';
+import { buildPathgradeReport } from '../src/reporting/core.js';
 import { createVitestAdapter, collectVitestReportGroups } from '../src/runners/vitest-adapter.js';
+import { projectNormalizedRunSnapshotToReportInput } from '../src/runners/report-projection.js';
 
 function makeCase(overrides: {
     id?: string;
@@ -25,7 +27,7 @@ function makeCase(overrides: {
 }
 
 describe('Vitest runner adapter', () => {
-    it('discovers Pathgrade eval units and translates opaque Vitest run handles into normalized report groups', async () => {
+    it('discovers Pathgrade eval units and translates opaque Vitest run handles into normalized snapshots', async () => {
         const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'pathgrade-vitest-adapter-'));
         await fs.outputFile(
             path.join(cwd, 'alpha.eval.ts'),
@@ -64,6 +66,27 @@ describe('Vitest runner adapter', () => {
                             state: 'timedout',
                             duration: undefined,
                         }),
+                        makeCase({
+                            id: 'task-3',
+                            name: 'plain pass',
+                            module: { relativeModuleId: 'top.eval.ts' },
+                            state: 'passed',
+                            duration: 5,
+                        }),
+                        makeCase({
+                            id: 'task-4',
+                            name: 'plain skip',
+                            module: { relativeModuleId: 'top.eval.ts' },
+                            state: 'skipped',
+                            duration: 0,
+                        }),
+                        makeCase({
+                            id: 'task-5',
+                            name: 'plain pending',
+                            module: { relativeModuleId: 'top.eval.ts' },
+                            state: 'pending',
+                            duration: 0,
+                        }),
                     ],
                 },
             }] as never,
@@ -93,14 +116,22 @@ describe('Vitest runner adapter', () => {
             },
         });
 
-        const groups = await adapter.collectReportGroups(run);
+        const snapshot = await adapter.collectNormalizedRunSnapshot(run);
+        const reportInput = projectNormalizedRunSnapshotToReportInput(snapshot);
 
         expect(run).toMatchObject({
             adapterName: 'vitest',
             status: 'completed',
             exitCode: 0,
         });
-        expect(groups).toEqual([
+        expect(snapshot).toMatchObject({
+            version: 1,
+            completeness: 'final',
+            model: {
+                run: { adapterName: 'vitest', status: 'completed' },
+            },
+        });
+        expect(reportInput.groups).toEqual([
             {
                 groupName: 'suite.eval.ts > nested suite',
                 cases: [
@@ -109,12 +140,7 @@ describe('Vitest runner adapter', () => {
                         name: 'suite case',
                         state: 'failed',
                         runnerDurationMs: 123,
-                        sourceRef: 'suite.eval.ts',
-                        filePath: 'suite.eval.ts',
-                        groupName: 'suite.eval.ts > nested suite',
-                        runnerCaseId: 'task-1',
                         evaluations: [{ score: 0.2, trial, diagnostics }],
-                        diagnostics: undefined,
                     },
                 ],
             },
@@ -126,19 +152,42 @@ describe('Vitest runner adapter', () => {
                         name: 'timed out before evaluate',
                         state: 'failed',
                         runnerDurationMs: 0,
-                        sourceRef: 'top.eval.ts',
-                        filePath: 'top.eval.ts',
-                        groupName: 'top.eval.ts',
-                        runnerCaseId: 'task-2',
-                        evaluations: undefined,
-                        diagnostics: expect.objectContaining({
-                            completionReason: 'timedout',
-                            score: 0,
-                        }),
+                        evaluations: [{ score: 0 }],
+                    },
+                    {
+                        caseId: 'task-3',
+                        name: 'plain pass',
+                        state: 'passed',
+                        runnerDurationMs: 5,
+                        evaluations: [{ score: 1 }],
+                    },
+                    {
+                        caseId: 'task-4',
+                        name: 'plain skip',
+                        state: 'skipped',
+                        reportable: false,
+                        runnerDurationMs: 0,
+                        evaluations: [],
+                    },
+                    {
+                        caseId: 'task-5',
+                        name: 'plain pending',
+                        state: 'pending',
+                        reportable: false,
+                        runnerDurationMs: 0,
+                        evaluations: [],
                     },
                 ],
             },
         ]);
+
+        const built = buildPathgradeReport(reportInput);
+        expect(built.report).toMatchObject({
+            overall_pass_rate: (0.2 + 0 + 1) / 3,
+            status: 'fail',
+        });
+        expect(JSON.stringify(built.report)).not.toContain('plain skip');
+        expect(JSON.stringify(built.report)).not.toContain('plain pending');
     });
 
     it('keeps the translation helper available behind the Vitest adapter module', () => {

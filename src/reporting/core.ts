@@ -10,6 +10,7 @@ interface BuiltCase {
     runnerDurationMs: number;
     trial: TrialResult;
     diagnostics?: DiagnosticsReport;
+    reportable?: boolean;
     warnings: string[];
 }
 
@@ -77,6 +78,7 @@ export function buildPathgradeReport(input: ReportRunInput): PathgradeReportBuil
 }
 
 function reportableBuiltCase(testCase: BuiltCase): boolean {
+    if (testCase.reportable !== undefined) return testCase.reportable;
     return testCase.state !== 'skipped' && testCase.state !== 'pending';
 }
 
@@ -99,6 +101,7 @@ function toBuiltCase(testCase: ReportCaseInput): BuiltCase {
         score: evaluation.score,
         runnerDurationMs: testCase.runnerDurationMs,
         diagnostics,
+        reportable: testCase.reportable,
         trial: normalizeTrial({
             name: testCase.name,
             score: evaluation.score,
@@ -118,6 +121,7 @@ function fallbackCase(testCase: ReportCaseInput, warnings: string[]): BuiltCase 
         score,
         runnerDurationMs: testCase.runnerDurationMs,
         diagnostics: testCase.diagnostics,
+        reportable: testCase.reportable,
         trial: normalizeTrial({
             name: testCase.name,
             score,

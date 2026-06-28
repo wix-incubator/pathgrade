@@ -1,5 +1,6 @@
 import type { TestCase, TestModule, TestSuite } from 'vitest/node';
 import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
+import { buildNormalizedRunSnapshotFromReportGroups } from './model-builders.js';
 import { buildDiagnosticsReport } from '../sdk/diagnostics.js';
 import type { PathgradeTestMeta } from '../sdk/types.js';
 import type { ReportCaseInput, ReportCaseState, ReportGroupInput } from '../reporting/types.js';
@@ -48,8 +49,11 @@ export function createVitestAdapter(options: VitestAdapterOptions = {}): RunnerA
                 } satisfies VitestRunNative,
             };
         },
-        async collectReportGroups(run) {
-            return collectVitestReportGroups(readVitestRunNative(run).testModules);
+        async collectNormalizedRunSnapshot(run) {
+            return buildNormalizedRunSnapshotFromReportGroups(
+                run,
+                collectVitestReportGroups(readVitestRunNative(run).testModules),
+            );
         },
     };
 }

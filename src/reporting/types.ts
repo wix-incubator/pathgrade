@@ -23,6 +23,7 @@ export interface ReportCaseInput {
     filePath?: string;
     groupName?: string;
     runnerCaseId?: string;
+    reportable?: boolean;
     evaluations?: readonly ReportEvaluationInput[];
     diagnostics?: DiagnosticsReport;
 }
