@@ -6,6 +6,10 @@ export default defineConfig({
     alias: {
       '@wix/pathgrade/plugin/vitest': path.resolve(__dirname, 'src/adapters/vitest/index.ts'),
       '@wix/pathgrade/plugin': path.resolve(__dirname, 'src/plugin/index.ts'),
+      '@wix/pathgrade/adapter-kit': path.resolve(__dirname, 'src/adapter-kit/index.ts'),
+      '@wix/pathgrade/adapters/jest': path.resolve(__dirname, 'src/adapters/jest/index.ts'),
+      '@wix/pathgrade/adapters/jest/setup': path.resolve(__dirname, 'src/adapters/jest/setup.ts'),
+      '@wix/pathgrade/adapters/jest/reporter': path.resolve(__dirname, 'src/adapters/jest/reporter.ts'),
       '@wix/pathgrade': path.resolve(__dirname, 'src/sdk/index.ts'),
     },
   },

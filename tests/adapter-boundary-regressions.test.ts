@@ -18,11 +18,14 @@ describe('adapter boundary regressions', () => {
     it('keeps report metrics, trace paths, artifact shape, and threshold status out of adapters', () => {
         const vitestAdapterSource = fs.readFileSync(path.join(process.cwd(), 'src/runners/vitest-adapter.ts'), 'utf8');
         const vitestLifecycleSource = fs.readFileSync(path.join(process.cwd(), 'src/runners/vitest-lifecycle.ts'), 'utf8');
+        const jestAdapterSources = fs.readdirSync(path.join(process.cwd(), 'src/adapters/jest'))
+            .filter(file => ['runner-adapter.ts', 'results.ts', 'lifecycle.ts', 'setup.ts'].includes(file))
+            .map(file => [`src/adapters/jest/${file}`, fs.readFileSync(path.join(process.cwd(), 'src/adapters/jest', file), 'utf8')] as const);
 
         for (const [name, source] of Object.entries({
             'vitest-adapter.ts': vitestAdapterSource,
             'vitest-lifecycle.ts': vitestLifecycleSource,
-        })) {
+        }).concat(jestAdapterSources)) {
             expect(source, `${name} must not compute report metrics`).not.toMatch(/\bpass_rate\b|\bpass_at_k\b|\bpass_pow_k\b|\btrace_file\b|\boverall_pass_rate\b/);
             expect(source, `${name} must not write Pathgrade artifacts`).not.toMatch(/writePathgradeArtifacts|results\.json|['"]\.pathgrade['"]/);
         }

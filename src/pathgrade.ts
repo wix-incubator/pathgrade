@@ -23,9 +23,7 @@ import { runAffected } from './commands/affected.js';
 import { runChanged } from './commands/run-changed.js';
 import { clearSidecar } from './affected/sidecar.js';
 import { resolvePathgradeConfig } from './config/pathgrade.js';
-import { resolveRunnerAdapter } from './runners/selection.js';
-import { createNodeTestInvocationAdapter } from './adapters/node-test/invocation-adapter.js';
-import { createVitestInvocationAdapter } from './runners/vitest-invocation.js';
+import { loadRunnerInvocationAdapter } from './runners/adapter-loader.js';
 import { fmt } from './utils/cli.js';
 import { shutdown } from './utils/shutdown.js';
 
@@ -199,12 +197,10 @@ async function main() {
         };
         try {
             const config = await resolvePathgradeConfig({ cwd: process.cwd() });
-            const selected = resolveRunnerAdapter({
+            const runner = await loadRunnerInvocationAdapter({
                 adapterName: parsed.adapterName ?? config.runner.adapter,
+                config,
             });
-            const runner = selected.name === 'node-test'
-                ? createNodeTestInvocationAdapter({ config })
-                : createVitestInvocationAdapter();
             process.exitCode = await runner.run({
                 cwd: process.cwd(),
                 runnerArgs: [...config.runner.args, ...parsed.runnerArgs],
@@ -231,7 +227,7 @@ function printHelp() {
                      [--changed]               Run only evals affected by the current PR/change-set
                      [--since=<ref>]           Override base ref (implies git mode)
                      [--changed-files=<path>]  Use an explicit newline-delimited file list
-                     [--adapter=vitest|node-test] Select runner adapter
+                     [--adapter=vitest|jest|node-test] Select runner adapter
                      [--quiet]                 Suppress the run-start summary
                      [--verbose|-v]            Stream live per-turn events to stderr during the run
     pathgrade init [--force]         Generate eval scaffolding

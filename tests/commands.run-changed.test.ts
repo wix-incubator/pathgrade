@@ -195,7 +195,7 @@ export default {
         }
     });
 
-    it('fails before selection or spawn when pathgrade.config.ts names an unsupported adapter', async () => {
+    it('accepts jest from pathgrade.config.ts and dispatches through the selected invocation adapter', async () => {
         const root = makeRepo();
         fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `
 export default {
@@ -204,6 +204,10 @@ export default {
 `);
         mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
         mockedChanged.mockReturnValue(['skills/alpha/x.ts']);
+        const runnerInvocation: RunnerInvocationAdapter = {
+            name: 'jest',
+            run: vi.fn(async () => 0),
+        };
 
         const cap = captureStd();
         try {
@@ -216,13 +220,19 @@ export default {
                     changed: true,
                     quiet: false,
                 },
+                runnerInvocation,
                 spawnVitest: fakeSpawn,
             });
             cap.restore();
-            expect(code).toBe(1);
+            expect(code).toBe(0);
             expect(fakeSpawn).not.toHaveBeenCalled();
-            expect(mockedChanged).not.toHaveBeenCalled();
-            expect(cap.stderr()).toContain('Unsupported Pathgrade runner adapter: jest');
+            expect(runnerInvocation.run).toHaveBeenCalledWith({
+                cwd: root,
+                runnerArgs: [],
+                selectedFiles: ['skills/alpha/a.eval.ts'],
+                env: expect.any(Object),
+            });
+            expect(cap.stderr()).toContain('→ jest run skills/alpha/a.eval.ts');
         } finally {
             cap.restore();
         }

@@ -1,6 +1,6 @@
 # Pathgrade User Guide
 
-Pathgrade evaluates whether AI agents correctly discover and use your skills. You write evaluations as vitest tests that create isolated workspaces, run agents, and evaluate the results with deterministic checks, LLM judges, and tool-usage matchers.
+Pathgrade evaluates whether AI agents correctly discover and use your skills. You write evaluations as Vitest or Jest tests that create isolated workspaces, run agents, and evaluate the results with deterministic checks, LLM judges, and tool-usage matchers.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
 - [Agents](#agents)
   - [Claude SDK driver](#claude-sdk-driver)
 - [CLI Reference](#cli-reference)
-- [Vitest Plugin Configuration](#vitest-plugin-configuration)
+- [Runner Adapter Configuration](#runner-adapter-configuration)
 - [EvalRuntime and LLM Injection](#evalruntime-and-llm-injection)
 - [Environment Variables](#environment-variables)
 - [Reviewing Results](#reviewing-results)
@@ -47,10 +47,12 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
 
 ## Installation
 
-**Prerequisites**: Node.js 20+, vitest 4+
+**Prerequisites**: Node.js 20+, Vitest 4+ or Jest 30+
 
 ```bash
 npm i @wix/pathgrade vitest
+# or
+npm i @wix/pathgrade jest
 ```
 
 ### Per-agent runtime requirements
@@ -1002,13 +1004,13 @@ For local first-party use on macOS, your existing Claude Code keychain login sti
 
 ## CLI Reference
 
-Pathgrade ships a CLI that wraps vitest and provides convenience commands:
+Pathgrade ships a CLI that wraps the selected runner adapter and provides convenience commands:
 
 ```bash
-pathgrade run [-- vitest-args]
+pathgrade run [--adapter=vitest|jest|node-test] [-- runner-args]
 ```
 
-Runs vitest with the pathgrade plugin. Pass `--diagnostics` before `--` to force full diagnostics for successful evals as well. Any arguments after `--` are forwarded to vitest (for example, `pathgrade run -- --grep conversation`).
+Runs evals with the selected adapter. Vitest is the default; use `pathgrade run --adapter=jest` or `runner.adapter: 'jest'` in `pathgrade.config.*` for Jest projects. Pass `--diagnostics` before `--` to force full diagnostics for successful evals as well. Any arguments after `--` are forwarded to the runner (for example, `pathgrade run --adapter=jest -- --runInBand`).
 
 ```bash
 pathgrade init [--force]
@@ -1041,7 +1043,7 @@ pathgrade --version
 
 Print usage information or the installed version.
 
-## Vitest Plugin Configuration
+## Runner Adapter Configuration
 
 The `pathgrade()` plugin factory configures vitest for eval runs:
 
@@ -1062,6 +1064,39 @@ export default defineConfig({
         },
     })],
 });
+```
+
+Jest projects select the Jest adapter through Pathgrade config or the CLI:
+
+```typescript
+// pathgrade.config.ts
+export default {
+    runner: {
+        adapter: 'jest',
+        args: ['--runInBand'],
+    },
+    evals: {
+        include: ['**/*.eval.ts'],
+        exclude: ['**/fixtures/**'],
+    },
+    reporter: 'cli',
+};
+```
+
+```bash
+pathgrade run --adapter=jest -- --testNamePattern conversation
+```
+
+Pathgrade config owns Pathgrade behavior: adapter selection, eval include/exclude, affected selection, diagnostics, verbose mode, reporter mode, runner args, and CI thresholds. Jest config owns Jest behavior: transforms, ESM/TypeScript execution, module resolution, and test environment. Pathgrade does not add a TypeScript compiler for Jest; use your existing Jest transform pipeline.
+
+For direct Jest runs, add Pathgrade's setup and reporter to `jest.config.*`:
+
+```js
+// jest.config.mjs
+export default {
+    setupFilesAfterEnv: ['@wix/pathgrade/adapters/jest/setup'],
+    reporters: ['default', '@wix/pathgrade/adapters/jest/reporter'],
+};
 ```
 
 **PathgradePluginOptions**:

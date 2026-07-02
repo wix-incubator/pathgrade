@@ -9,9 +9,13 @@
     "baseUrl": ".",
     "paths": {
       "@wix/pathgrade": ["src/sdk/index.ts"],
+      "@wix/pathgrade/adapter-kit": ["src/adapter-kit/index.ts"],
       "@wix/pathgrade/plugin": ["src/plugin/index.ts"],
       "@wix/pathgrade/plugin/vitest": ["src/adapters/vitest/index.ts"],
       "@wix/pathgrade/adapters/vitest": ["src/adapters/vitest/index.ts"],
+      "@wix/pathgrade/adapters/jest": ["src/adapters/jest/index.ts"],
+      "@wix/pathgrade/adapters/jest/setup": ["src/adapters/jest/setup.ts"],
+      "@wix/pathgrade/adapters/jest/reporter": ["src/adapters/jest/reporter.ts"],
       "@wix/pathgrade/mcp-mock": ["src/core/mcp-mock.ts"]
     },
     "esModuleInterop": true,

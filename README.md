@@ -1,10 +1,10 @@
 # Pathgrade
 
-**Evaluate AI coding agents with Vitest.** Write evals as normal `.eval.ts` files, run Claude Code, Codex, or Cursor in isolated sandboxes, and score the result with deterministic checks, rubric judges, and tool-usage assertions.
+**Evaluate AI coding agents with Vitest or Jest.** Write evals as normal `.eval.ts` files, run Claude Code, Codex, or Cursor in isolated sandboxes, and score the result with deterministic checks, rubric judges, and tool-usage assertions.
 
 ## Why Pathgrade?
 
-- Write evals in plain TypeScript with Vitest
+- Write evals in plain TypeScript with Vitest or Jest
 - Run each trial in an isolated workspace and HOME directory
 - Seed trials from fixtures, real skills, or mocked MCP servers
 - Score both final artifacts and the workflow that produced them
@@ -13,10 +13,16 @@
 
 ## Quick Start
 
-**Prerequisites**: Node.js 20.11+, Vitest 4+, and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), or the `cursor-agent` CLI
+**Prerequisites**: Node.js 20.11+, Vitest 4+ or Jest 30+, and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), or the `cursor-agent` CLI
 
 ```bash
 yarn add -D @wix/pathgrade
+```
+
+For Jest projects, install Jest too:
+
+```bash
+yarn add -D @wix/pathgrade jest
 ```
 
 ### Authentication
@@ -92,7 +98,7 @@ For Pathgrade CLI behavior, use `pathgrade.config.ts`:
 ```typescript
 export default {
     runner: {
-        adapter: 'vitest', // only supported adapter before Pillar 7
+        adapter: 'vitest', // default; use 'jest' for Jest projects
         args: [],
     },
     evals: {
@@ -140,7 +146,7 @@ Run your evals:
 npx pathgrade run
 ```
 
-`pathgrade run` is the recommended wrapper: it loads `.env`, warns when no auth is configured, and adds Pathgrade-specific flags such as `--changed`, `--diagnostics`, and `--verbose`. Plain `npx vitest run` works too if you do not need those extras.
+`pathgrade run` is the recommended wrapper: it loads `.env`, warns when no auth is configured, and adds Pathgrade-specific flags such as `--changed`, `--diagnostics`, and `--verbose`. Plain `npx vitest run` or direct Jest runs work too if you configure the Pathgrade adapter hooks yourself.
 
 ## Core Concepts
 
@@ -317,7 +323,7 @@ const agent = await createAgent({ agent: 'claude', mcpMock: mock });
 ## CLI
 
 ```bash
-pathgrade run [--changed] [--adapter=vitest] [--diagnostics] [--verbose] [-- runner-args]
+pathgrade run [--changed] [--adapter=vitest|jest|node-test] [--diagnostics] [--verbose] [-- runner-args]
 pathgrade init [--force]
 pathgrade validate <file.eval.ts>
 pathgrade validate --affected
@@ -330,7 +336,7 @@ pathgrade report [--results-path=<path>] [--no-comment] [--comment-id=<id>]
 
 Useful details:
 
-- `pathgrade run --changed` computes affected evals first, writes selection metadata to `.pathgrade/selection.json`, and only then launches the selected runner adapter. Vitest is the default and only supported adapter in this release.
+- `pathgrade run --changed` computes affected evals first, writes selection metadata to `.pathgrade/selection.json`, and only then launches the selected runner adapter. Vitest is the default adapter; Jest is selected with `runner.adapter: 'jest'` or `--adapter=jest`.
 - `pathgrade preview browser` starts a local viewer on `http://localhost:3847`.
 - `pathgrade report` posts or updates a PR comment in GitHub Actions; locally it prints the markdown report and then the numeric pass rate.
 - `pathgrade validate --affected` is a strict mode for CI: every discovered eval must either live under a `SKILL.md` anchor or export valid `__pathgradeMeta`.
@@ -357,7 +363,7 @@ export default {
 };
 ```
 
-Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name>` select the runner; `--adapter` wins over config. Built-in adapters currently include `vitest` and the narrow `node-test` proof adapter.
+Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name>` select the runner; `--adapter` wins over config. Built-in adapters currently include `vitest`, `jest`, and the narrow `node-test` proof adapter.
 
 Vitest runner behavior still belongs in `vitest.config.ts`:
 
@@ -372,11 +378,23 @@ pathgrade({
 });
 ```
 
+Jest runner behavior still belongs in `jest.config.*`. Pathgrade injects only the setup and reporter it needs when you use `pathgrade run --adapter=jest`; transforms, test environment, module resolution, and ESM/TypeScript support remain your Jest config's job.
+
+For direct Jest runs, configure the same entry points explicitly:
+
+```js
+// jest.config.mjs
+export default {
+    setupFilesAfterEnv: ['@wix/pathgrade/adapters/jest/setup'],
+    reporters: ['default', '@wix/pathgrade/adapters/jest/reporter'],
+};
+```
+
 Notes:
 
 - Legacy `@wix/pathgrade/plugin` and `@wix/pathgrade/plugin/vitest` imports remain as compatibility fallbacks, but new config should use `@wix/pathgrade/adapters/vitest` and `pathgrade.config.*`.
 - `reporter: 'browser'` writes results JSON and opens the viewer automatically after the run.
-- SDK-only consumers can import `@wix/pathgrade` without installing Vitest. Vitest adapter users still need Vitest available.
+- SDK-only consumers can import `@wix/pathgrade` without installing Vitest or Jest. Adapter users need their selected runner available.
 
 ## Environment Variables
 
@@ -413,7 +431,7 @@ Run it with:
 pathgrade run --adapter=node-test
 ```
 
-This proof validates Pathgrade's adapter, lifecycle, result capture, and reporting boundaries. It does not imply Jest, Mocha, Playwright, or runnerless CLI support.
+This proof validates Pathgrade's adapter, lifecycle, result capture, and reporting boundaries. It does not imply Mocha, Playwright, or runnerless CLI support.
 | `NO_COLOR` | Disable ANSI colors |
 
 `pathgrade run` loads `.env` from the working directory automatically.

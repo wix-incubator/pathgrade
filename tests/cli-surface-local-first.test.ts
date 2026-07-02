@@ -36,7 +36,7 @@ describe('local-first CLI surface', () => {
     const readme = readRepoFile('README.md');
 
     expect(readme).toContain('**Prerequisites**: Node.js 20.');
-    expect(readme).toContain('Evaluate AI coding agents with Vitest.');
+    expect(readme).toContain('Evaluate AI coding agents with Vitest or Jest.');
     expect(readme).toContain('createAgent(');
     expect(readme).toContain('evaluate(');
     expect(readme).not.toContain('--provider=local\\|docker');

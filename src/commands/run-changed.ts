@@ -19,10 +19,9 @@ import { resolveBaseRef, computeChangedFiles } from '../affected/git.js';
 import { writeSidecar } from '../affected/sidecar.js';
 import { discoverPathgradeEvalFiles } from '../evals/discovery.js';
 import { resolvePathgradeConfig } from '../config/pathgrade.js';
-import { resolveRunnerAdapter } from '../runners/selection.js';
+import { loadRunnerInvocationAdapter } from '../runners/adapter-loader.js';
 import type { RunnerInvocationAdapter } from '../runners/invocation.js';
-import { createNodeTestInvocationAdapter } from '../adapters/node-test/invocation-adapter.js';
-import { createVitestInvocationAdapter, type SpawnVitest } from '../runners/vitest-invocation.js';
+import type { SpawnVitest } from '../runners/vitest-invocation.js';
 import type { SelectionResult } from '../affected/types.js';
 import type { PathgradeRunArgs } from './run-args.js';
 
@@ -46,7 +45,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     const configPath = findVitestConfigArg(parsed.runnerArgs);
 
     let config: Awaited<ReturnType<typeof resolvePathgradeConfig>>;
-    let adapterName: string;
+    let runnerInvocation: RunnerInvocationAdapter;
     try {
         config = await resolvePathgradeConfig({
             cwd,
@@ -55,7 +54,11 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
                 if (!parsed.quiet) process.stderr.write(`${w}\n`);
             },
         });
-        adapterName = resolveRunnerAdapter({ adapterName: parsed.adapterName ?? config.runner.adapter }).name;
+        runnerInvocation = opts.runnerInvocation ?? await loadRunnerInvocationAdapter({
+            adapterName: parsed.adapterName ?? config.runner.adapter,
+            config,
+            spawnVitest: opts.spawnVitest,
+        });
     } catch (err) {
         process.stderr.write(`${errMsg(err)}\n`);
         return 1;
@@ -136,10 +139,6 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
 
     const selectedFiles = result.selected.map(s => s.file);
     const runnerArgs = [...config.runner.args, ...parsed.runnerArgs];
-    const runnerInvocation = opts.runnerInvocation
-        ?? (adapterName === 'node-test'
-            ? createNodeTestInvocationAdapter({ config })
-            : createVitestInvocationAdapter({ spawnVitest: opts.spawnVitest }));
     if (!parsed.quiet) {
         process.stderr.write(`→ ${runnerInvocation.name} run ${selectedFiles.join(' ')}\n`);
     }
