@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ResolvedPathgradeConfig } from '../config/pathgrade.js';
 import { createJestInvocationAdapter } from '../adapters/jest/invocation-adapter.js';
@@ -20,6 +21,7 @@ interface ExternalAdapterModule {
 
 export async function loadRunnerAdapter(input: {
     adapterName?: string;
+    cwd?: string;
 }): Promise<RunnerAdapter> {
     const name = input.adapterName ?? 'vitest';
     if (name === 'vitest' || name === 'node-test') {
@@ -27,7 +29,10 @@ export async function loadRunnerAdapter(input: {
     }
     if (name === 'jest') return createJestAdapter();
 
-    const mod = await importExternalAdapter(name);
+    const mod = await importExternalAdapter({
+        adapterName: name,
+        cwd: input.cwd ?? process.cwd(),
+    });
     if (typeof mod.createPathgradeAdapter !== 'function') {
         throw new Error(`Pathgrade adapter package "${adapterPackageSpecifier(name)}" must export createPathgradeAdapter().`);
     }
@@ -36,6 +41,7 @@ export async function loadRunnerAdapter(input: {
 
 export async function loadRunnerInvocationAdapter(input: {
     adapterName?: string;
+    cwd?: string;
     config: ResolvedPathgradeConfig;
     spawnVitest?: SpawnVitest;
 }): Promise<RunnerInvocationAdapter> {
@@ -44,7 +50,10 @@ export async function loadRunnerInvocationAdapter(input: {
     if (name === 'node-test') return createNodeTestInvocationAdapter({ config: input.config });
     if (name === 'jest') return createJestInvocationAdapter({ config: input.config });
 
-    const mod = await importExternalAdapter(name);
+    const mod = await importExternalAdapter({
+        adapterName: name,
+        cwd: input.cwd ?? process.cwd(),
+    });
     if (typeof mod.createPathgradeInvocationAdapter !== 'function') {
         throw new Error(`Pathgrade adapter package "${adapterPackageSpecifier(name)}" must export createPathgradeInvocationAdapter().`);
     }
@@ -52,19 +61,29 @@ export async function loadRunnerInvocationAdapter(input: {
 }
 
 function adapterPackageSpecifier(adapterName: string): string {
-    if (adapterName.startsWith('.') || adapterName.startsWith('/') || adapterName.includes('/')) {
+    if (adapterName.startsWith('.') || path.isAbsolute(adapterName) || adapterName.includes('/')) {
         return adapterName;
     }
     return `@wix/pathgrade-adapter-${adapterName}`;
 }
 
-async function importExternalAdapter(adapterName: string): Promise<ExternalAdapterModule> {
-    const specifier = adapterPackageSpecifier(adapterName);
+function resolveAdapterSpecifier(input: { cwd: string; adapterName: string }): string {
+    if (input.adapterName.startsWith('.') || path.isAbsolute(input.adapterName)) {
+        return path.resolve(input.cwd, input.adapterName);
+    }
+    const specifier = adapterPackageSpecifier(input.adapterName);
+    return createRequire(path.join(input.cwd, 'package.json')).resolve(specifier);
+}
+
+async function importExternalAdapter(input: { cwd: string; adapterName: string }): Promise<ExternalAdapterModule> {
     try {
-        const resolved = createRequire(import.meta.url).resolve(specifier);
+        const resolved = resolveAdapterSpecifier(input);
         return await import(pathToFileURL(resolved).href) as ExternalAdapterModule;
     } catch (err) {
-        throw new Error(`Unsupported Pathgrade runner adapter: ${adapterName}. Tried to load ${specifier}: ${errMsg(err)}`);
+        throw new Error(
+            `Unsupported Pathgrade runner adapter: ${input.adapterName}. ` +
+            `Tried to load ${adapterPackageSpecifier(input.adapterName)} from ${input.cwd}: ${errMsg(err)}`,
+        );
     }
 }
 

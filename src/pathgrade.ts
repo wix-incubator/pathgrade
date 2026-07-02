@@ -199,6 +199,7 @@ async function main() {
             const config = await resolvePathgradeConfig({ cwd: process.cwd() });
             const runner = await loadRunnerInvocationAdapter({
                 adapterName: parsed.adapterName ?? config.runner.adapter,
+                cwd: process.cwd(),
                 config,
             });
             process.exitCode = await runner.run({

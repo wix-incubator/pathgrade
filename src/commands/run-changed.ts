@@ -56,6 +56,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
         });
         runnerInvocation = opts.runnerInvocation ?? await loadRunnerInvocationAdapter({
             adapterName: parsed.adapterName ?? config.runner.adapter,
+            cwd,
             config,
             spawnVitest: opts.spawnVitest,
         });
