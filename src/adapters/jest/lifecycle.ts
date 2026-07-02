@@ -9,6 +9,7 @@ import {
     type AdapterLifecycleHooks,
     type EvalResultEvent,
 } from '@wix/pathgrade/adapter-kit';
+import { appendJestMetadata } from './metadata.js';
 import { jestCaseId } from './results.js';
 
 export type JestHook = (fn: () => void | Promise<void>) => void;
@@ -70,6 +71,7 @@ export function installJestLifecycle(input: JestLifecycleInstallInput): JestLife
         const metadata = await lifecycle.flushCase(current.caseId);
         if (metadata.length > 0) {
             metadataByCaseId.set(current.caseId, metadata);
+            appendJestMetadata(current.caseId, metadata);
         }
         activeCase = null;
     });

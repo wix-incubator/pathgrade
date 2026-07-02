@@ -21,5 +21,8 @@
   ],
   "ignore": [
     "tests/fixtures/**"
+  ],
+  "ignoreDependencies": [
+    "jest"
   ]
 }

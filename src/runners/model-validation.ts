@@ -1,4 +1,12 @@
-import type { NativeReference, NormalizedRunSnapshot, SnapshotCompleteness } from './model.js';
+import type {
+    AssertionRecord,
+    AttemptRecord,
+    EvaluationRecord,
+    NativeReference,
+    NormalizedRunSnapshot,
+    RunCaseState,
+    SnapshotCompleteness,
+} from './model.js';
 
 export interface NormalizedRunValidationResult {
     ok: boolean;
@@ -16,11 +24,24 @@ export function validateNormalizedRunSnapshot(
 ): NormalizedRunValidationResult {
     const errors: NormalizedRunValidationError[] = [];
 
+    validateRun(snapshot, options.completeness, errors);
+
+    const unitIds = validateUnits(snapshot, errors);
+    validateCases(snapshot, options.completeness, unitIds, errors);
+
+    return { ok: errors.length === 0, errors };
+}
+
+function validateRun(
+    snapshot: NormalizedRunSnapshot,
+    completeness: SnapshotCompleteness,
+    errors: NormalizedRunValidationError[],
+): void {
     if (snapshot.version !== 1) {
         errors.push({ path: 'version', message: 'Normalized run snapshot version must be 1.' });
     }
-    if (snapshot.completeness !== options.completeness) {
-        errors.push({ path: 'completeness', message: `Expected ${options.completeness} snapshot.` });
+    if (snapshot.completeness !== completeness) {
+        errors.push({ path: 'completeness', message: `Expected ${completeness} snapshot.` });
     }
     if (!snapshot.model.run.id) {
         errors.push({ path: 'model.run.id', message: 'Run id is required.' });
@@ -28,14 +49,19 @@ export function validateNormalizedRunSnapshot(
     if (!snapshot.model.run.adapterName) {
         errors.push({ path: 'model.run.adapterName', message: 'Run adapterName is required.' });
     }
-    if (options.completeness === 'final' && snapshot.model.run.status === 'parked' && (snapshot.model.run.diagnostics ?? []).length === 0) {
+    if (completeness === 'final' && snapshot.model.run.status === 'parked' && (snapshot.model.run.diagnostics ?? []).length === 0) {
         errors.push({ path: 'model.run.diagnostics', message: 'Final parked snapshots require diagnostics explaining why parked is terminal.' });
     }
     validateNativeReferences(snapshot.model.run.nativeReferences, 'model.run.nativeReferences', errors);
     for (const [diagnosticIndex, diagnostic] of (snapshot.model.run.diagnostics ?? []).entries()) {
         validateNativeReferences(diagnostic.nativeReferences, `model.run.diagnostics.${diagnosticIndex}.nativeReferences`, errors);
     }
+}
 
+function validateUnits(
+    snapshot: NormalizedRunSnapshot,
+    errors: NormalizedRunValidationError[],
+): Set<string> {
     const unitIds = new Set<string>();
     for (const [unitIndex, unit] of snapshot.model.units.entries()) {
         if (!unit.id) {
@@ -56,7 +82,15 @@ export function validateNormalizedRunSnapshot(
             validateNativeReferences(diagnostic.nativeReferences, `model.units.${unitIndex}.diagnostics.${diagnosticIndex}.nativeReferences`, errors);
         }
     }
+    return unitIds;
+}
 
+function validateCases(
+    snapshot: NormalizedRunSnapshot,
+    completeness: SnapshotCompleteness,
+    unitIds: Set<string>,
+    errors: NormalizedRunValidationError[],
+): void {
     const caseIds = new Set<string>();
     const attemptIds = new Set<string>();
     const evaluationIds = new Set<string>();
@@ -82,11 +116,11 @@ export function validateNormalizedRunSnapshot(
         for (const [diagnosticIndex, diagnostic] of (runCase.diagnostics ?? []).entries()) {
             validateNativeReferences(diagnostic.nativeReferences, `model.cases.${caseIndex}.diagnostics.${diagnosticIndex}.nativeReferences`, errors);
         }
-        if (options.completeness === 'final' && runCase.attempts.length === 0) {
+        if (completeness === 'final' && runCase.attempts.length === 0) {
             errors.push({ path: `model.cases.${caseIndex}.attempts`, message: 'Final run cases require at least one attempt.' });
         }
         const evaluations = runCase.attempts.flatMap(attempt => attempt.evaluations ?? []);
-        if (runCase.scoringPolicy.kind === 'from-evaluations' && options.completeness === 'final' && evaluations.length === 0) {
+        if (runCase.scoringPolicy.kind === 'from-evaluations' && completeness === 'final' && evaluations.length === 0) {
             errors.push({ path: `model.cases.${caseIndex}.scoringPolicy`, message: 'from-evaluations scoring requires at least one evaluation.' });
         }
         if (runCase.scoringPolicy.kind === 'score' && (!Number.isFinite(runCase.scoringPolicy.score) || runCase.scoringPolicy.score < 0 || runCase.scoringPolicy.score > 1)) {
@@ -97,55 +131,116 @@ export function validateNormalizedRunSnapshot(
         }
 
         for (const [attemptIndex, attempt] of runCase.attempts.entries()) {
-            if (!attempt.id) {
-                errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.id`, message: 'Attempt id is required.' });
-            } else if (attemptIds.has(attempt.id)) {
-                errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.id`, message: 'Attempt id must be unique.' });
-            } else {
-                attemptIds.add(attempt.id);
-            }
-            if (attempt.caseId !== runCase.id) {
-                errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.caseId`, message: 'Attempt caseId must reference its run case.' });
-            }
-            if ((runCase.state === 'skipped' || runCase.state === 'pending') && attempt.outcome.kind !== 'not-run') {
-                errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.outcome`, message: 'Non-executed final cases require a not-run attempt outcome.' });
-            }
-            for (const [diagnosticIndex, diagnostic] of (attempt.diagnostics ?? []).entries()) {
-                validateNativeReferences(diagnostic.nativeReferences, `model.cases.${caseIndex}.attempts.${attemptIndex}.diagnostics.${diagnosticIndex}.nativeReferences`, errors);
-            }
-            for (const [evaluationIndex, evaluation] of (attempt.evaluations ?? []).entries()) {
-                if (!evaluation.id) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.evaluations.${evaluationIndex}.id`, message: 'Evaluation id is required.' });
-                } else if (evaluationIds.has(evaluation.id)) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.evaluations.${evaluationIndex}.id`, message: 'Evaluation id must be unique.' });
-                } else {
-                    evaluationIds.add(evaluation.id);
-                }
-                if (evaluation.attemptId !== attempt.id) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.evaluations.${evaluationIndex}.attemptId`, message: 'Evaluation attemptId must reference its attempt.' });
-                }
-                if (!Number.isFinite(evaluation.score) || evaluation.score < 0 || evaluation.score > 1) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.evaluations.${evaluationIndex}.score`, message: 'Evaluation score must be a finite number in [0, 1].' });
-                }
-                validateNativeReferences(evaluation.nativeReferences, `model.cases.${caseIndex}.attempts.${attemptIndex}.evaluations.${evaluationIndex}.nativeReferences`, errors);
-            }
-            for (const [assertionIndex, assertion] of (attempt.assertions ?? []).entries()) {
-                if (!assertion.id) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.assertions.${assertionIndex}.id`, message: 'Assertion id is required.' });
-                } else if (assertionIds.has(assertion.id)) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.assertions.${assertionIndex}.id`, message: 'Assertion id must be unique.' });
-                } else {
-                    assertionIds.add(assertion.id);
-                }
-                if (assertion.attemptId !== attempt.id) {
-                    errors.push({ path: `model.cases.${caseIndex}.attempts.${attemptIndex}.assertions.${assertionIndex}.attemptId`, message: 'Assertion attemptId must reference its attempt.' });
-                }
-                validateNativeReferences(assertion.nativeReferences, `model.cases.${caseIndex}.attempts.${attemptIndex}.assertions.${assertionIndex}.nativeReferences`, errors);
-            }
+            validateAttempt({
+                caseIndex,
+                attemptIndex,
+                attempt,
+                runCaseId: runCase.id,
+                runCaseState: runCase.state,
+                attemptIds,
+                evaluationIds,
+                assertionIds,
+                errors,
+            });
         }
     }
+}
 
-    return { ok: errors.length === 0, errors };
+function validateAttempt(input: {
+    caseIndex: number;
+    attemptIndex: number;
+    attempt: AttemptRecord;
+    runCaseId: string;
+    runCaseState: RunCaseState;
+    attemptIds: Set<string>;
+    evaluationIds: Set<string>;
+    assertionIds: Set<string>;
+    errors: NormalizedRunValidationError[];
+}): void {
+    const attemptPath = `model.cases.${input.caseIndex}.attempts.${input.attemptIndex}`;
+    if (!input.attempt.id) {
+        input.errors.push({ path: `${attemptPath}.id`, message: 'Attempt id is required.' });
+    } else if (input.attemptIds.has(input.attempt.id)) {
+        input.errors.push({ path: `${attemptPath}.id`, message: 'Attempt id must be unique.' });
+    } else {
+        input.attemptIds.add(input.attempt.id);
+    }
+    if (input.attempt.caseId !== input.runCaseId) {
+        input.errors.push({ path: `${attemptPath}.caseId`, message: 'Attempt caseId must reference its run case.' });
+    }
+    if ((input.runCaseState === 'skipped' || input.runCaseState === 'pending') && input.attempt.outcome.kind !== 'not-run') {
+        input.errors.push({ path: `${attemptPath}.outcome`, message: 'Non-executed final cases require a not-run attempt outcome.' });
+    }
+    for (const [diagnosticIndex, diagnostic] of (input.attempt.diagnostics ?? []).entries()) {
+        validateNativeReferences(diagnostic.nativeReferences, `${attemptPath}.diagnostics.${diagnosticIndex}.nativeReferences`, input.errors);
+    }
+    for (const [evaluationIndex, evaluation] of (input.attempt.evaluations ?? []).entries()) {
+        validateEvaluation({
+            attemptPath,
+            evaluationIndex,
+            evaluation,
+            attemptId: input.attempt.id,
+            evaluationIds: input.evaluationIds,
+            errors: input.errors,
+        });
+    }
+    for (const [assertionIndex, assertion] of (input.attempt.assertions ?? []).entries()) {
+        validateAssertion({
+            attemptPath,
+            assertionIndex,
+            assertion,
+            attemptId: input.attempt.id,
+            assertionIds: input.assertionIds,
+            errors: input.errors,
+        });
+    }
+}
+
+function validateEvaluation(input: {
+    attemptPath: string;
+    evaluationIndex: number;
+    evaluation: EvaluationRecord;
+    attemptId: string;
+    evaluationIds: Set<string>;
+    errors: NormalizedRunValidationError[];
+}): void {
+    const evaluationPath = `${input.attemptPath}.evaluations.${input.evaluationIndex}`;
+    if (!input.evaluation.id) {
+        input.errors.push({ path: `${evaluationPath}.id`, message: 'Evaluation id is required.' });
+    } else if (input.evaluationIds.has(input.evaluation.id)) {
+        input.errors.push({ path: `${evaluationPath}.id`, message: 'Evaluation id must be unique.' });
+    } else {
+        input.evaluationIds.add(input.evaluation.id);
+    }
+    if (input.evaluation.attemptId !== input.attemptId) {
+        input.errors.push({ path: `${evaluationPath}.attemptId`, message: 'Evaluation attemptId must reference its attempt.' });
+    }
+    if (!Number.isFinite(input.evaluation.score) || input.evaluation.score < 0 || input.evaluation.score > 1) {
+        input.errors.push({ path: `${evaluationPath}.score`, message: 'Evaluation score must be a finite number in [0, 1].' });
+    }
+    validateNativeReferences(input.evaluation.nativeReferences, `${evaluationPath}.nativeReferences`, input.errors);
+}
+
+function validateAssertion(input: {
+    attemptPath: string;
+    assertionIndex: number;
+    assertion: AssertionRecord;
+    attemptId: string;
+    assertionIds: Set<string>;
+    errors: NormalizedRunValidationError[];
+}): void {
+    const assertionPath = `${input.attemptPath}.assertions.${input.assertionIndex}`;
+    if (!input.assertion.id) {
+        input.errors.push({ path: `${assertionPath}.id`, message: 'Assertion id is required.' });
+    } else if (input.assertionIds.has(input.assertion.id)) {
+        input.errors.push({ path: `${assertionPath}.id`, message: 'Assertion id must be unique.' });
+    } else {
+        input.assertionIds.add(input.assertion.id);
+    }
+    if (input.assertion.attemptId !== input.attemptId) {
+        input.errors.push({ path: `${assertionPath}.attemptId`, message: 'Assertion attemptId must reference its attempt.' });
+    }
+    validateNativeReferences(input.assertion.nativeReferences, `${assertionPath}.nativeReferences`, input.errors);
 }
 
 function validateNativeReferences(

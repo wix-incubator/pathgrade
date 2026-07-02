@@ -10,6 +10,7 @@ import {
     type ResolvedPathgradeConfig,
     type RunnerInvocationAdapter,
 } from '@wix/pathgrade/adapter-kit';
+import { removeJestMetadata, withJestMetadataEnv } from './metadata.js';
 import { createJestAdapter } from './runner-adapter.js';
 
 export interface SpawnJestRequest {
@@ -77,9 +78,12 @@ export function createJestInvocationAdapter(input: {
                 });
             }
 
+            const env = withJestMetadataEnv(runInput.env, runInput.cwd);
+            removeJestMetadata(env.PATHGRADE_JEST_METADATA_PATH);
+
             return await spawnJest({
                 cwd: runInput.cwd,
-                env: runInput.env,
+                env,
                 argv: [
                     ...discovered.units.map(unit => unit.sourceRef).filter((sourceRef): sourceRef is string => typeof sourceRef === 'string'),
                     '--setupFilesAfterEnv',

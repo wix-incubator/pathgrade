@@ -27,6 +27,23 @@ const smokes = [
         },
     },
     {
+        name: 'Jest adapter captures metadata from worker runs',
+        cwd: path.join(repoRoot, 'tests/fixtures/jest-adapter'),
+        args: ['run', '--adapter=jest', '--', '--config', 'jest.config.mjs', '--maxWorkers=2'],
+        env: {
+            NODE_OPTIONS: '--experimental-vm-modules',
+            PATH: systemPathWithoutNodeModulesBin(),
+        },
+        assertReport(report) {
+            const scores = report.groups
+                .flatMap(group => group.trials)
+                .map(trial => trial.reward)
+                .sort();
+
+            assert.deepEqual(scores, [0.5, 1]);
+        },
+    },
+    {
         name: 'node-test adapter',
         cwd: fixture('node-test'),
         args: ['run', '--adapter=node-test'],

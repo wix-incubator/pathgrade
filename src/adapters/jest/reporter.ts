@@ -9,6 +9,7 @@ import {
     runWithAdapter,
 } from '@wix/pathgrade/adapter-kit';
 import { getJestLifecycleMetadata } from './lifecycle.js';
+import { readJestMetadata, removeJestMetadata } from './metadata.js';
 import { createJestAdapter } from './runner-adapter.js';
 import type { JestAggregatedResult } from './results.js';
 
@@ -18,11 +19,15 @@ export default class PathgradeJestReporter {
         const config = await resolvePathgradeConfig({ cwd });
         const mode = config.reporter ?? 'cli';
         const outputDir = getPathgradeDir(cwd);
+        const metadataByCaseId = new Map([
+            ...readJestMetadata(),
+            ...getJestLifecycleMetadata(),
+        ]);
 
         const exitCode = await runWithAdapter({
             adapter: createJestAdapter({
                 results,
-                metadataByCaseId: getJestLifecycleMetadata(),
+                metadataByCaseId,
             }),
             options: {
                 cwd,
@@ -56,6 +61,7 @@ export default class PathgradeJestReporter {
         if (exitCode !== 0 && (process.exitCode === undefined || process.exitCode === 0)) {
             process.exitCode = exitCode;
         }
+        removeJestMetadata();
     }
 
     private openBrowserViewer(): void {

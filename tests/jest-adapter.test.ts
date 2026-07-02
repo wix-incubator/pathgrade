@@ -8,6 +8,7 @@ import { validateNormalizedRunSnapshot } from '../src/runners/model-validation.j
 import { projectNormalizedRunSnapshotToReportInput } from '../src/runners/report-projection.js';
 import { createJestInvocationAdapter } from '@wix/pathgrade/adapters/jest';
 import { getJestLifecycleMetadata, installJestLifecycle } from '../src/adapters/jest/lifecycle.js';
+import { readJestMetadata } from '../src/adapters/jest/metadata.js';
 import { normalizeJestRunResults } from '../src/adapters/jest/results.js';
 import type { AdapterLifecycleHooks, AdapterRunHandle } from '../src/runners/adapter.js';
 
@@ -153,6 +154,9 @@ describe('Jest adapter', () => {
     });
 
     it('attributes flushed Pathgrade metadata through fake Jest hooks', async () => {
+        const metadataPath = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'pathgrade-jest-metadata-')), 'metadata.jsonl');
+        const previousMetadataPath = process.env.PATHGRADE_JEST_METADATA_PATH;
+        process.env.PATHGRADE_JEST_METADATA_PATH = metadataPath;
         const beforeEachHooks: Array<() => void | Promise<void>> = [];
         const afterEachHooks: Array<() => void | Promise<void>> = [];
         const afterAllHooks: Array<() => void | Promise<void>> = [];
@@ -175,50 +179,60 @@ describe('Jest adapter', () => {
             cleanupRun: async () => undefined,
         };
 
-        const handle = installJestLifecycle({
-            beforeEach: hook => beforeEachHooks.push(hook),
-            afterEach: hook => afterEachHooks.push(hook),
-            afterAll: hook => afterAllHooks.push(hook),
-            getState: () => state,
-            lifecycle,
-            subscribeToResults: () => ({ unsubscribe: () => { unsubscribed = true; } }),
-        });
+        try {
+            const handle = installJestLifecycle({
+                beforeEach: hook => beforeEachHooks.push(hook),
+                afterEach: hook => afterEachHooks.push(hook),
+                afterAll: hook => afterAllHooks.push(hook),
+                getState: () => state,
+                lifecycle,
+                subscribeToResults: () => ({ unsubscribe: () => { unsubscribed = true; } }),
+            });
 
-        expect(beforeEachHooks).toHaveLength(1);
-        expect(afterEachHooks).toHaveLength(1);
-        expect(afterAllHooks).toHaveLength(1);
+            expect(beforeEachHooks).toHaveLength(1);
+            expect(afterEachHooks).toHaveLength(1);
+            expect(afterAllHooks).toHaveLength(1);
 
-        await beforeEachHooks[0]();
-        expect(getCurrentCaseContext()).toEqual({
-            status: 'active',
-            context: {
-                caseId: 'jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:1',
-                caseName: 'duplicates same name',
-                filePath: '/repo/evals/duplicates.eval.ts',
-                scope: 'runner-case',
-            },
-        });
-        await afterEachHooks[0]();
+            await beforeEachHooks[0]();
+            expect(getCurrentCaseContext()).toEqual({
+                status: 'active',
+                context: {
+                    caseId: 'jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:1',
+                    caseName: 'duplicates same name',
+                    filePath: '/repo/evals/duplicates.eval.ts',
+                    scope: 'runner-case',
+                },
+            });
+            await afterEachHooks[0]();
 
-        state = {
-            testPath: '/repo/evals/duplicates.eval.ts',
-            currentTestName: 'duplicates same name',
-        };
-        await beforeEachHooks[0]();
-        await afterEachHooks[0]();
-        await afterAllHooks[0]();
+            state = {
+                testPath: '/repo/evals/duplicates.eval.ts',
+                currentTestName: 'duplicates same name',
+            };
+            await beforeEachHooks[0]();
+            await afterEachHooks[0]();
+            await afterAllHooks[0]();
 
-        expect(flushedCases).toEqual([
-            'jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:1',
-            'jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:2',
-        ]);
-        expect(getJestLifecycleMetadata()).toEqual(new Map([
-            ['jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:1', [{ score: 1, scorers: [] }]],
-            ['jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:2', [{ score: 0.5, scorers: [] }]],
-        ]));
-        expect(unsubscribed).toBe(true);
+            const expectedMetadata = new Map([
+                ['jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:1', [{ score: 1, scorers: [] }]],
+                ['jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:2', [{ score: 0.5, scorers: [] }]],
+            ]);
+            expect(flushedCases).toEqual([
+                'jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:1',
+                'jest:/repo/evals/duplicates.eval.ts:duplicates-same-name:2',
+            ]);
+            expect(getJestLifecycleMetadata()).toEqual(expectedMetadata);
+            expect(readJestMetadata(metadataPath)).toEqual(expectedMetadata);
+            expect(unsubscribed).toBe(true);
 
-        handle.restore();
+            handle.restore();
+        } finally {
+            if (previousMetadataPath === undefined) {
+                delete process.env.PATHGRADE_JEST_METADATA_PATH;
+            } else {
+                process.env.PATHGRADE_JEST_METADATA_PATH = previousMetadataPath;
+            }
+        }
     });
 
     it('spawns Jest with selected eval files Pathgrade setup reporter and forwarded args', async () => {
@@ -247,6 +261,9 @@ describe('Jest adapter', () => {
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({
             cwd,
+            env: {
+                PATHGRADE_JEST_METADATA_PATH: expect.stringContaining(path.join(cwd, '.pathgrade')),
+            },
             argv: [
                 'alpha.eval.ts',
                 '--setupFilesAfterEnv',

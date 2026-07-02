@@ -21,6 +21,7 @@ allowlist_cap() {
     tests/claude-sdk-driver.test.ts) echo 697 ;;
     tests/claude-sdk-projector.test.ts) echo 774 ;;
     tests/codex-app-server-agent.test.ts) echo 1285 ;;
+    tests/commands.run-changed.test.ts) echo 609 ;;
     tests/converse.test.ts) echo 608 ;;
     tests/grading-pipeline.test.ts) echo 691 ;;
     tests/sandbox.test.ts) echo 916 ;;
