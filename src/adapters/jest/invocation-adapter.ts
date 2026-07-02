@@ -1,5 +1,7 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import {
     getPathgradeDir,
     printReportSummary,
@@ -108,14 +110,39 @@ function resolveReporterFile(): string {
 }
 
 async function defaultSpawnJest(req: SpawnJestRequest): Promise<number> {
+    const jestBinPath = resolveLocalJestBinPath(req.cwd);
     return await new Promise(resolve => {
-        const child = spawn('jest', req.argv, {
+        const child = spawn(process.execPath, [jestBinPath, ...req.argv], {
             stdio: 'inherit',
             env: req.env,
             cwd: req.cwd,
-            shell: true,
         });
         child.on('close', code => resolve(code ?? 0));
         child.on('error', () => resolve(1));
     });
+}
+
+export function resolveLocalJestBinPath(cwd: string): string {
+    let packageJsonPath: string;
+    try {
+        const req = createRequire(path.join(cwd, 'package.json'));
+        packageJsonPath = req.resolve('jest/package.json');
+    } catch {
+        throw new Error(
+            'pathgrade: Jest adapter requires Jest to be installed in the project. Install it with `npm install --save-dev jest` or the equivalent for your package manager.',
+        );
+    }
+
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+        bin?: string | Record<string, string>;
+    };
+    const bin = typeof packageJson.bin === 'string'
+        ? packageJson.bin
+        : packageJson.bin?.jest;
+
+    if (!bin) {
+        throw new Error(`pathgrade: could not find the Jest executable declared by ${packageJsonPath}.`);
+    }
+
+    return path.resolve(path.dirname(packageJsonPath), bin);
 }

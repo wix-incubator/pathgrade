@@ -289,4 +289,23 @@ describe('Jest adapter', () => {
         });
     });
 
+    it('fails clearly when a project has Jest evals but no local Jest install', async () => {
+        const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'pathgrade-jest-missing-'));
+        await fs.outputJson(path.join(cwd, 'package.json'), { type: 'module' });
+        await fs.outputFile(path.join(cwd, 'alpha.eval.ts'), 'export const __pathgradeMeta = {};\ntest("alpha", () => undefined);\n');
+        const adapter = createJestInvocationAdapter({
+            config: {
+                ...defaultPathgradeConfig(),
+                runner: { adapter: 'jest', args: [] },
+                evals: { include: ['**/*.eval.ts'], exclude: [] },
+            },
+        });
+
+        await expect(adapter.run({
+            cwd,
+            runnerArgs: [],
+            env: process.env,
+        })).rejects.toThrow('Jest adapter requires Jest to be installed in the project');
+    });
+
 });
