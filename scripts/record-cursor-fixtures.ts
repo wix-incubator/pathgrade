@@ -3,7 +3,7 @@
  *
  * Usage (refresh all fixtures against the locally-installed CLI):
  *
- *     pnpm tsx scripts/record-cursor-fixtures.ts
+ *     yarn tsx scripts/record-cursor-fixtures.ts
  *
  * Writes NDJSON per Cursor discriminant into `tests/fixtures/cursor/` and
  * prepends each fixture with a one-line header comment recording the exact
@@ -11,7 +11,7 @@
  * `parseCursorStreamJson` / `extractCursorStreamJsonEvents` silently skip it.
  *
  * Drift check: `checkCursorCliDrift({ pinnedVersion, getInstalledVersion })`
- * compares the installed CLI version against the PRD-pinned version and
+ * compares the installed CLI version against the committed fixture version and
  * returns `{ status: 'match' | 'mismatch' | 'skipped' }`. Warnings only —
  * never fails CI. When `cursor-agent` is not on PATH the check returns
  * `'skipped'` so CI runners without the binary stay green.
@@ -30,7 +30,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/** CLI version pinned in the PRD and used by the committed fixtures. */
+/** CLI version used by the committed fixtures. */
 export const CURSOR_PINNED_CLI_VERSION = '2026.04.17-787b533';
 
 /** Comment marker prepended to every committed fixture. */
@@ -87,7 +87,7 @@ export function checkCursorCliDrift(opts: {
     pinned: opts.pinnedVersion,
     message:
       `cursor-agent ${installed} differs from pinned fixture version ${opts.pinnedVersion}; ` +
-      `refresh with \`pnpm tsx scripts/record-cursor-fixtures.ts\``,
+      `refresh with \`yarn tsx scripts/record-cursor-fixtures.ts\``,
   };
 }
 

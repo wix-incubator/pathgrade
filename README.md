@@ -13,7 +13,7 @@
 
 ## Quick Start
 
-**Prerequisites**: Node.js 20.11+, Vitest 4+ or Jest 30+, and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), or the `cursor-agent` CLI
+**Prerequisites**: Node.js 20.11+, Vitest 4+ or Jest 30+, and at least one configured agent runtime. Claude uses the bundled `@anthropic-ai/claude-agent-sdk` binary by default; Codex requires the `codex` CLI; Cursor requires the `cursor-agent` CLI.
 
 ```bash
 yarn add -D @wix/pathgrade
@@ -33,9 +33,9 @@ By default, Pathgrade tries to reuse the agent CLI's native auth before falling 
   - macOS: reuses Claude Code OAuth from Keychain
   - other platforms: forwards `ANTHROPIC_API_KEY` when present
 - **Codex**
-  - reuses cached `~/.codex/auth.json` when available
-  - or forwards `OPENAI_API_KEY`
-  - or runs `codex login --with-api-key` inside the sandbox when an API key is present but no cached login exists
+  - forwards `OPENAI_API_KEY` when present
+  - or runs `codex login --with-api-key` inside the sandbox when an API key is present
+  - `codex exec` can reuse cached `~/.codex/auth.json` when no key is available; `app-server` may reject cached ChatGPT-token refreshes, so prefer `OPENAI_API_KEY` for the default transport
 - **Cursor**
   - forwards `CURSOR_API_KEY` when set
   - macOS: reuses `cursor-agent login` OAuth tokens from the login Keychain
@@ -58,7 +58,7 @@ const agent = await createAgent({
 
 Codex supports two transports and Pathgrade defaults to `app-server`:
 
-- `app-server` (default) — uses `codex app-server` and keeps native thread state. Required for `AskUserReaction` handshakes (`request_user_input` reaches the model). Requires `OPENAI_API_KEY`; cached `~/.codex/auth.json` is not supported under this transport.
+- `app-server` (default) — uses `codex app-server` and keeps native thread state. Required for `AskUserReaction` handshakes (`request_user_input` reaches the model). Prefer `OPENAI_API_KEY`; cached ChatGPT auth can fail if the app-server asks Pathgrade to refresh tokens.
 - `exec` — uses `codex exec` and re-injects the transcript every turn. Kept for stateless CI matrices that don't need the handshake.
 
 Precedence: `createAgent({ transport })` > `PATHGRADE_CODEX_TRANSPORT` env > default (`app-server`). An invalid env value throws at `createAgent` time.
@@ -74,7 +74,7 @@ If `transport: 'exec'` is resolved and any `AskUserReaction` is present in `Conv
 
 Migrating from `exec` to `app-server`:
 
-- Export `OPENAI_API_KEY`, or set `transport: 'exec'` / `PATHGRADE_CODEX_TRANSPORT=exec` to stay on the old transport.
+- Export `OPENAI_API_KEY`, or set `transport: 'exec'` / `PATHGRADE_CODEX_TRANSPORT=exec` to stay on the old transport and its cached-auth behavior.
 - The `noninteractive-user-question` runtime policy no longer attaches under `app-server`. Snapshots that captured model output influenced by that policy text may need re-recording.
 - `MAX_TURN_RETRIES` does not apply under `app-server` — a crashed turn ends the conversation with `completionReason: 'agent_crashed'`.
 
@@ -217,7 +217,7 @@ judge('spec-structure', {
 });
 ```
 
-Tool-using judges currently require the Anthropic HTTP provider (`ANTHROPIC_API_KEY`); other providers produce a clean `provider_not_supported` error. See the [User Guide](packages/pathgrade/docs/USER_GUIDE.md#tool-using-judges--judge-tools-) for the full tool list, failure codes, and the migration recipe from `input`-helper probes.
+Tool-using judges currently require the Anthropic HTTP provider (`ANTHROPIC_API_KEY`); other providers produce a clean `provider_not_supported` error. See the [User Guide](docs/USER_GUIDE.md#tool-using-judges) for the full tool list, failure codes, and the migration recipe from `input`-helper probes.
 
 ### `toolUsage()` - Tool event matching
 
@@ -231,7 +231,7 @@ toolUsage('expected-workflow', [
 
 ## Conversations
 
-Pathgrade currently supports three agent backends: `claude`, `codex`, and `cursor`. Set the backend per test via `createAgent({ agent: 'claude' })` or globally via `PATHGRADE_AGENT`.
+Pathgrade currently supports three agent backends: `claude`, `codex`, and `cursor`. Set the backend per test via `createAgent({ agent: 'claude' })`, or omit `agent` and use `PATHGRADE_AGENT` as the process-wide fallback.
 
 ### `agent.prompt()` - One shot
 
@@ -298,11 +298,11 @@ Pathgrade exposes a few useful features that are easy to miss from the basic exa
 - `conversationWindow` on agents and personas keeps long transcripts bounded with summarization instead of sending the full conversation every turn.
 - `copyIgnore` and `DEFAULT_COPY_IGNORE` let you control what gets copied into the sandbox when seeding from large fixtures or skill directories.
 
-See [sdk-showcase](packages/pathgrade/examples/sdk-showcase/) for a single example suite that demonstrates these APIs together.
+See [sdk-showcase](examples/sdk-showcase/) for a single example suite that demonstrates these APIs together.
 
 ## MCP Mock Servers
 
-Simulate MCP tools when testing Claude-driven evals:
+Simulate MCP tools when testing Claude, Codex app-server, or Cursor evals:
 
 ```typescript
 import { mockMcpServer } from '@wix/pathgrade/mcp-mock';
@@ -323,7 +323,7 @@ const agent = await createAgent({ agent: 'claude', mcpMock: mock });
 ## CLI
 
 ```bash
-pathgrade run [--changed] [--adapter=vitest|jest|node-test] [--diagnostics] [--verbose] [-- runner-args]
+pathgrade run [--changed] [--since=<ref>] [--changed-files=<path>] [--adapter=<name|path>] [--diagnostics] [--verbose] [--quiet] [-- runner-args]
 pathgrade init [--force]
 pathgrade validate <file.eval.ts>
 pathgrade validate --affected
@@ -363,7 +363,16 @@ export default {
 };
 ```
 
-Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name>` select the runner; `--adapter` wins over config. Built-in adapters currently include `vitest`, `jest`, and the narrow `node-test` proof adapter.
+Pathgrade reads `pathgrade.config.*` for CLI and affected-selection behavior. `runner.adapter` and `--adapter=<name|path>` select the runner; `--adapter` wins over config. Built-in adapters currently include `vitest`, `jest`, and the narrow `node-test` proof adapter.
+
+Third-party runner adapters are supported through `@wix/pathgrade/adapter-kit`. Adapter names resolve as follows:
+
+- `vitest`, `jest`, `node-test`: built-in adapters
+- `demo`: package `@wix/pathgrade-adapter-demo`, resolved from the project
+- `@scope/pathgrade-adapter-demo` or another specifier containing `/`: package specifier, resolved from the project
+- `./local-adapter.mjs` or `/abs/local-adapter.mjs`: local adapter module
+
+External adapter modules used by `pathgrade run` must export `createPathgradeInvocationAdapter({ config })`, returning a `RunnerInvocationAdapter`. Modules used by lower-level orchestration can also export `createPathgradeAdapter()`, returning a `RunnerAdapter` with `discover`, `invoke`, and `collectNormalizedRunSnapshot`.
 
 Vitest runner behavior still belongs in `vitest.config.ts`:
 
@@ -410,6 +419,7 @@ Notes:
 | `PATHGRADE_CODEX_TRANSPORT` | Fallback Codex transport (`exec` or `app-server`). `createAgent({ transport })` wins over this. |
 | `PATHGRADE_VERBOSE` | `1` enables live per-turn streaming to stderr |
 | `PATHGRADE_DIAGNOSTICS` | `1` prints full diagnostics for passing evals too |
+| `NO_COLOR` | Disable ANSI colors |
 
 ### Experimental `node:test` Adapter
 
@@ -432,7 +442,6 @@ pathgrade run --adapter=node-test
 ```
 
 This proof validates Pathgrade's adapter, lifecycle, result capture, and reporting boundaries. It does not imply Mocha, Playwright, or runnerless CLI support.
-| `NO_COLOR` | Disable ANSI colors |
 
 `pathgrade run` loads `.env` from the working directory automatically.
 
@@ -478,15 +487,15 @@ jobs:
 - Evals under a `SKILL.md` are tracked automatically; use `__pathgradeMeta` for cross-skill or non-standard dependencies.
 - Set `ci: { threshold: 0.8 }` in `pathgrade.config.ts` to fail the run when the mean test score drops below your threshold.
 
-See the [User Guide - CI Integration](packages/pathgrade/docs/USER_GUIDE.md#ci-integration) for the full reference.
+See the [User Guide - CI Integration](docs/USER_GUIDE.md#ci-integration) for the full reference.
 
 ## Links
 
-- [User Guide](packages/pathgrade/docs/USER_GUIDE.md) - full API reference and usage patterns
+- [User Guide](docs/USER_GUIDE.md) - full API reference and usage patterns
 - Examples:
-  - [start-chat](packages/pathgrade/examples/start-chat/) - multi-turn conversation
-  - [sdk-showcase](packages/pathgrade/examples/sdk-showcase/) - advanced SDK features in one suite
-  - [tool-judge-demo](packages/pathgrade/examples/tool-judge-demo/) - `judge({ tools })` reading workspace artifacts
+  - [start-chat](examples/start-chat/) - multi-turn conversation
+  - [sdk-showcase](examples/sdk-showcase/) - advanced SDK features in one suite
+  - [tool-judge-demo](examples/tool-judge-demo/) - `judge({ tools })` reading workspace artifacts
 
 ## Note on AI provider dependencies
 

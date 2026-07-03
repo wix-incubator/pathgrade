@@ -1,8 +1,8 @@
 // Curated re-exports for the pathgrade Codex app-server driver and fixture
-// tests. Every re-exported symbol is either vendored verbatim from
+// tests. Every re-exported symbol is either a curated upstream shape from
 // openai/codex@rust-v0.124.0 (with an upstream-citation header in its file) or
-// a pathgrade-local composition (ClientRequest, ServerRequest, Op) whose
-// header spells out the composition rationale.
+// a pathgrade-local composition (ClientRequest, ServerRequest, Op) whose header
+// spells out the composition rationale.
 //
 // Refresh policy: to bump the vendored version, update each file's header
 // citation to the new tag, replace the `unknown` aliases with their vendored

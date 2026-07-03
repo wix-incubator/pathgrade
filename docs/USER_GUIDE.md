@@ -35,6 +35,7 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
   - [Claude SDK driver](#claude-sdk-driver)
 - [CLI Reference](#cli-reference)
 - [Runner Adapter Configuration](#runner-adapter-configuration)
+  - [Third-party Runner Adapters](#third-party-runner-adapters)
 - [EvalRuntime and LLM Injection](#evalruntime-and-llm-injection)
 - [Environment Variables](#environment-variables)
 - [Reviewing Results](#reviewing-results)
@@ -59,7 +60,7 @@ npm i @wix/pathgrade jest
 
 - **Claude**: pathgrade pulls in `@anthropic-ai/claude-agent-sdk`, which ships a per-platform `claude` binary as an optional npm dependency. With a normal `npm install` (or `yarn install`), the bundled binary is fetched automatically — you do not need a separate Claude CLI install. **Footprint:** the bundled binary adds tens of megabytes to `node_modules` (a per-platform binary plus the SDK runtime). If you already have a Claude CLI installed and want to avoid the duplicate footprint, you can either:
   - skip the optional dependency at install time (e.g. `npm install --no-optional` / `yarn install --ignore-optional`), and
-  - point pathgrade at your local binary via `AgentOptions.claudeCodeExecutable: '/abs/path/to/claude'` or the `PATHGRADE_CLAUDE_CODE_EXECUTABLE` env var.
+  - point pathgrade at your local binary via the `PATHGRADE_CLAUDE_CODE_EXECUTABLE` env var.
 
   See [Claude SDK driver](#claude-sdk-driver) for the full override precedence.
 - **Codex**: install the Codex CLI per OpenAI's documentation; pathgrade shells out to it.
@@ -130,11 +131,11 @@ Pathgrade runs each evaluation through a pipeline:
 
 1. **Create agent**: `createAgent()` provisions an isolated workspace with its own cwd, HOME, and temp directory.
 2. **Stage files**: Workspace entries, skill files, and MCP configs are copied into the agent workspace.
-3. **Run agent**: `prompt()`, `startChat()`, or `runConversation()` spawns the agent CLI (Claude or Codex) in the isolated workspace.
+3. **Run agent**: `prompt()`, `startChat()`, or `runConversation()` starts the selected runtime in the isolated workspace: the Claude SDK driver, Codex CLI, or `cursor-agent`.
 4. **Eval results**: `evaluate()` runs your scorers against the agent's workspace, transcript, log, and tool events.
 5. **Report**: The pathgrade vitest reporter aggregates scores and computes pass rate, pass@k, and pass^k.
 
-Each agent gets its own directory tree so agents don't share state between runs. Isolation is convention-based (separate HOME, TMPDIR, and cwd) rather than a hard sandbox. Authentication credentials are resolved automatically: on macOS, Claude OAuth tokens are extracted from the Keychain; Codex uses `codex login --with-api-key` when `OPENAI_API_KEY` is available.
+Each agent gets its own directory tree so agents don't share state between runs. Isolation is convention-based (separate HOME, TMPDIR, and cwd) rather than a hard sandbox. Authentication credentials are resolved automatically: on macOS, Claude and Cursor can reuse their login Keychain entries; Codex uses `OPENAI_API_KEY` when available, while `codex exec` can also reuse cached `~/.codex/auth.json`.
 
 ## Writing Evals
 
@@ -157,6 +158,7 @@ All test API functions are imported from `@wix/pathgrade`. The Vitest adapter pl
 const agent = await createAgent({
     agent: 'claude',            // 'claude' | 'codex' | 'cursor' (default: 'claude')
     transport: 'app-server',    // Codex only: 'app-server' (default) | 'exec'
+    model: 'gpt-5.4',           // optional agent model override
     timeout: 'auto',            // seconds or 'auto' (runConversation() only)
     workspace: 'fixtures',      // fixture directory to copy into workspace (optional)
     skillDir: './my-skill',     // path to skill directory (optional)
@@ -164,6 +166,7 @@ const agent = await createAgent({
     mcpConfigFile: './mcp.json', // real MCP config file (optional)
     mcpMock: mockServer,        // mock MCP server descriptor (optional)
     debug: true,                // preserve workspace and emit run-snapshot.json
+    mcpSafety: { runMode: 'mock' }, // live MCP safety policy (optional)
 });
 ```
 
@@ -171,7 +174,8 @@ const agent = await createAgent({
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agent` | `'claude' \| 'codex' \| 'cursor'` | `'claude'` | Agent runtime to use. Can be overridden via `PATHGRADE_AGENT` env var. |
+| `agent` | `'claude' \| 'codex' \| 'cursor'` | `'claude'` | Agent runtime to use. `PATHGRADE_AGENT` is the fallback when this is omitted. |
+| `model` | `string` | runtime default | Agent model override. Codex defaults to an explicit CLI model when omitted. |
 | `transport` | `'app-server' \| 'exec'` | `'app-server'` | Codex-only transport. App-server supports live MCP mounting and reliable ask-user reactions; exec stages config but cannot mount MCP tools. |
 | `timeout` | `number \| 'auto'` | `300` | Seconds before the agent times out. `'auto'` is supported for `runConversation()` only. |
 | `workspace` | `string` | -- | Path to a fixture directory whose contents are copied into the agent workspace |
@@ -183,6 +187,7 @@ const agent = await createAgent({
 | `mcpMock` | `MockMcpServerDescriptor \| MockMcpServerDescriptor[]` | -- | Generated stdio mock MCP server(s); supported by Claude, Codex app-server/default transport, and Cursor |
 | `conversationWindow` | `ConversationWindowConfig \| false` | agent default | Configure transcript summarization for long conversations |
 | `debug` | `boolean \| string` | -- | Preserve the workspace and emit `run-snapshot.json` under `pathgrade-debug/` or a custom directory |
+| `mcpSafety` | `McpSafetyOptions` | -- | Live MCP safety policy. Live modes require explicit opt-in before runtime mounting. |
 
 **Agent interface**:
 
@@ -358,10 +363,12 @@ judge('conversation-quality', {
 | `model` | `string` | LLM model override (default: auto-detected from available keys/CLI) |
 | `retry` | `boolean \| number` | Retry transient judge failures. `true` uses the default retry budget; a number sets the retry count explicitly. |
 | `includeToolEvents` | `boolean` | Include normalized tool events in the context sent to the judge |
-| `input` | `Record<string, unknown>` | Additional key-value context sections appended to the judge prompt |
+| `input` | `Record<string, unknown> \| (ctx) => Record<string, unknown> \| Promise<...>` | Additional key-value context sections appended to the judge prompt |
 | `tools` | `CodeJudgeToolName[]` | Opt into a bounded multi-turn tool-use loop. The judge LLM can call `readFile`, `listDir`, `grep`, `getToolEvents`. See below. |
 | `maxRounds` | `number` | Cap on LLM calls per tool-using judge (default 10). |
 | `cacheControl` | `boolean` | Enable Anthropic prompt caching on the system prompt and tool schemas. Default: `true` when `tools` is set, otherwise unchanged. |
+
+<a id="tool-using-judges"></a>
 
 #### Tool-using judges — `judge({ tools })`
 
@@ -544,13 +551,14 @@ Every scorer function (`check`, `score`) receives a `ScorerContext`:
 | `transcript` | `string` | Formatted conversation text (`[User]...\n[Agent]...`) |
 | `toolEvents` | `ToolEvent[]` | Normalized tool events extracted from agent output |
 | `runCommand` | `(cmd: string) => Promise<CommandResult>` | Execute a shell command in the workspace |
+| `artifacts` | `SessionArtifacts` | Helpers for files inferred from write/edit tool events: `list()`, `read(path)`, and `latest()` |
 
 **ToolEvent** fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `action` | `ToolAction` | Normalized action (`read_file`, `run_shell`, etc.) |
-| `provider` | `'claude' \| 'codex'` | Which agent produced this event |
+| `provider` | `'claude' \| 'codex' \| 'cursor'` | Which agent produced this event |
 | `providerToolName` | `string` | The provider-specific tool name |
 | `turnNumber` | `number?` | Conversation turn that produced this event |
 | `arguments` | `Record<string, unknown>?` | Tool call arguments |
@@ -678,16 +686,19 @@ it('completes a guided conversation', async () => {
 | `firstMessage` | `string` | (required) | First message to send to the agent |
 | `maxTurns` | `number` | `30` | Hard limit on underlying model turns; synthetic blocked-prompt replays do not consume it |
 | `until` | `UntilPredicate` | -- | Async predicate checked after each model turn; it is deferred while a blocked-prompt queue is still pending |
-| `reactions` | `Reaction[]` | `[]` | Regex-based scripted replies |
+| `reactions` | `Reaction[]` | `[]` | Text reactions and structured `AskUserReaction`s |
 | `persona` | `PersonaConfig` | -- | LLM-simulated conversation partner |
 | `stepScorers` | `StepScorer[]` | `[]` | Run scorers at specific turn numbers |
+| `askUserTimeoutMs` | `number` | `30000` | Timeout for a live `ask_user` batch to resolve |
+| `onUnmatchedAskUser` | `'error' \| 'first-option' \| 'decline'` | `'error'` | Fallback when a live structured question has no matching `AskUserReaction` |
+| `allowUnreachableReactions` | `boolean` | `false` | Silence the guard for transports that cannot deliver `AskUserReaction`s mid-turn, such as Codex `exec` |
 
 **ConversationResult**:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `turns` | `number` | Total underlying model turns completed |
-| `completionReason` | `'until' \| 'maxTurns' \| 'noReply' \| 'timeout' \| 'error'` | Why the conversation ended |
+| `completionReason` | `'until' \| 'maxTurns' \| 'noReply' \| 'timeout' \| 'error' \| 'agent_crashed'` | Why the conversation ended |
 | `completionDetail` | `string?` | Additional context about completion (e.g., error message) |
 | `turnTimings` | `TurnTiming[]` | Per-model-turn duration measurements |
 | `turnDetails` | `TurnDetail[]?` | Per-model-turn duration and output-size details used by diagnostics |
@@ -702,7 +713,8 @@ A `runConversation()` conversation ends when any of these triggers fire (checked
 2. **`maxTurns`**: Hard cap on the number of turns.
 3. **No reply**: No reaction matched and no persona is configured.
 4. **Timeout**: The agent's total time budget is exhausted.
-5. **Error**: An unrecoverable error occurred during a turn (after retries).
+5. **Error**: An unrecoverable error occurred during a turn.
+6. **Agent crashed**: The runtime subprocess exited unexpectedly and Pathgrade preserved crash diagnostics when available.
 
 Blocked prompt queues pause normal completion checks: queued prompts are replayed locally first, then `until` and `maxTurns` resume once the queue is empty.
 
@@ -754,6 +766,20 @@ reactions: [
 Reactions are evaluated in order. `unless` vetoes do not consume `once`, so the same reaction can still fire on a later turn. If no reaction matches and no persona is configured, the conversation ends with `noReply`.
 
 When blocked prompts are active, reactions inspect only the currently visible blocked prompt text. Hidden completion summaries from the same raw turn are preserved for diagnostics but do not participate in matching.
+
+Structured `AskUserReaction`s answer live agent questions surfaced through `request_user_input` / `AskUserQuestion`:
+
+```typescript
+reactions: [
+    {
+        whenAsked: /environment|target/i,
+        answer: 'Production',
+        once: true,
+    },
+]
+```
+
+For Codex, live structured answers require the default `app-server` transport. If you force `transport: 'exec'`, Pathgrade fails fast when `AskUserReaction`s are configured unless `allowUnreachableReactions: true` is set.
 
 ### Personas
 
@@ -887,10 +913,7 @@ const agent = await createAgent({
 });
 ```
 
-The deterministic coverage examples are:
-
-- `examples/codex-streamable-http-mcp`: Codex app-server mounts a local Streamable HTTP MCP fixture, calls it, and records `mcp_tool_call` evidence.
-- `examples/mcp-scenarios`: the v1 MCP scenario matrix for Codex app-server and Claude SDK, covering generated `mcpMock`, stdio `mcpConfigFile`, Streamable HTTP `mcpConfigFile` via `type: "streamable-http"`, and generic remote HTTP config via `url`.
+The deterministic MCP coverage in this repository lives in tests such as `tests/mcp-runtime-mounting.test.ts`, `tests/codex-app-server-real-mcp.test.ts`, and `tests/mcp-mock.test.ts`. The public examples focus on SDK usage rather than live MCP scenario matrices.
 
 ### Mock MCP Servers
 
@@ -939,15 +962,15 @@ Pathgrade supports three agent runtimes:
 | Agent | Runtime | MCP Support | Auth |
 |-------|---------|-------------|------|
 | **Claude** | `@anthropic-ai/claude-agent-sdk` (bundled binary) | Real + Mock, including Streamable HTTP passthrough | Keychain OAuth (macOS), API key, or other SDK auth env vars |
-| **Codex app-server** | `codex app-server` (default Codex transport) | Real + Mock, including Streamable HTTP passthrough | Cached CLI login or API key |
+| **Codex app-server** | `codex app-server` (default Codex transport) | Real + Mock, including Streamable HTTP passthrough | API key preferred; cached ChatGPT-token refresh is rejected |
 | **Codex exec** | `codex exec` | Config staging only; no MCP Runtime Mounting | Cached CLI login or API key |
 | **Cursor** | `cursor-agent` CLI | Real config materialization + Mock; MCP event capture is partial | Keychain OAuth (macOS) or `CURSOR_API_KEY` |
 
-**Agent selection**: The `agent` field in `AgentOptions` determines which runtime to use. The `PATHGRADE_AGENT` environment variable overrides this at runtime, letting you run the same eval file against different agents without editing code.
+**Agent selection**: The `agent` field in `AgentOptions` determines which runtime to use. When it is omitted, `PATHGRADE_AGENT` provides the fallback, letting you run the same eval file against different agents without editing code.
 
 **Auth**: All agents get a fresh isolated HOME directory. Authentication is resolved automatically:
-- **Claude**: On macOS, extracts OAuth credentials from the system Keychain. Falls back to `ANTHROPIC_API_KEY`. See [Claude SDK driver](#claude-sdk-driver) below for the full SDK auth env var allowlist (including Bedrock, Vertex, Foundry).
-- **Codex**: When `OPENAI_API_KEY` is available, runs `codex login --with-api-key` in the sandbox before the first turn. Otherwise, if the host machine already has a file-based Codex login cache at `~/.codex/auth.json`, Pathgrade copies that cache into the isolated HOME and reuses it.
+- **Claude**: On macOS, reuses Claude Code OAuth through the Keychain-backed local config. Falls back to `ANTHROPIC_API_KEY`. See [Claude SDK driver](#claude-sdk-driver) below for the full SDK auth env var allowlist (including Bedrock, Vertex, Foundry).
+- **Codex**: When `OPENAI_API_KEY` is available, runs `codex login --with-api-key` in the sandbox before the first turn for direct OpenAI auth. For `OPENAI_BASE_URL`, Pathgrade forwards the key directly. When no key is available, Pathgrade can copy a file-based Codex login cache from `~/.codex/auth.json`; this is reliable for `codex exec`, but the default app-server transport rejects cached ChatGPT-token refresh requests, so app-server runs should prefer `OPENAI_API_KEY`.
 - **Cursor**: forwards `CURSOR_API_KEY` when set; on macOS, reuses `cursor-agent login` OAuth tokens from the login Keychain.
 
 ### Claude SDK driver
@@ -964,13 +987,12 @@ The Claude Agent SDK does not expose `AskUserQuestion` to subagents spawned thro
 
 The SDK ships a per-platform `claude` binary as an optional npm dependency, so by default pathgrade uses that pinned binary regardless of which Claude CLI version is installed on the host. This protects CI from "today's green eval is red tomorrow because someone updated their local Claude" drift.
 
-If you want Pathgrade to run a specific local Claude build instead (for example, an in-development build under test), supply an override path. Precedence is:
+If you want Pathgrade to run a specific local Claude build instead (for example, an in-development build under test), supply an override path through the environment:
 
-1. `AgentOptions.claudeCodeExecutable` — passed to `createAgent({ agent: 'claude', claudeCodeExecutable: '/abs/path/to/claude' })`.
-2. `PATHGRADE_CLAUDE_CODE_EXECUTABLE` — process env, picked up at agent construction.
-3. The SDK's bundled binary — used when neither override is set.
+1. `PATHGRADE_CLAUDE_CODE_EXECUTABLE` — process env, picked up at agent construction.
+2. The SDK's bundled binary — used when no override is set.
 
-The override is intentionally run-level. There is no fixture-file-level API for selecting different Claude binaries per trial.
+There is no public `createAgent()` option for selecting different Claude binaries per trial.
 
 #### Claude Code system-prompt preset
 
@@ -1000,17 +1022,17 @@ The Claude SDK driver can authenticate through any of the following env surfaces
 | `GOOGLE_*`, `GCLOUD_*`, `CLOUD_ML_*`, `ANTHROPIC_VERTEX_BASE_URL` | Vertex AI-hosted Claude. |
 | `AZURE_*`, `ANTHROPIC_FOUNDRY_BASE_URL` | Foundry-hosted Claude. |
 
-For local first-party use on macOS, your existing Claude Code keychain login still works — pathgrade extracts the OAuth credentials and forwards them as `ANTHROPIC_API_KEY`. For productized SDK use or anything running outside your developer machine, configure one of the explicit auth surfaces above. `apiKeyHelper` (a code callback) is intentionally out of scope; inject concrete env credentials instead.
+For local first-party use on macOS, your existing Claude Code keychain login still works through the sandboxed Keychain/local-config path. For productized SDK use or anything running outside your developer machine, configure one of the explicit auth surfaces above. `apiKeyHelper` (a code callback) is intentionally out of scope; inject concrete env credentials instead.
 
 ## CLI Reference
 
 Pathgrade ships a CLI that wraps the selected runner adapter and provides convenience commands:
 
 ```bash
-pathgrade run [--adapter=vitest|jest|node-test] [-- runner-args]
+pathgrade run [--changed] [--since=<ref>] [--changed-files=<path>] [--adapter=<name|path>] [--diagnostics] [--verbose|-v] [--quiet] [-- runner-args]
 ```
 
-Runs evals with the selected adapter. Vitest is the default; use `pathgrade run --adapter=jest` or `runner.adapter: 'jest'` in `pathgrade.config.*` for Jest projects. Pass `--diagnostics` before `--` to force full diagnostics for successful evals as well. Any arguments after `--` are forwarded to the runner (for example, `pathgrade run --adapter=jest -- --runInBand`).
+Runs evals with the selected adapter. Vitest is the default; use `pathgrade run --adapter=jest` or `runner.adapter: 'jest'` in `pathgrade.config.*` for Jest projects. Adapter values can be built-in names, third-party package names, or local module paths. Pass `--diagnostics` before `--` to force full diagnostics for successful evals, `--verbose` to stream live turn events, and `--quiet` to suppress the affected-selection run-start summary. Any arguments after `--` are forwarded to the runner (for example, `pathgrade run --adapter=jest -- --runInBand`).
 
 ```bash
 pathgrade init [--force]
@@ -1032,9 +1054,28 @@ Loads a saved `run-snapshot.json`, evaluates reactions against the stored agent 
 
 ```bash
 pathgrade validate <file.eval.ts>
+pathgrade validate --affected
 ```
 
-Validates an eval file for common authoring mistakes.
+Validates an eval file for common authoring mistakes. `--affected` runs strict affected-selection validation across discovered evals.
+
+```bash
+pathgrade analyze [--skill=<name>] [--dir=<path>]
+```
+
+Analyzes skill/eval coverage and prints JSON.
+
+```bash
+pathgrade affected [--since=<ref>] [--changed-files=<path>] [--explain] [--json]
+```
+
+Prints eval files affected by a change set, one per line by default.
+
+```bash
+pathgrade report [--results-path=<path>] [--no-comment] [--comment-id=<id>]
+```
+
+Formats `.pathgrade/results.json` as a markdown PR comment. In GitHub Actions it posts or updates a PR comment when `GITHUB_TOKEN` and PR context are available; locally it prints markdown and the numeric pass rate.
 
 ```bash
 pathgrade --help
@@ -1104,18 +1145,83 @@ export default {
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `include` | `string[]` | `['**/*.eval.ts']` | Glob patterns for eval test files |
-| `exclude` | `string[]` | vitest defaults + `['.worktrees/**', 'worktrees/**']` | Glob patterns to exclude from eval discovery. Replaces defaults entirely when provided. |
+| `exclude` | `string[]` | `['**/node_modules/**', '**/.git/**', '.worktrees/**', 'worktrees/**', '**/fixtures/**']` | Glob patterns to exclude from eval discovery. Replaces defaults entirely when provided. |
 | `timeout` | `number` | `300` | Agent timeout in seconds. The vitest test timeout is set to `timeout + 30` to give scorers time to finish. |
 | `reporter` | `'cli' \| 'browser' \| 'json'` | -- | How to display results. `cli` prints a summary table, `browser` opens an interactive viewer, `json` writes results to disk. |
 | `diagnostics` | `boolean` | `false` | Force full diagnostics output for successful evals. Failures and timeouts already print full diagnostics automatically. |
+| `verbose` | `boolean` | `false` | Stream live per-turn events to stderr while evals run. |
 | `scorerModel` | `string` | -- | Reserved for future use. Not yet wired -- judge scorers currently use their per-scorer `model` field. |
 | `ci.threshold` | `number` | -- | When set, the process exits with code 1 if the average score is below this threshold |
+| `affected.global` | `string[]` | `[]` | Repo-wide changed-file globs that force all evals to run under affected selection |
 
 The plugin automatically:
 - Sets `test.include` to match eval files
 - Sets `test.testTimeout` to accommodate agent + grading time
 - Registers a setup file that auto-disposes agents after each test
 - Adds the pathgrade reporter for aggregate statistics
+
+### Third-party Runner Adapters
+
+Pathgrade's runner layer is adapter-based. Built-in adapters cover `vitest`, `jest`, and the narrow `node-test` proof adapter, but `runner.adapter` and `--adapter` can also point at external adapters.
+
+Adapter names resolve from the project directory:
+
+| Adapter value | Resolution |
+|---------------|------------|
+| `vitest`, `jest`, `node-test` | Built-in adapter |
+| `demo` | `@wix/pathgrade-adapter-demo` |
+| `@scope/pathgrade-adapter-demo` or another specifier containing `/` | Package specifier resolved from the project |
+| `./pathgrade-adapter.mjs` | Project-relative module path |
+| `/abs/pathgrade-adapter.mjs` | Absolute module path |
+
+CLI execution uses an invocation adapter:
+
+```ts
+import type { RunnerInvocationAdapter } from '@wix/pathgrade/adapter-kit';
+
+export function createPathgradeInvocationAdapter({ config }): RunnerInvocationAdapter {
+    return {
+        name: 'my-runner',
+        async run({ cwd, runnerArgs, selectedFiles, env }) {
+            // Spawn your runner, applying selectedFiles for `pathgrade run --changed`.
+            return 0;
+        },
+    };
+}
+```
+
+Lower-level integrations can expose the full runner contract too:
+
+```ts
+import type { RunnerAdapter } from '@wix/pathgrade/adapter-kit';
+
+export function createPathgradeAdapter(): RunnerAdapter {
+    return {
+        name: 'my-runner',
+        async discover({ cwd, include, exclude, selection }) {
+            return { units: [] };
+        },
+        async invoke({ discovered, argv, env, lifecycle, signal }) {
+            return { adapterName: 'my-runner', status: 'completed', exitCode: 0 };
+        },
+        async collectNormalizedRunSnapshot(run) {
+            return {
+                version: 1,
+                completeness: 'final',
+                model: {
+                    run: { id: 'my-runner:run', adapterName: run.adapterName, status: run.status },
+                    units: [],
+                    cases: [],
+                },
+            };
+        },
+    };
+}
+```
+
+The adapter-kit export contains the public contract and helpers: `RunnerAdapter`, `RunnerInvocationAdapter`, lifecycle hooks, normalized run snapshot types, report projection helpers, discovery helpers, Pathgrade config loading, and artifact/report utilities. `runnerAdapterContractVersion` is currently `1`.
+
+Adapters that execute Pathgrade SDK evals should call the provided lifecycle hooks around runner cases so `evaluate()` results are attached to the right case. Adapters that only adapt external result data can return normalized cases with `scoringPolicy: { kind: 'score', score }` or `scoringPolicy: { kind: 'from-evaluations' }`.
 
 ## EvalRuntime and LLM Injection
 
@@ -1182,9 +1288,13 @@ The pathgrade vitest plugin uses `setRuntime({ onResult })` internally to captur
 | `OPENAI_API_KEY` | Codex agent, judge scorers (when using OpenAI models) |
 | `OPENAI_BASE_URL` | Custom OpenAI API endpoint. Pathgrade forwards it into the sandbox, `codex exec` uses it for proxy mode, and the default Codex `app-server` transport now injects matching `-c model_provider=...` overrides before launch. |
 | `CURSOR_API_KEY` | Cursor agent (when not using keychain OAuth) |
-| `PATHGRADE_AGENT` | Overrides `agent` in `AgentOptions` at runtime |
+| `CURSOR_API_BASE_URL` | Custom Cursor endpoint. Pair with `CURSOR_API_KEY`. |
+| `PATHGRADE_AGENT` | Fallback agent when `AgentOptions.agent` is omitted |
 | `PATHGRADE_CLAUDE_CODE_EXECUTABLE` | Overrides the SDK's bundled Claude binary with a local path |
 | `PATHGRADE_CODEX_TRANSPORT` | Overrides Codex transport (`app-server` \| `exec`) |
+| `PATHGRADE_VERBOSE` | `1` streams live per-turn events to stderr |
+| `PATHGRADE_DIAGNOSTICS` | `1` prints full diagnostics for passing evals too |
+| `NO_COLOR` | Disable ANSI colors |
 
 When the Claude CLI is installed and authenticated (or Keychain credentials are available on macOS), it is used as the primary LLM backend for judge scorers and persona replies -- no API key needed for local development.
 
@@ -1400,7 +1510,7 @@ slow end-to-end fixtures, etc.):
    (`pathgrade run`, no `--changed`) so examples still get coverage
    periodically.
 
-Pathgrade's own repo follows this pattern for `packages/pathgrade/examples/`.
+Pathgrade's own repo follows this pattern for `examples/`.
 
 ## Best Practices
 
@@ -1411,14 +1521,15 @@ Pathgrade's own repo follows this pattern for `packages/pathgrade/examples/`.
 - **Use fail-fast.** Keep basic checks early so expensive LLM judge calls are skipped when preconditions fail.
 - **Weight scorers intentionally.** Hard correctness checks should have higher weight than style/workflow checks.
 - **Keep instructions clear.** Ambiguous instructions lead to noisy pass rates that are hard to interpret.
-- **Use `PATHGRADE_AGENT` for cross-agent testing.** Write evals once and run them against both Claude and Codex via the env var.
+- **Use `PATHGRADE_AGENT` for cross-agent testing.** Write evals once and run them against Claude, Codex, and Cursor via the env var when the eval omits `createAgent({ agent })`.
 - **Test your scorers.** Use `setRuntime()` to inject fake LLM responses and verify judge scorers parse scores correctly.
 
 ## Troubleshooting
 
 **"Agent CLI not found"**: Ensure the agent CLI is installed and on your PATH:
-- Claude: Install Claude Code per Anthropic's documentation
+- Claude: the bundled SDK binary is used by default; if you set `PATHGRADE_CLAUDE_CODE_EXECUTABLE`, ensure that path is valid
 - Codex: Install the Codex CLI per OpenAI's documentation
+- Cursor: Install `cursor-agent` per Cursor's documentation
 
 **"Cannot use startChat() after prompt()"**: An agent supports only one interaction method. Create a separate agent for each interaction style.
 
@@ -1426,7 +1537,7 @@ Pathgrade's own repo follows this pattern for `packages/pathgrade/examples/`.
 
 **Timeouts**: Increase `timeout` in `AgentOptions` or the plugin config. For conversation evals, `createAgent({ timeout: 'auto' })` gives you a conservative first-pass timeout estimate. Complex conversation tasks may still need manual tuning. The vitest test timeout is automatically set to `timeout + 30`.
 
-**Empty agent output**: Check that the correct API key is set. On macOS, Claude can use Keychain credentials automatically. Otherwise, ensure `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set in the environment.
+**Empty agent output**: Check that the correct auth is available. On macOS, Claude and Cursor can use Keychain-backed login automatically. Otherwise, ensure the relevant `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `CURSOR_API_KEY` is set in the environment.
 
 **"noReply" completion**: Your reactions don't cover the agent's response patterns and no persona is configured. Add a catch-all reaction (`when: /.*/`) or add a persona.
 

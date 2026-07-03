@@ -1,10 +1,11 @@
 # Cursor stream-json fixtures
 
-Recorded against `cursor-agent` CLI — intended version `2026.04.17-787b533`
-(see `PRD_CURSOR_AGENT_DRIVER.md`).
+Recorded against `cursor-agent` CLI — intended version `2026.04.17-787b533`.
+The pinned value lives in `scripts/record-cursor-fixtures.ts` as
+`CURSOR_PINNED_CLI_VERSION`.
 
-These fixtures are **hand-crafted** at slice #03 landing. They mirror the
-Claude stream-json envelope shape observed in the discovery spikes:
+These fixtures mirror the Claude stream-json envelope shape observed for the
+Cursor agent driver:
 
 - `type: "system"`, `subtype: "init"` — session bootstrap (source of `session_id`
   for diagnostic purposes; the authoritative source is the `result` event).
@@ -35,7 +36,7 @@ in `scripts/record-cursor-fixtures.ts` as `CURSOR_PINNED_CLI_VERSION`.
 When Cursor reshapes its stream-json, re-record all fixtures in one shot:
 
 ```
-pnpm tsx scripts/record-cursor-fixtures.ts
+yarn tsx scripts/record-cursor-fixtures.ts
 ```
 
 The script invokes a locally-installed `cursor-agent` with per-discriminant

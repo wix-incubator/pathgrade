@@ -58,7 +58,7 @@ function validateApiKeys(): void {
     if (!hasAnthropic && !hasOpenAI) {
         console.log(
             `\n  ${fmt.dim('warning:')} No API keys found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env or environment.\n` +
-            `  ${fmt.dim('         Claude CLI auth (keychain) and Codex cached login (~/.codex/auth.json) may still work if installed.')}\n`,
+            `  ${fmt.dim('         Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.')}\n`,
         );
     }
 }
@@ -228,7 +228,8 @@ function printHelp() {
                      [--changed]               Run only evals affected by the current PR/change-set
                      [--since=<ref>]           Override base ref (implies git mode)
                      [--changed-files=<path>]  Use an explicit newline-delimited file list
-                     [--adapter=vitest|jest|node-test] Select runner adapter
+                     [--adapter=<name|path>]   Select built-in or third-party runner adapter
+                     [--diagnostics]           Print full diagnostics for passing evals too
                      [--quiet]                 Suppress the run-start summary
                      [--verbose|-v]            Stream live per-turn events to stderr during the run
     pathgrade init [--force]         Generate eval scaffolding
@@ -250,9 +251,9 @@ function printHelp() {
                      [--json]                  Emit structured JSON (snake_case) to stdout
 
   Environment:
-    PATHGRADE_AGENT=codex            Override agent for all trials
-    ANTHROPIC_API_KEY                API key for Claude
-    OPENAI_API_KEY                   API key for Codex (optional if Codex CLI is already logged in)
+    PATHGRADE_AGENT=codex            Fallback agent when createAgent({ agent }) is omitted
+    ANTHROPIC_API_KEY                API key for Claude and Anthropic-backed judges
+    OPENAI_API_KEY                   API key for Codex and OpenAI-backed judges
 
   Examples:
     pathgrade run                    # run all *.eval.ts files

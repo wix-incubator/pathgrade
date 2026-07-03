@@ -4,7 +4,7 @@ End-to-end example of `judge({ tools: [...] })` — the LLM judge reads
 workspace artifacts directly using a bounded tool-use loop instead of the
 eval author pre-computing probes.
 
-Parent PRD: [`rfcs/003-judge-with-tools.md`](../../../../rfcs/003-judge-with-tools.md).
+See the [tool-using judges section](../../docs/USER_GUIDE.md#tool-using-judges) in the user guide for the full API reference and migration notes.
 
 ## Run it
 
