@@ -83,6 +83,37 @@ describe('formatReportMarkdown', () => {
         expect(md).toContain('❌');
     });
 
+    it('renders runner failure separately from a passing score threshold', () => {
+        const md = formatReportMarkdown(makeReport({
+            threshold: 0.7,
+            overall_pass_rate: 0.879,
+            status: 'fail',
+            run: {
+                reason: 'failed',
+                failures: [{
+                    scope: 'suite',
+                    file: 'agent.eval.ts',
+                    suite: 'agent setup',
+                    message: 'Hook timed out in 900000ms.',
+                }],
+            },
+        }), { commentId: 'default' });
+
+        expect(md).toContain('❌');
+        expect(md).toContain('Threshold: 70.0% — PASS');
+        expect(md).toContain('### Vitest run');
+        expect(md).toContain('Run ended as **FAILED**.');
+        expect(md).toContain('`suite` `agent.eval.ts > agent setup`: Hook timed out in 900000ms.');
+    });
+
+    it('omits the Vitest run section for successful runs', () => {
+        const md = formatReportMarkdown(makeReport({
+            run: { reason: 'passed', failures: [] },
+        }), { commentId: 'default' });
+
+        expect(md).not.toContain('### Vitest run');
+    });
+
     it('includes overall pass rate, pass@k, pass^k as percentages', () => {
         const md = formatReportMarkdown(makeReport(), { commentId: 'default' });
         // overall_pass_rate = 0.75 = 75.0%

@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import type {
     PathgradeGroupReport,
     PathgradeReport,
+    PathgradeRunResult,
     PathgradeSelectionReport,
     StrippedTrialResult,
 } from '../types.js';
@@ -61,6 +62,22 @@ function escapeTableCell(value: string): string {
     return value.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 }
 
+function formatRunSection(run: PathgradeRunResult): string {
+    const lines = [
+        '### Vitest run',
+        `Run ended as **${run.reason.toUpperCase()}**.`,
+    ];
+
+    for (const failure of run.failures) {
+        const location = [failure.file, failure.suite].filter(Boolean).join(' > ');
+        const locationLabel = location ? ` \`${location.replace(/`/g, '\\`')}\`` : '';
+        const message = failure.message.replace(/\r?\n/g, ' ');
+        lines.push(`- \`${failure.scope}\`${locationLabel}: ${message}`);
+    }
+
+    return lines.join('\n');
+}
+
 /**
  * Format a pathgrade PR comment as markdown.
  *
@@ -89,8 +106,14 @@ export function formatReportMarkdown(
     );
 
     if (report.threshold != null) {
+        const thresholdStatus = p >= report.threshold ? 'PASS' : 'FAIL';
         lines.push('');
-        lines.push(`Threshold: ${pct(report.threshold)} — ${report.status.toUpperCase()}`);
+        lines.push(`Threshold: ${pct(report.threshold)} — ${thresholdStatus}`);
+    }
+
+    if (report.run && (report.run.reason !== 'passed' || report.run.failures.length > 0)) {
+        lines.push('');
+        lines.push(formatRunSection(report.run));
     }
 
     lines.push('');
