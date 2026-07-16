@@ -134,6 +134,61 @@ describe('PathgradeReporter consolidated output', () => {
         cwdSpy.mockRestore();
     });
 
+    it('writes run failures when a beforeAll hook prevents evals from completing', async () => {
+        const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/tmp/my-project');
+        const { PathgradeReporter } = await import('../src/plugin/reporter.js');
+        const fs = (await import('fs-extra')).default;
+        vi.mocked(fs.ensureDir).mockResolvedValue(undefined);
+        vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+        const writeJsonSpy = vi.mocked(fs.writeJson).mockResolvedValue(undefined);
+        writeJsonSpy.mockClear();
+
+        const pendingCase = {
+            ...makeTestCase(),
+            meta: () => ({}),
+            result: () => ({ state: 'pending' }),
+        };
+        const hookError = {
+            name: 'Error',
+            message: 'Hook timed out in 900000ms.',
+            stack: 'Error: Hook timed out in 900000ms.\n    at setup.eval.ts:10:1',
+        };
+        const testModules = [{
+            relativeModuleId: 'setup.eval.ts',
+            errors: () => [],
+            children: {
+                allTests: () => [pendingCase],
+                allSuites: () => [{
+                    fullName: 'agent setup',
+                    errors: () => [hookError],
+                }],
+            },
+        }] as any;
+
+        const reporter = new PathgradeReporter({ reporter: 'json' });
+        await reporter.onTestRunEnd(testModules, [], 'failed');
+
+        const resultsCall = writeJsonSpy.mock.calls.find(
+            ([p]) => typeof p === 'string' && p.endsWith('results.json'),
+        );
+        expect(resultsCall).toBeDefined();
+        expect(resultsCall![1]).toMatchObject({
+            status: 'fail',
+            groups: [],
+            run: {
+                reason: 'failed',
+                failures: [{
+                    scope: 'suite',
+                    file: 'setup.eval.ts',
+                    suite: 'agent setup',
+                    message: 'Hook timed out in 900000ms.',
+                }],
+            },
+        });
+
+        cwdSpy.mockRestore();
+    });
+
     it('writes trace files with full trial data including session_log', async () => {
         const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/tmp/my-project');
         const { PathgradeReporter } = await import('../src/plugin/reporter.js');

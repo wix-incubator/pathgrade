@@ -108,4 +108,31 @@ describe('PathgradeReporter modes and threshold behavior', () => {
         expect(output).toContain('avg score 0.250 < threshold 0.8');
         expect(process.exitCode).toBe(1);
     });
+
+    it('does not misreport a runner failure as a threshold failure', async () => {
+        const fs = (await import('fs-extra')).default;
+        const { PathgradeReporter } = await import('../src/plugin/reporter.js');
+
+        const reporter = new PathgradeReporter({ reporter: 'json', ci: { threshold: 0.8 } });
+        await reporter.onTestRunEnd(
+            [{ children: { allTests: () => [makeTestCase(1)] } }] as any,
+            [{ message: 'worker exited unexpectedly' }],
+            'failed',
+        );
+
+        const output = logSpy.mock.calls.map(call => String(call[0])).join('\n');
+        expect(output).not.toContain('CI THRESHOLD FAILED');
+        expect(process.exitCode).toBeUndefined();
+        const resultsCall = vi.mocked(fs.writeJson).mock.calls.find(
+            ([p]) => typeof p === 'string' && p.endsWith('results.json'),
+        );
+        expect(resultsCall![1]).toMatchObject({
+            overall_pass_rate: 1,
+            status: 'fail',
+            run: {
+                reason: 'failed',
+                failures: [{ scope: 'unhandled', message: 'worker exited unexpectedly' }],
+            },
+        });
+    });
 });

@@ -133,12 +133,21 @@ describe('PathgradeReporter — selection sidecar merge (Issue 11)', () => {
         cwdSpy.mockRestore();
     });
 
-    it('does not read selection sidecars when there are no reportable cases', async () => {
+    it('preserves selection metadata when there are no reportable cases', async () => {
         const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/tmp/p4');
         const { PathgradeReporter } = await import('../src/plugin/reporter.js');
         const fs = (await import('fs-extra')).default;
+        vi.mocked(fs.ensureDir).mockResolvedValue(undefined);
+        vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+        const writeJsonSpy = vi.mocked(fs.writeJson).mockResolvedValue(undefined);
+        const sidecar = {
+            base_ref: 'origin/main@abc1234',
+            changed_files_count: 1,
+            selected: ['skills/alpha/a.eval.ts'],
+            skipped: [],
+        };
         vi.mocked(fs.pathExists).mockResolvedValue(true as any);
-        vi.mocked(fs.readJSON).mockRejectedValue(new Error('unexpected token'));
+        vi.mocked(fs.readJSON).mockResolvedValue(sidecar);
 
         const reporter = new PathgradeReporter({ reporter: 'cli' });
         await reporter.onTestRunEnd([{
@@ -151,10 +160,18 @@ describe('PathgradeReporter — selection sidecar merge (Issue 11)', () => {
             },
         }] as any);
 
-        expect(fs.readJSON).not.toHaveBeenCalled();
+        expect(fs.readJSON).toHaveBeenCalled();
         expect(warnSpy).toHaveBeenCalledWith(
             '  [pathgrade] warning: empty results for "trial 1" — evaluate() may not have been called',
         );
+        const resultsCall = writeJsonSpy.mock.calls.find(
+            ([p]) => typeof p === 'string' && p.endsWith('results.json'),
+        );
+        expect(resultsCall![1]).toMatchObject({
+            status: 'pass',
+            groups: [],
+            selection: sidecar,
+        });
         cwdSpy.mockRestore();
     });
 });

@@ -1177,6 +1177,26 @@ The pathgrade reporter prints an aggregate summary after vitest completes:
 
 Every run writes a consolidated `.pathgrade/results.json` (plus per-group trace files under `.pathgrade/traces/`) in the project directory. The directory is auto-gitignored on first write. Use `reporter: 'browser'` to open an interactive viewer after each run, or invoke `npx pathgrade preview` / `npx pathgrade preview browser` later. By default, successful evals print a one-line diagnostics summary, while failures and timeouts print the full diagnostics breakdown automatically. Set `diagnostics: true` in the plugin or pass `pathgrade run --diagnostics` to force full diagnostics on successful runs too.
 
+New reports include a `run` object with Vitest's final reason and normalized module, suite, or unhandled failures. This is written even when a setup hook fails before any eval completes, so CI artifact collectors can preserve the failure instead of finding no `results.json`:
+
+```json
+{
+  "status": "fail",
+  "groups": [],
+  "run": {
+    "reason": "failed",
+    "failures": [
+      {
+        "scope": "suite",
+        "file": "agent.eval.ts",
+        "suite": "agent setup",
+        "message": "Hook timed out in 900000ms."
+      }
+    ]
+  }
+}
+```
+
 ## CI Integration
 
 ```yaml

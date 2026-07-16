@@ -56,9 +56,12 @@ export function buildPathgradeReport(input: ReportRunInput): PathgradeReportBuil
 
     const scores = reportableGroups.flatMap(group => group.cases.map(testCase => testCase.score));
     const overallPassRate = average(scores);
-    const status = input.threshold != null
+    const scoreStatus = input.threshold != null
         ? (overallPassRate >= input.threshold ? 'pass' : 'fail')
         : (reportableGroups.every(group => group.cases.every(testCase => testCase.state === 'passed')) ? 'pass' : 'fail');
+    const runPassed = input.run == null
+        || (input.run.reason === 'passed' && input.run.failures.length === 0);
+    const status = scoreStatus === 'pass' && runPassed ? 'pass' : 'fail';
 
     return {
         report: {
@@ -68,6 +71,7 @@ export function buildPathgradeReport(input: ReportRunInput): PathgradeReportBuil
             overall_pass_rate: overallPassRate,
             status,
             groups: consolidatedGroups,
+            ...(input.run ? { run: input.run } : {}),
             ...(input.selection ? { selection: input.selection } : {}),
         },
         traces,

@@ -218,4 +218,65 @@ describe('runner-neutral reporting contract', () => {
         expect(built.report.groups).toEqual([]);
         expect(built.traces).toEqual([]);
     });
+
+    it('preserves run failures when no eval case completes', () => {
+        const built = buildPathgradeReport({
+            run: {
+                reason: 'failed',
+                failures: [{
+                    scope: 'suite',
+                    file: 'setup.eval.ts',
+                    suite: 'agent setup',
+                    name: 'Error',
+                    message: 'Hook timed out in 900000ms.',
+                    stack: 'Error: Hook timed out in 900000ms.\n    at setup.eval.ts:10:1',
+                }],
+            },
+            groups: [{
+                groupName: 'setup.eval.ts > agent setup',
+                cases: [{
+                    name: 'runs the eval',
+                    state: 'pending',
+                    runnerDurationMs: 0,
+                }],
+            }],
+        });
+
+        expect(built.report).toMatchObject({
+            status: 'fail',
+            overall_pass_rate: 0,
+            groups: [],
+            run: {
+                reason: 'failed',
+                failures: [{
+                    scope: 'suite',
+                    file: 'setup.eval.ts',
+                    suite: 'agent setup',
+                    message: 'Hook timed out in 900000ms.',
+                }],
+            },
+        });
+    });
+
+    it('lets a run failure override an otherwise passing threshold', () => {
+        const built = buildPathgradeReport({
+            threshold: 0.8,
+            run: {
+                reason: 'failed',
+                failures: [{ scope: 'unhandled', message: 'worker exited unexpectedly' }],
+            },
+            groups: [{
+                groupName: 'passing.eval.ts',
+                cases: [{
+                    name: 'scored well before the worker failed',
+                    state: 'passed',
+                    runnerDurationMs: 10,
+                    evaluations: [{ score: 1 }],
+                }],
+            }],
+        });
+
+        expect(built.report.overall_pass_rate).toBe(1);
+        expect(built.report.status).toBe('fail');
+    });
 });

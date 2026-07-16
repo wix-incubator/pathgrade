@@ -1,11 +1,11 @@
 import * as path from 'path';
 import { execSync } from 'child_process';
-import type { Reporter, TestModule } from 'vitest/node';
+import type { Reporter, TestModule, TestRunEndReason } from 'vitest/node';
 import type { PathgradePluginOptions } from '../sdk/types.js';
 import { fmt } from '../utils/cli.js';
 import { getPathgradeDir } from '../reporters/results-path.js';
 import { readSidecar } from '../affected/sidecar.js';
-import { collectVitestReportGroups } from '../reporting/vitest-edge.js';
+import { collectVitestReportGroups, collectVitestRunResult } from '../reporting/vitest-edge.js';
 import { buildPathgradeReport } from '../reporting/core.js';
 import { writePathgradeArtifacts } from '../reporting/artifacts.js';
 import { printReportSummary } from '../reporters/report-summary.js';
@@ -21,18 +21,21 @@ export class PathgradeReporter implements Reporter {
         this.opts = opts ?? {};
     }
 
-    async onTestRunEnd(testModules: ReadonlyArray<TestModule>): Promise<void> {
+    async onTestRunEnd(
+        testModules: ReadonlyArray<TestModule>,
+        unhandledErrors: Parameters<NonNullable<Reporter['onTestRunEnd']>>[1] = [],
+        reason: TestRunEndReason = 'passed',
+    ): Promise<void> {
         const groups = collectVitestReportGroups(testModules);
         const built = buildPathgradeReport({
             threshold: this.opts.ci?.threshold,
+            run: collectVitestRunResult(testModules, unhandledErrors, reason),
             groups,
         });
 
         for (const warning of built.warnings) {
             console.warn(`  [pathgrade] warning: ${warning}`);
         }
-
-        if (built.report.groups.length === 0) return;
 
         const selection = await readSidecar(process.cwd(), msg => {
             console.warn(`[pathgrade] ${msg}`);
@@ -43,7 +46,7 @@ export class PathgradeReporter implements Reporter {
 
         const mode = this.opts.reporter ?? 'cli';
 
-        if (mode === 'cli' || mode === 'browser') {
+        if ((mode === 'cli' || mode === 'browser') && built.summaries.length > 0) {
             printReportSummary(built.summaries, {
                 forceVerbose: this.opts.diagnostics === true || process.env.PATHGRADE_DIAGNOSTICS === '1',
                 currentTimeoutMs: this.opts.timeout != null ? this.opts.timeout * 1000 : undefined,
@@ -60,7 +63,7 @@ export class PathgradeReporter implements Reporter {
 
         if (this.opts.ci?.threshold != null) {
             const avg = built.report.overall_pass_rate;
-            if (built.report.status === 'fail') {
+            if (avg < this.opts.ci.threshold) {
                 console.log(
                     `\n  ${fmt.fail('CI THRESHOLD FAILED')}  avg score ${fmt.bold(avg.toFixed(3))} < threshold ${fmt.bold(String(this.opts.ci.threshold))}\n`,
                 );

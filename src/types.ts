@@ -234,6 +234,22 @@ export interface PathgradeSelectionReport {
     }>;
 }
 
+export type PathgradeRunEndReason = 'passed' | 'failed' | 'interrupted';
+
+export interface PathgradeRunFailure {
+    scope: 'module' | 'suite' | 'unhandled';
+    message: string;
+    name?: string;
+    stack?: string;
+    file?: string;
+    suite?: string;
+}
+
+export interface PathgradeRunResult {
+    reason: PathgradeRunEndReason;
+    failures: PathgradeRunFailure[];
+}
+
 /**
  * Shape of `.pathgrade/results.json` — the consolidated consolidated pathgrade
  * run report. `version` is pinned to 1 so the `pathgrade report` command and
@@ -247,12 +263,17 @@ export interface PathgradeReport {
     /** Weighted average of every individual trial score across all groups. */
     overall_pass_rate: number;
     /**
-     * Threshold check result. When `threshold` is set: `'pass'` iff
-     * `overall_pass_rate >= threshold`. Otherwise: `'pass'` iff every trial
-     * in every group passed its vitest test.
+     * Overall result. A failed or interrupted runner forces `'fail'`. Otherwise,
+     * when `threshold` is set: `'pass'` iff `overall_pass_rate >= threshold`.
+     * Without a threshold: `'pass'` iff every trial passed its vitest test.
      */
     status: 'pass' | 'fail';
     groups: PathgradeGroupReport[];
+    /**
+     * Vitest's run-level outcome, including failures that happened before an
+     * individual eval completed. Optional for compatibility with older reports.
+     */
+    run?: PathgradeRunResult;
     /**
      * Present when `pathgrade run --changed` produced the run. Absent on
      * plain `pathgrade run`. Backward compatible — older consumers ignore

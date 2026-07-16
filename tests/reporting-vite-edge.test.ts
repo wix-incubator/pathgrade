@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectVitestReportGroups } from '../src/reporting/vitest-edge.js';
+import { collectVitestReportGroups, collectVitestRunResult } from '../src/reporting/vitest-edge.js';
 
 function makeCase(overrides: {
     name: string;
@@ -81,5 +81,59 @@ describe('Vitest reporting edge', () => {
                 ],
             },
         ]);
+    });
+
+    it('collects module, suite, and unhandled run failures', () => {
+        const run = collectVitestRunResult([
+            {
+                relativeModuleId: 'setup.eval.ts',
+                errors: () => [{
+                    name: 'SyntaxError',
+                    message: 'Failed to load setup',
+                    stack: 'SyntaxError: Failed to load setup',
+                }],
+                children: {
+                    allSuites: () => [{
+                        fullName: 'agent setup > authenticated session',
+                        errors: () => [{
+                            name: 'Error',
+                            message: 'Hook timed out in 900000ms.',
+                            stack: 'Error: Hook timed out in 900000ms.',
+                        }],
+                    }],
+                },
+            },
+        ] as any, [{
+            name: 'Error',
+            message: 'worker exited unexpectedly',
+            stack: 'Error: worker exited unexpectedly',
+        }], 'failed');
+
+        expect(run).toEqual({
+            reason: 'failed',
+            failures: [
+                {
+                    scope: 'module',
+                    file: 'setup.eval.ts',
+                    name: 'SyntaxError',
+                    message: 'Failed to load setup',
+                    stack: 'SyntaxError: Failed to load setup',
+                },
+                {
+                    scope: 'suite',
+                    file: 'setup.eval.ts',
+                    suite: 'agent setup > authenticated session',
+                    name: 'Error',
+                    message: 'Hook timed out in 900000ms.',
+                    stack: 'Error: Hook timed out in 900000ms.',
+                },
+                {
+                    scope: 'unhandled',
+                    name: 'Error',
+                    message: 'worker exited unexpectedly',
+                    stack: 'Error: worker exited unexpectedly',
+                },
+            ],
+        });
     });
 });
