@@ -15,6 +15,11 @@ vi.mock('fs-extra', () => {
     return { default: mock, ...mock };
 });
 
+function stripAnsi(value: string): string {
+    // eslint-disable-next-line no-control-regex
+    return value.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 function makeTestCase(score: number, state: 'passed' | 'failed' = 'passed') {
     return {
         name: 'trial 1',
@@ -103,7 +108,7 @@ describe('PathgradeReporter modes and threshold behavior', () => {
         const reporter = new PathgradeReporter({ reporter: 'json', ci: { threshold: 0.8 } });
         await reporter.onTestRunEnd([{ children: { allTests: () => [makeTestCase(0.25, 'passed')] } }] as any);
 
-        const output = logSpy.mock.calls.map(call => String(call[0])).join('\n');
+        const output = stripAnsi(logSpy.mock.calls.map(call => String(call[0])).join('\n'));
         expect(output).toContain('CI THRESHOLD FAILED');
         expect(output).toContain('avg score 0.250 < threshold 0.8');
         expect(process.exitCode).toBe(1);
