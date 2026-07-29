@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
-import { prepareWorkspace, linkPathsFromHostHome, removeSandboxRoot, Workspace } from '../src/providers/workspace.js';
+import { prepareWorkspace, linkPathsFromHostHome, Workspace } from '../src/providers/workspace.js';
+import { removeSandboxRoot } from '../src/providers/sandbox-lifecycle.js';
 
 describe('prepareWorkspace — MCP config', () => {
     let workspace: Workspace | undefined;
