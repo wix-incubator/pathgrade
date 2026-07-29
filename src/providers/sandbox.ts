@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
 import { DEFAULT_COPY_IGNORE, createCopyFilter, isPortableCopyEntry } from './copy-filter.js';
+import { createSandboxRoot } from './sandbox-lifecycle.js';
 
 
 export interface SandboxConfig {
@@ -31,7 +32,7 @@ export const SAFE_HOST_VARS = [
 ];
 
 export async function createSandbox(spec: SandboxConfig): Promise<Sandbox> {
-    const rootDir = path.join(os.tmpdir(), `pathgrade-${Math.random().toString(36).substring(7)}`);
+    const rootDir = await createSandboxRoot();
     const workspacePath = path.join(rootDir, 'workspace');
     const homePath = path.join(rootDir, 'home');
     const tmpPath = path.join(rootDir, 'tmp');
