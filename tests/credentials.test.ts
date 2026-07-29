@@ -59,7 +59,7 @@ describe('resolveCredentials', () => {
             }),
         );
         expect(result.env).toEqual({ PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' });
-        expect(result.copyFromHome).toEqual(['.claude.json']);
+        expect(result.copyFromHome).toEqual([]);
         expect(result.linkFromHome).toEqual(['Library/Keychains']);
     });
 
@@ -75,6 +75,8 @@ describe('resolveCredentials', () => {
             ANTHROPIC_API_KEY: 'sk-host',
             ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
         });
+        expect(result.copyFromHome).toEqual([]);
+        expect(result.linkFromHome).toBeUndefined();
     });
 
     it('claude: no user env + nothing → empty', async () => {
@@ -114,7 +116,7 @@ describe('resolveCredentials', () => {
             }),
         );
         expect(result.env).toEqual({ PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' });
-        expect(result.copyFromHome).toEqual(['.claude.json']);
+        expect(result.copyFromHome).toEqual([]);
         expect(result.linkFromHome).toEqual(['Library/Keychains']);
     });
 

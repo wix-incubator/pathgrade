@@ -152,7 +152,7 @@ async function resolveClaude(
             return {
                 env: { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
                 setupCommands: [],
-                copyFromHome: ['.claude.json'],
+                copyFromHome: [],
                 linkFromHome: ['Library/Keychains'],
             };
         }
