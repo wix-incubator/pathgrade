@@ -124,14 +124,51 @@ describe('buildClaudeSdkOptions — env (TB5)', () => {
         expect(opts.env!.CLAUDE_CONFIG_DIR).toBe('/tmp/trial-42/.pathgrade-claude-config');
     });
 
-    it('uses host Claude Code config when local OAuth is selected', () => {
+    it('defaults claude.ai account-level MCP servers off for local OAuth', () => {
         const opts = buildClaudeSdkOptions(baseInputs({
             workspacePath: '/tmp/trial-oauth',
             runtimeEnv: { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
         }));
         expect(opts.env).toBeDefined();
         expect('CLAUDE_CONFIG_DIR' in opts.env!).toBe(false);
+        expect(opts.env!.ENABLE_CLAUDEAI_MCP_SERVERS).toBe('false');
+    });
+
+    it('preserves explicit claude.ai MCP connector opt-in for local OAuth', () => {
+        const opts = buildClaudeSdkOptions(baseInputs({
+            runtimeEnv: {
+                PATHGRADE_CLAUDE_LOCAL_OAUTH: '1',
+                ENABLE_CLAUDEAI_MCP_SERVERS: 'true',
+            },
+        }));
+        expect(opts.env!.ENABLE_CLAUDEAI_MCP_SERVERS).toBe('true');
+    });
+
+    it('preserves an explicit claude.ai MCP connector setting over the OAuth default', () => {
+        const opts = buildClaudeSdkOptions(baseInputs({
+            runtimeEnv: {
+                PATHGRADE_CLAUDE_LOCAL_OAUTH: '1',
+                ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+            },
+        }));
+        expect(opts.env!.ENABLE_CLAUDEAI_MCP_SERVERS).toBe('false');
+    });
+
+    it('does not leak the internal local OAuth marker into the SDK environment', () => {
+        const opts = buildClaudeSdkOptions(baseInputs({
+            runtimeEnv: { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
+        }));
         expect('PATHGRADE_CLAUDE_LOCAL_OAUTH' in opts.env!).toBe(false);
+    });
+
+    it('does not add the claude.ai MCP setting to API-key or proxy paths', () => {
+        const opts = buildClaudeSdkOptions(baseInputs({
+            runtimeEnv: {
+                ANTHROPIC_API_KEY: 'sk-test',
+                ANTHROPIC_BASE_URL: 'https://proxy.example/v1',
+            },
+        }));
+        expect('ENABLE_CLAUDEAI_MCP_SERVERS' in opts.env!).toBe(false);
     });
 
     it('does not set Options.env keys whose values are undefined in the auth env', () => {

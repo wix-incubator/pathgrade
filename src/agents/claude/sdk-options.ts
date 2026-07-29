@@ -121,6 +121,12 @@ export function buildClaudeSdkOptions(inputs: ClaudeSdkOptionsInputs): Options {
         if (key === 'PATHGRADE_CLAUDE_LOCAL_OAUTH') continue;
         env[key] = value;
     }
+    // Claude Code normally exposes claude.ai account-level MCP connectors to
+    // local OAuth sessions. Keep PathGrade trials isolated from those ambient
+    // connectors unless the caller explicitly opts in through their env.
+    if (useLocalOAuth && env.ENABLE_CLAUDEAI_MCP_SERVERS === undefined) {
+        env.ENABLE_CLAUDEAI_MCP_SERVERS = 'false';
+    }
     if (!useLocalOAuth) {
         env.CLAUDE_CONFIG_DIR = path.join(inputs.workspacePath, CLAUDE_CONFIG_SUBDIR);
     }
