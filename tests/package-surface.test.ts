@@ -35,6 +35,8 @@ describe('package surface', () => {
         expect(packageJson.peerDependenciesMeta.jest.optional).toBe(true);
         expect(packageJson.peerDependencies.vitest).toBeDefined();
         expect(packageJson.peerDependenciesMeta.vitest.optional).toBe(true);
+        expect(packageJson.dependencies.vitest).toBe('4.1.7');
+        expect(packageJson.peerDependencies.vitest).toBe('^4.0.0');
     });
 
     it('exposes Jest through the built-in adapter subpaths', () => {
