@@ -24,6 +24,10 @@ import { runChanged } from './commands/run-changed.js';
 import { clearSidecar } from './affected/sidecar.js';
 import { resolvePathgradeConfig } from './config/pathgrade.js';
 import { loadRunnerInvocationAdapter } from './runners/adapter-loader.js';
+import {
+    parseStandaloneCommand,
+    PATHGRADE_STANDALONE_ENV,
+} from './standalone/mode.js';
 import { fmt } from './utils/cli.js';
 import { shutdown } from './utils/shutdown.js';
 
@@ -65,8 +69,22 @@ function validateApiKeys(): void {
 
 async function main() {
     shutdown.install();
-    const args = process.argv.slice(2);
+    const parsedCommand = parseStandaloneCommand(process.argv.slice(2));
+    if (parsedCommand.standalone) {
+        process.env[PATHGRADE_STANDALONE_ENV] = '1';
+    } else {
+        delete process.env[PATHGRADE_STANDALONE_ENV];
+    }
+
+    const args = parsedCommand.args;
     const command = args[0];
+
+    if (parsedCommand.standalone && command !== 'run' && command !== 'affected') {
+        console.error(`pathgrade standalone: unsupported command "${command}"`);
+        console.error('Supported standalone commands are "run" and "affected".');
+        process.exitCode = 1;
+        return;
+    }
 
     if (command === '--help' || command === '-h') {
         printHelp();
@@ -232,6 +250,8 @@ function printHelp() {
                      [--diagnostics]           Print full diagnostics for passing evals too
                      [--quiet]                 Suppress the run-start summary
                      [--verbose|-v]            Stream live per-turn events to stderr during the run
+    pathgrade standalone [run|affected]
+                                      Run with the bundled standalone toolchain
     pathgrade init [--force]         Generate eval scaffolding
     pathgrade analyze [--skill=X]    Analyze skills and output JSON
     pathgrade validate <file>        Validate an .eval.ts file
