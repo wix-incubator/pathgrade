@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const cliPath = path.join(repoRoot, 'dist/pathgrade.js');
+const failingShimDir = createFailingShimDir();
 
 const smokes = [
     {
@@ -16,6 +18,14 @@ const smokes = [
         name: 'explicit Vitest adapter',
         cwd: fixture('vitest-basic'),
         args: ['run', '--adapter=vitest'],
+    },
+    {
+        name: 'standalone bundled Vitest',
+        cwd: fixture('standalone-basic'),
+        args: ['standalone', 'run'],
+        env: {
+            PATH: `${failingShimDir}${path.delimiter}${process.env.PATH ?? ''}`,
+        },
     },
     {
         name: 'Jest adapter without node_modules/.bin on PATH',
@@ -61,8 +71,12 @@ const smokes = [
     },
 ];
 
-for (const smoke of smokes) {
-    runSmoke(smoke);
+try {
+    for (const smoke of smokes) {
+        runSmoke(smoke);
+    }
+} finally {
+    fs.rmSync(failingShimDir, { recursive: true, force: true });
 }
 
 function runSmoke(smoke) {
@@ -127,4 +141,14 @@ function removeIfEmpty(dir) {
     } catch (err) {
         if (err?.code !== 'ENOENT' && err?.code !== 'ENOTEMPTY') throw err;
     }
+}
+
+function createFailingShimDir() {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-failing-shims-'));
+    for (const command of ['vitest', 'codex', 'claude']) {
+        const shimPath = path.join(directory, command);
+        fs.writeFileSync(shimPath, '#!/bin/sh\nexit 97\n');
+        fs.chmodSync(shimPath, 0o755);
+    }
+    return directory;
 }

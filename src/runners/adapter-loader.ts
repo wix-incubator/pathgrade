@@ -6,6 +6,7 @@ import { createJestInvocationAdapter } from '../adapters/jest/invocation-adapter
 import { createJestAdapter } from '../adapters/jest/runner-adapter.js';
 import { createNodeTestInvocationAdapter } from '../adapters/node-test/invocation-adapter.js';
 import { createVitestInvocationAdapter, type SpawnVitest } from './vitest-invocation.js';
+import { createStandaloneVitestInvocationAdapter } from '../standalone/vitest-invocation.js';
 import type { RunnerAdapter } from './adapter.js';
 import type { RunnerInvocationAdapter } from './invocation.js';
 import { resolveRunnerAdapter } from './selection.js';
@@ -47,6 +48,9 @@ export async function loadRunnerInvocationAdapter(input: {
     standalone?: boolean;
 }): Promise<RunnerInvocationAdapter> {
     const name = input.adapterName ?? 'vitest';
+    if (name === 'vitest' && input.standalone) {
+        return createStandaloneVitestInvocationAdapter({ config: input.config });
+    }
     if (name === 'vitest') return createVitestInvocationAdapter({ spawnVitest: input.spawnVitest });
     if (name === 'node-test') return createNodeTestInvocationAdapter({ config: input.config });
     if (name === 'jest') return createJestInvocationAdapter({ config: input.config });

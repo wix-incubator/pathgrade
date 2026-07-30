@@ -1,10 +1,12 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import type { ViteUserConfig } from 'vitest/config';
 import { pathgrade } from '../adapters/vitest/index.js';
 import {
     decodeStandaloneVitestPayload,
     resolveStandaloneModuleAliases,
+    selectStandaloneEsmExportTarget,
     STANDALONE_VITEST_PAYLOAD_ENV,
     type StandaloneVitestPayload,
 } from './module-aliases.js';
@@ -80,7 +82,21 @@ function buildDefaultConfig(): ViteUserConfig {
     if (!encoded) return {};
 
     const packageRoot = path.resolve(import.meta.dirname, '..', '..');
-    const vitestEntry = createRequire(import.meta.url).resolve('vitest');
+    const require = createRequire(import.meta.url);
+    const vitestPackageJsonPath = require.resolve('vitest/package.json');
+    const vitestPackageJson = JSON.parse(
+        fs.readFileSync(vitestPackageJsonPath, 'utf8'),
+    ) as { exports?: Record<string, unknown> };
+    const vitestTarget = selectStandaloneEsmExportTarget(
+        vitestPackageJson.exports?.['.'],
+    );
+    if (!vitestTarget) {
+        throw new Error('pathgrade standalone: bundled Vitest ESM entry is unavailable');
+    }
+    const vitestEntry = path.resolve(
+        path.dirname(vitestPackageJsonPath),
+        vitestTarget,
+    );
     return buildStandaloneVitestConfig(
         decodeStandaloneVitestPayload(encoded),
         { packageRoot, vitestEntry },
