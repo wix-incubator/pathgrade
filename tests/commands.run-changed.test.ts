@@ -162,6 +162,42 @@ export default {
         }
     });
 
+    it('standalone changed runs ignore legacy Vitest config', async () => {
+        const root = makeRepo();
+        fs.writeFileSync(path.join(root, 'vitest.config.ts'), `
+export default {
+    plugins: [{
+        name: 'pathgrade',
+        __pathgradeOptions: { include: ['skills/beta/**/*.eval.ts'] },
+    }],
+};
+`);
+        mockedResolve.mockReturnValue({ base: 'origin/main', sha: 'abc1234' });
+        mockedChanged.mockReturnValue(['skills/alpha/src/x.ts']);
+        const runnerInvocation: RunnerInvocationAdapter = {
+            name: 'vitest',
+            run: vi.fn(async () => 0),
+        };
+
+        const code = await runChanged({
+            cwd: root,
+            standalone: true,
+            parsed: {
+                runnerArgs: [],
+                forceDiagnostics: false,
+                forceVerbose: false,
+                changed: true,
+                quiet: true,
+            },
+            runnerInvocation,
+        });
+
+        expect(code).toBe(0);
+        expect(runnerInvocation.run).toHaveBeenCalledWith(expect.objectContaining({
+            selectedFiles: ['skills/alpha/a.eval.ts'],
+        }));
+    });
+
     it('uses pathgrade.config.ts include settings before spawning changed evals', async () => {
         const root = makeRepo();
         fs.writeFileSync(path.join(root, 'pathgrade.config.ts'), `

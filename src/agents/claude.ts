@@ -52,6 +52,7 @@ import { createAskUserAnswerStore } from './claude/ask-user-answer-store.js';
 import { createClaudeToolPermissionBridge } from './claude/tool-permission-bridge.js';
 import { createClaudeDeniedMcpEventStore } from './claude/denied-mcp-event-store.js';
 import { requireAskBusForLiveBatches } from '../sdk/ask-bus/bus.js';
+import { isStandaloneMode } from '../standalone/mode.js';
 
 /** Shape of the SDK `query()` callable, narrowed for orchestration use. */
 export type ClaudeSdkQueryFn = (args: {
@@ -127,6 +128,7 @@ export class ClaudeAgent extends BaseAgent {
         const claudeCodeExecutable = resolveClaudeCodeExecutable({
             agentOptionsExecutable: this.opts.claudeCodeExecutable,
             envExecutable,
+            standalone: isStandaloneMode(hostEnv),
         });
         const mcpMountOptions = {
             workspacePath,

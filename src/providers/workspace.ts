@@ -43,14 +43,24 @@ export async function linkPathsFromHostHome(pathsToLink: string[], sandboxHomePa
 }
 
 export async function prepareWorkspace(spec: SandboxConfig): Promise<Workspace> {
-    const { mcp, ...sandboxSpec } = spec;
+    const {
+        mcp,
+        credentialMode = 'project',
+        transport,
+        ...sandboxSpec
+    } = spec;
     const sandbox = await createSandbox(sandboxSpec);
     const { workspacePath, homePath, env: sandboxEnv, rootDir } = sandbox;
 
     try {
         // Resolve credentials: pass user's original env (not sandboxEnv) so
         // the resolver can distinguish explicit user intent from auto-resolved values.
-        const creds = await resolveCredentials(spec.agent, spec.env ?? {});
+        const creds = await resolveCredentials(
+            spec.agent,
+            spec.env ?? {},
+            undefined,
+            { mode: credentialMode, transport },
+        );
         Object.assign(sandboxEnv, creds.env);
         await copyPathsFromHostHome(creds.copyFromHome, homePath);
         await linkPathsFromHostHome(creds.linkFromHome ?? [], homePath);

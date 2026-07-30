@@ -15,6 +15,30 @@ function stubPorts(overrides?: Partial<CredentialPorts>): CredentialPorts {
 }
 
 describe('resolveCredentials', () => {
+    it('requires Claude credentials in standalone mode', async () => {
+        await expect(resolveCredentials(
+            'claude',
+            {},
+            stubPorts({ platform: 'linux' }),
+            { mode: 'standalone' },
+        )).rejects.toThrow(/Claude authentication required/);
+    });
+
+    it('requires an API key and defers login to the Codex app-server', async () => {
+        const ports = stubPorts({
+            hostEnv: key => key === 'OPENAI_API_KEY' ? 'sk-test' : undefined,
+        });
+        const result = await resolveCredentials(
+            'codex',
+            {},
+            ports,
+            { mode: 'standalone', transport: 'app-server' },
+        );
+        expect(result.env.OPENAI_API_KEY).toBe('sk-test');
+        expect(result.setupCommands).toEqual([]);
+        expect(result.copyFromHome).toEqual([]);
+    });
+
     // --- Claude scenarios ---
 
     it('claude: user-provided ANTHROPIC_API_KEY → empty (trusted)', async () => {

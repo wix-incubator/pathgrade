@@ -30,3 +30,15 @@ export function resolveCodexTransport(
     }
     return 'app-server';
 }
+
+export function assertStandaloneAgent(
+    agent: AgentName,
+    transport?: AgentTransport,
+): void {
+    if (agent === 'cursor') {
+        throw new Error('Cursor is unsupported in pathgrade standalone');
+    }
+    if (agent === 'codex' && transport !== 'app-server') {
+        throw new Error('pathgrade standalone supports Codex app-server only');
+    }
+}

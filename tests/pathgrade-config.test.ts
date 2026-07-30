@@ -90,6 +90,22 @@ export default {
         expect(config.affected.global).toEqual(['yarn.lock']);
     });
 
+    it('skips legacy Vitest plugin options in standalone mode', async () => {
+        const root = makeRepo();
+        writeFile(root, 'vitest.config.ts', `
+export default {
+    plugins: [{
+        name: 'pathgrade',
+        __pathgradeOptions: { include: ['legacy/**/*.eval.ts'] },
+    }],
+};
+`);
+
+        const resolved = await resolvePathgradeConfig({ cwd: root, standalone: true });
+
+        expect(resolved.evals.include).toEqual(['**/*.eval.ts']);
+    });
+
     it('prefers CLI overrides over pathgrade.config.ts and legacy Vitest fallback', async () => {
         const root = makeRepo();
         writeFile(root, 'vitest.config.ts', `

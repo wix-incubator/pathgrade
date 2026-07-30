@@ -71,7 +71,11 @@ export interface ClaudeSdkOptionsInputs {
 export function resolveClaudeCodeExecutable(args: {
     agentOptionsExecutable?: string;
     envExecutable?: string;
+    standalone?: boolean;
 }): string | undefined {
+    if (args.standalone && args.envExecutable) {
+        throw new Error('PATHGRADE_CLAUDE_CODE_EXECUTABLE is unsupported in pathgrade standalone');
+    }
     if (args.agentOptionsExecutable) return args.agentOptionsExecutable;
     if (args.envExecutable) return args.envExecutable;
     return undefined;

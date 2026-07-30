@@ -28,6 +28,7 @@ import {
 export interface RunAffectedOptions {
     /** Absolute path to the repo root (CLI passes `process.cwd()`). */
     cwd: string;
+    standalone?: boolean;
     /** Newline-delimited list of repo-relative changed files (overrides git). */
     changedFilesPath?: string;
     /** Git ref to diff against (`<ref>...HEAD`). Overrides auto-detection. */
@@ -70,6 +71,7 @@ export async function runAffected(opts: RunAffectedOptions): Promise<number> {
     try {
         config = await resolvePathgradeConfig({
             cwd,
+            standalone: opts.standalone,
             warn: w => process.stderr.write(`${w}\n`),
         });
     } catch (err) {

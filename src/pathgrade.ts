@@ -28,6 +28,10 @@ import {
     parseStandaloneCommand,
     PATHGRADE_STANDALONE_ENV,
 } from './standalone/mode.js';
+import {
+    assertStandalonePlatform,
+    validateStandaloneInvocation,
+} from './standalone/validation.js';
 import { fmt } from './utils/cli.js';
 import { shutdown } from './utils/shutdown.js';
 
@@ -54,15 +58,19 @@ function loadDotenv(): void {
     }
 }
 
-function validateApiKeys(): void {
+function validateApiKeys(standalone = false): void {
     const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
     const hasClaude = !!process.env.HOME; // Claude CLI uses OS keychain, just check it exists
 
     if (!hasAnthropic && !hasOpenAI) {
+        const location = standalone ? 'environment' : '.env or environment';
+        const fallback = standalone
+            ? 'Claude OAuth from the macOS keychain may still work.'
+            : 'Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.';
         console.log(
-            `\n  ${fmt.dim('warning:')} No API keys found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env or environment.\n` +
-            `  ${fmt.dim('         Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.')}\n`,
+            `\n  ${fmt.dim('warning:')} No API keys found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in ${location}.\n` +
+            `  ${fmt.dim(`         ${fallback}`)}\n`,
         );
     }
 }
@@ -84,6 +92,20 @@ async function main() {
         console.error('Supported standalone commands are "run" and "affected".');
         process.exitCode = 1;
         return;
+    }
+
+    if (parsedCommand.standalone) {
+        try {
+            assertStandalonePlatform({
+                nodeMajor: Number(process.versions.node.split('.')[0]),
+                platform: process.platform,
+                arch: process.arch,
+            });
+        } catch (err) {
+            console.error(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+            return;
+        }
     }
 
     if (command === '--help' || command === '-h') {
@@ -163,6 +185,7 @@ async function main() {
         const json = affectedArgs.includes('--json');
         const exitCode = await runAffected({
             cwd: process.cwd(),
+            standalone: parsedCommand.standalone,
             changedFilesPath,
             since,
             explain,
@@ -185,8 +208,10 @@ async function main() {
 
     if (command === 'run' || !command || command.startsWith('-')) {
         // pathgrade run [--changed [--since=…|--changed-files=…]] [--] [runner-args]
-        loadDotenv();
-        validateApiKeys();
+        if (!parsedCommand.standalone) {
+            loadDotenv();
+        }
+        validateApiKeys(parsedCommand.standalone);
 
         const parsed = parsePathgradeRunArgs(command === 'run' ? args.slice(1) : args);
 
@@ -198,6 +223,7 @@ async function main() {
             const exitCode = await runChanged({
                 cwd: process.cwd(),
                 parsed,
+                standalone: parsedCommand.standalone,
             });
             process.exitCode = exitCode;
             return;
@@ -214,11 +240,21 @@ async function main() {
             ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
         };
         try {
-            const config = await resolvePathgradeConfig({ cwd: process.cwd() });
+            const config = await resolvePathgradeConfig({
+                cwd: process.cwd(),
+                standalone: parsedCommand.standalone,
+            });
+            if (parsedCommand.standalone) {
+                validateStandaloneInvocation({
+                    adapterName: parsed.adapterName ?? config.runner.adapter,
+                    runnerArgs: [...config.runner.args, ...parsed.runnerArgs],
+                });
+            }
             const runner = await loadRunnerInvocationAdapter({
                 adapterName: parsed.adapterName ?? config.runner.adapter,
                 cwd: process.cwd(),
                 config,
+                standalone: parsedCommand.standalone,
             });
             process.exitCode = await runner.run({
                 cwd: process.cwd(),
@@ -251,7 +287,7 @@ function printHelp() {
                      [--quiet]                 Suppress the run-start summary
                      [--verbose|-v]            Stream live per-turn events to stderr during the run
     pathgrade standalone [run|affected]
-                                      Run with the bundled standalone toolchain
+                                      Embedded Vitest; Claude and Codex app-server only
     pathgrade init [--force]         Generate eval scaffolding
     pathgrade analyze [--skill=X]    Analyze skills and output JSON
     pathgrade validate <file>        Validate an .eval.ts file

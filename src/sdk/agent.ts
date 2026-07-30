@@ -16,7 +16,11 @@ import type {
     AgentOptions,
 } from './types.js';
 import type { McpSafetyOptions } from './mcp-safety.js';
-import { resolveAgentName, resolveCodexTransport } from './agent-resolution.js';
+import {
+    assertStandaloneAgent,
+    resolveAgentName,
+    resolveCodexTransport,
+} from './agent-resolution.js';
 import { lifecycleCore } from './lifecycle.js';
 import { ChatSessionImpl } from './chat.js';
 import { runConversation } from './converse.js';
@@ -32,6 +36,7 @@ import { getCurrentCaseContext } from './case-context.js';
 import { createVerboseEmitter, type VerboseEmitter, type VerboseSink } from '../reporters/verbose-emitter.js';
 import fs from 'fs-extra';
 import * as path from 'path';
+import { isStandaloneMode } from '../standalone/mode.js';
 
 /**
  * Test-only injection point: override the sink used by the next emitter
@@ -413,6 +418,10 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
     const transport: AgentTransport | undefined = agentName === 'codex'
         ? resolveCodexTransport(opts, process.env)
         : undefined;
+    const standalone = isStandaloneMode(process.env);
+    if (standalone) {
+        assertStandaloneAgent(agentName, transport);
+    }
     const timeoutSetting = opts.timeout ?? 300;
 
     // Capture runner context now; adapters own installation and restoration.
@@ -422,6 +431,8 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
     const workspace = await prepareWorkspace({
         ...rest,
         agent: agentName,
+        credentialMode: standalone ? 'standalone' : 'project',
+        transport,
         mcp: mcpConfigFile ? { configFile: mcpConfigFile } : mcpMock ? { mock: mcpMock } : undefined,
     });
 

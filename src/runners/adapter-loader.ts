@@ -44,6 +44,7 @@ export async function loadRunnerInvocationAdapter(input: {
     cwd?: string;
     config: ResolvedPathgradeConfig;
     spawnVitest?: SpawnVitest;
+    standalone?: boolean;
 }): Promise<RunnerInvocationAdapter> {
     const name = input.adapterName ?? 'vitest';
     if (name === 'vitest') return createVitestInvocationAdapter({ spawnVitest: input.spawnVitest });

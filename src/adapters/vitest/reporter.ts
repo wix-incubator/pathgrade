@@ -9,6 +9,7 @@ import { printReportSummary } from '../../reporters/report-summary.js';
 import { createVitestAdapter } from '../../runners/vitest-adapter.js';
 import { runWithAdapter } from '../../runners/orchestrator.js';
 import { resolvePathgradeConfig } from '../../config/pathgrade.js';
+import { isStandaloneMode } from '../../standalone/mode.js';
 
 /**
  * Custom vitest reporter that layers pathgrade aggregate statistics
@@ -23,7 +24,10 @@ export class PathgradeReporter implements Reporter {
 
     async onTestRunEnd(testModules: ReadonlyArray<TestModule>): Promise<void> {
         const cwd = process.cwd();
-        const config = await resolvePathgradeConfig({ cwd });
+        const config = await resolvePathgradeConfig({
+            cwd,
+            standalone: isStandaloneMode(process.env),
+        });
         const mode = this.opts.reporter ?? config.reporter ?? 'cli';
         const outputDir = getPathgradeDir(cwd);
         const adapter = createVitestAdapter({ testModules });
