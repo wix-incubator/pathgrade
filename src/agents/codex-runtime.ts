@@ -40,8 +40,6 @@ function resolveNativeCodexArtifact(): void {
         'darwin:arm64': '@openai/codex-darwin-arm64',
         'linux:x64': '@openai/codex-linux-x64',
         'linux:arm64': '@openai/codex-linux-arm64',
-        'win32:x64': '@openai/codex-win32-x64',
-        'win32:arm64': '@openai/codex-win32-arm64',
     };
     const platformPackage = platformPackageByTarget[target];
     if (!platformPackage) {
@@ -58,8 +56,6 @@ function resolveNativeCodexArtifact(): void {
         'darwin:arm64': 'aarch64-apple-darwin',
         'linux:x64': 'x86_64-unknown-linux-musl',
         'linux:arm64': 'aarch64-unknown-linux-musl',
-        'win32:x64': 'x86_64-pc-windows-msvc',
-        'win32:arm64': 'aarch64-pc-windows-msvc',
     };
     const targetTriple = targetTripleByTarget[target]!;
     const executable = join(
@@ -75,6 +71,12 @@ function resolveNativeCodexArtifact(): void {
 }
 
 export function resolveBundledCodexCommand(): BundledCodexCommand {
+    if (process.platform === 'win32') {
+        throw new Error(
+            'pathgrade standalone: native Windows is unsupported; use WSL with x64 or arm64',
+        );
+    }
+
     let packageJsonPath: string;
     try {
         packageJsonPath = require.resolve('@openai/codex/package.json');

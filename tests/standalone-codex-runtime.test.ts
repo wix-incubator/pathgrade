@@ -1,10 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     resolveBundledCodexCommand,
     verifyBundledCodexRuntime,
 } from '../src/agents/codex-runtime.js';
 
 describe('bundled Codex runtime', () => {
+    it('rejects native Windows before resolving a bundled artifact', () => {
+        const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        try {
+            expect(() => resolveBundledCodexCommand()).toThrow(
+                'pathgrade standalone: native Windows is unsupported; use WSL with x64 or arm64',
+            );
+        } finally {
+            platform.mockRestore();
+        }
+    });
+
     it('resolves the exact official package through Node', () => {
         const runtime = resolveBundledCodexCommand();
         expect(runtime.executable).toBe(process.execPath);
