@@ -7,7 +7,7 @@ describe('standalone Vitest diagnostics', () => {
             'Failed to resolve import "zod" from "/repo/example.eval.ts"',
         )).toEqual({
             kind: 'project-dependency',
-            message: 'pathgrade standalone: project dependency "zod" is unavailable; install the application dependencies or remove that import',
+            message: 'pathgrade standalone: project dependency "zod" is unavailable in /repo/example.eval.ts; install the application dependencies or remove that import',
         });
     });
 

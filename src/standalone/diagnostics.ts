@@ -23,7 +23,7 @@ export function classifyStandaloneVitestFailure(
     return {
         kind: 'project-dependency',
         message:
-            `pathgrade standalone: project dependency "${specifier}" is unavailable; ` +
+            `pathgrade standalone: project dependency "${specifier}" is unavailable in ${importer}; ` +
             'install the application dependencies or remove that import',
     };
 }
