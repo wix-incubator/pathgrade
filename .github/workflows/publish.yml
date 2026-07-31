@@ -286,7 +286,7 @@ jobs:
           RETAINED_SCOPED_SHA512: ${{ needs.prepare.outputs.sha512 }}
         shell: bash
         run: |
-          args=(--package @wix/pathgrade --version "${{ needs.prepare.outputs.version }}" --tarball "$RETAINED_SCOPED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512" --source-commit "$GITHUB_SHA")
+          args=(--package @wix/pathgrade --version "${{ needs.prepare.outputs.version }}" --tarball "$RETAINED_SCOPED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512" --source-commit "$GITHUB_SHA" --sigstore-verifier "$PWD/scripts/release/verify-sigstore-bundle.mjs")
           if [ -f registry-evidence/public-provenance-evidence.json ]; then args+=(--attestation-evidence "$PWD/registry-evidence/public-provenance-evidence.json"); fi
           if [ -f registry-evidence/staged-evidence.json ]; then args+=(--staged-evidence "$PWD/registry-evidence/staged-evidence.json"); fi
           node scripts/release/verify-artifact-state.mjs "${args[@]}" | tee artifact-state.json

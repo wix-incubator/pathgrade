@@ -10,6 +10,8 @@ const registry = 'https://registry.npmjs.org';
 const repository = 'wix-incubator/pathgrade';
 const workflow = 'publish.yml';
 const predicateType = 'https://slsa.dev/provenance/v1';
+const certificateIssuer = 'https://token.actions.githubusercontent.com';
+const defaultSigstoreVerifier = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify-sigstore-bundle.mjs');
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     try {
@@ -35,7 +37,7 @@ export function verifyArtifactState(options) {
         verifyMetadata(metadata, options, expectedIntegrity, 'public');
         verifyContents(downloadPublic(options.npmCommand, spec), options.expectedSha512, 'public');
         if (!options.attestationEvidence) throw new Error('conflict: verified provenance evidence is required');
-        verifyProvenance(readJsonFile(options.attestationEvidence, 'verified provenance evidence'), options);
+        verifyProvenanceEvidence(readJsonFile(options.attestationEvidence, 'verified provenance evidence'), options);
         return { state: 'matching', source: 'public', should_stage: false };
     }
     if (!/E404|404 Not Found|is not in this registry/i.test(publicView.stderr)) {
@@ -67,7 +69,7 @@ function verifyStagedEvidence(evidence, options, expectedIntegrity) {
         || evidence.standalone_smoke?.rebuilt !== false) {
         conflict('staged downloaded-tarball smoke evidence');
     }
-    verifyProvenance(evidence.provenance, options);
+    verifyProvenanceEvidence(evidence.provenance, options);
 }
 
 function verifyMetadata(metadata, options, expectedIntegrity, source) {
@@ -82,19 +84,39 @@ function verifyMetadata(metadata, options, expectedIntegrity, source) {
     }
 }
 
-function verifyProvenance(evidence, options) {
-    if (evidence?.schema !== 'pathgrade-provenance-verification/v1'
-        || evidence?.verification?.status !== 'verified'
-        || evidence?.verification?.verifier !== 'npm-registry-sigstore'
-        || !/^[a-f\d]{64}$/i.test(evidence?.verification?.bundle_sha256 ?? '')
-        || !Number.isSafeInteger(evidence?.verification?.rekor_log_index)
-        || evidence.verification.rekor_log_index < 0) {
-        throw new Error('conflict: verified provenance evidence is invalid');
+function verifyProvenanceEvidence(evidence, options) {
+    if (evidence?.schema !== 'pathgrade-provenance-verification/v2'
+        || !evidence.bundle || typeof evidence.bundle !== 'object' || Array.isArray(evidence.bundle)) {
+        throw new Error('conflict: Sigstore bundle is required for verified provenance evidence');
     }
-    if (evidence.verification.repository !== repository) conflict('provenance repository');
-    if (evidence.verification.workflow !== workflow) conflict('provenance workflow');
-    if (evidence.verification.source_commit !== options.sourceCommit) conflict('provenance source commit');
-    const statement = evidence.statement;
+    const statement = runSigstoreVerifier(evidence.bundle, options);
+    verifyProvenanceStatement(statement, options);
+}
+
+function runSigstoreVerifier(bundle, options) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-sigstore-bundle-'));
+    try {
+        const bundleFile = path.join(directory, 'bundle.json');
+        fs.writeFileSync(bundleFile, JSON.stringify(bundle));
+        const identity = `https://github.com/${repository}/.github/workflows/${workflow}@refs/tags/v${options.version}`;
+        const args = [
+            options.sigstoreVerifier, '--bundle', bundleFile,
+            '--certificate-identity', identity,
+            '--certificate-issuer', certificateIssuer,
+            '--ct-log-threshold', '1', '--tlog-threshold', '1',
+        ];
+        const result = spawnSync(process.execPath, args, { encoding: 'utf8', env: process.env });
+        if (result.error) throw new Error(`Sigstore verifier could not start: ${redact(result.error.message, process.env)}`);
+        if (result.status !== 0) {
+            throw new Error(`Sigstore verifier failed: ${redact(result.stderr, process.env).trim()}`);
+        }
+        return parseJsonOutput(result.stdout, 'verified Sigstore DSSE statement');
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+}
+
+function verifyProvenanceStatement(statement, options) {
     if (statement?._type !== 'https://in-toto.io/Statement/v1') conflict('provenance statement type');
     if (statement?.predicateType !== predicateType) conflict('provenance predicate');
     const expectedSubject = `pkg:npm/${encodeURIComponent(options.packageName).replace('%2F', '/')}@${options.version}`;
@@ -112,17 +134,16 @@ function verifyProvenance(evidence, options) {
     if (build?.externalParameters?.workflow?.path !== `.github/workflows/${workflow}`) {
         conflict('provenance workflow');
     }
+    const expectedRef = `refs/tags/v${options.version}`;
+    if (build?.externalParameters?.workflow?.ref !== expectedRef) conflict('provenance workflow ref');
     const source = Array.isArray(dependencies) && dependencies.find(value => (
-        typeof value?.uri === 'string'
-        && value.uri.startsWith(`git+https://github.com/${repository}@`)
+        value?.uri === `git+https://github.com/${repository}@${expectedRef}`
     ));
     if (!source || source.digest?.gitCommit !== options.sourceCommit) conflict('provenance source commit');
     const builderId = statement?.predicate?.runDetails?.builder?.id;
-    if (typeof builderId !== 'string'
-        || !builderId.startsWith(`https://github.com/${repository}/.github/workflows/${workflow}@`)) {
+    if (builderId !== `https://github.com/${repository}/.github/workflows/${workflow}@${expectedRef}`) {
         conflict('provenance workflow');
     }
-    if (evidence.verification.certificate_identity !== builderId) conflict('provenance certificate identity');
 }
 
 function downloadPublic(npmCommand, spec) {
@@ -177,7 +198,7 @@ function redact(value, env) {
 function parseArgs(args) {
     const allowed = new Set([
         '--package', '--version', '--tarball', '--expected-sha512', '--source-commit', '--npm-command',
-        '--attestation-evidence', '--staged-evidence',
+        '--attestation-evidence', '--staged-evidence', '--sigstore-verifier',
     ]);
     const parsed = {};
     for (let index = 0; index < args.length; index += 2) {
@@ -192,11 +213,12 @@ function parseArgs(args) {
         tarball: parsed['--tarball'], expectedSha512: parsed['--expected-sha512'],
         sourceCommit: parsed['--source-commit'], npmCommand: parsed['--npm-command'] ?? 'npm',
         attestationEvidence: parsed['--attestation-evidence'], stagedEvidence: parsed['--staged-evidence'],
+        sigstoreVerifier: parsed['--sigstore-verifier'] ?? defaultSigstoreVerifier,
     };
 }
 
 function validateOptions(options) {
-    for (const name of ['packageName', 'version', 'tarball', 'expectedSha512', 'sourceCommit', 'npmCommand']) {
+    for (const name of ['packageName', 'version', 'tarball', 'expectedSha512', 'sourceCommit', 'npmCommand', 'sigstoreVerifier']) {
         if (typeof options[name] !== 'string' || !options[name]) throw new Error(`${name} is required`);
     }
     if (!path.isAbsolute(options.tarball) || !fs.existsSync(options.tarball)) {
@@ -204,6 +226,9 @@ function validateOptions(options) {
     }
     if (!/^[a-f\d]{128}$/i.test(options.expectedSha512)) throw new Error('expected-sha512 is invalid');
     if (!/^[a-f\d]{40}$/i.test(options.sourceCommit)) throw new Error('source-commit is invalid');
+    if (!path.isAbsolute(options.sigstoreVerifier) || !fs.existsSync(options.sigstoreVerifier)) {
+        throw new Error('sigstore-verifier must be an existing absolute repository-local module');
+    }
 }
 
 function readJsonFile(filename, label) {

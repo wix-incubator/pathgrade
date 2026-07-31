@@ -60,6 +60,8 @@ Copy this file for each release candidate. Replace every `PENDING` value with in
 | Downloaded staged tarball path and SHA-512 | PENDING | PENDING |
 | Downloaded staged standalone smoke | PENDING | PENDING |
 | Provenance/attestation verification | PENDING | PENDING |
+| Actual Sigstore bundle (`pathgrade-provenance-verification/v2`) | PENDING | PENDING |
+| Pinned local `sigstore@4.0.0` verification result (Fulcio + CT + Rekor) | PENDING | PENDING |
 | SLSA v1 subject SHA-512 equals downloaded tarball | PENDING | PENDING |
 | Attested repository is exactly `wix-incubator/pathgrade` | PENDING | PENDING |
 | Attested workflow is exactly `.github/workflows/publish.yml` | PENDING | PENDING |
@@ -68,7 +70,7 @@ Copy this file for each release candidate. Replace every `PENDING` value with in
 
 The trusted-publishing OIDC token is valid for `npm stage publish` only. It must not be used or described as authorization for `npm stage list`, `npm stage view`, or `npm stage download`. After the workflow submits a stage, it intentionally stops.
 
-An authorized human must use a separate, short-lived interactive npm session outside the OIDC job to list/view/download the staged artifact, verify its npm Sigstore/SLSA provenance, and run the standalone smoke against the downloaded bytes without rebuilding or repacking. Upload these results as a `pathgrade-staged-verification/v1` record plus the exact downloaded tarball. The follow-up workflow validates that external artifact against the retained SHA-512, source commit, package metadata, provenance subject/repository/workflow, and smoke result. Missing or incomplete external evidence blocks approval.
+An authorized human must use a separate, short-lived interactive npm session outside the OIDC job to list/view/download the staged artifact, obtain its actual npm Sigstore bundle, and run the standalone smoke against the downloaded bytes without rebuilding or repacking. Upload these results as a `pathgrade-staged-verification/v1` record plus the exact downloaded tarball; its provenance field must be a `pathgrade-provenance-verification/v2` record containing the bundle, not a caller-authored success assertion. The follow-up workflow uses the repository-pinned Sigstore implementation to verify the signature, Fulcio certificate identity and chain, certificate-transparency requirement, and Rekor inclusion before it reads the signed DSSE statement. It then validates that statement against the retained SHA-512, source commit, package metadata, exact repository/workflow/tag, and smoke result. Missing or incomplete external evidence blocks approval.
 
 ## Approval
 

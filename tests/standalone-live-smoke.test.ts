@@ -44,6 +44,24 @@ describe('packed standalone live runtimes', () => {
 });
 
 if (!isGateChild) describe('live-smoke gate contract', () => {
+    it('snapshots unexpected empty directories with their entry type', () => {
+        const target = makeTempDir('pathgrade-target-tree-');
+        const baseline = snapshotTree(target);
+        fs.mkdirSync(path.join(target, 'unexpected-empty'));
+        expect(snapshotTree(target).get('unexpected-empty')).toEqual({ type: 'directory' });
+        expect(() => assertExactTargetTree(target, baseline, new Map())).toThrow();
+    });
+
+    it.skipIf(process.platform === 'win32')('snapshots unexpected symlinks and their target', () => {
+        const target = makeTempDir('pathgrade-target-tree-');
+        const baseline = snapshotTree(target);
+        fs.symlinkSync('missing-target', path.join(target, 'unexpected-link'));
+        expect(snapshotTree(target).get('unexpected-link')).toEqual({
+            type: 'symlink', target: 'missing-target',
+        });
+        expect(() => assertExactTargetTree(target, baseline, new Map())).toThrow();
+    });
+
     it('redacts deterministic injected login and query failures at the provider boundaries', async () => {
         const secret = 'pathgrade-live-redaction-sentinel';
         const codexCalls: Array<{ method: string; params: unknown }> = [];
@@ -313,24 +331,65 @@ function assertSecretAbsent(secret: string, run: ReturnType<typeof spawnSync>, t
 
 function assertTargetIsolation(installation: ReturnType<typeof createInstallation>, secret: string) {
     const { target, baseline, provider, debugDir } = installation;
-    const after = snapshotTree(target);
-    for (const [filename, digest] of baseline) expect(after.get(filename), `${filename} changed`).toBe(digest);
-    const created = [...after.keys()].filter(filename => !baseline.has(filename)).sort();
-    expect(created).toEqual([
-        '.pathgrade/.gitignore', '.pathgrade/results.json',
-        `.pathgrade/traces/packed-${provider}-live-smoke.json`,
+    const expectedCreated = new Map<string, TreeEntry>([
+        ['.pathgrade', { type: 'directory' }],
+        ['.pathgrade/.gitignore', { type: 'file' }],
+        ['.pathgrade/results.json', { type: 'file' }],
+        ['.pathgrade/traces', { type: 'directory' }],
+        [`.pathgrade/traces/packed-${provider}-live-smoke.json`, { type: 'file' }],
     ]);
-    for (const filename of [...created.map(name => path.join(target, name)), ...filesBelow(debugDir)]) {
+    const createdFiles = assertExactTargetTree(target, baseline, expectedCreated);
+    for (const filename of [...createdFiles, ...filesBelow(debugDir)]) {
         const contents = fs.readFileSync(filename, 'utf8');
         expect(contents, `${filename} leaked the credential`).not.toContain(secret);
         expect(contents, `${filename} loaded the target .env`).not.toContain('must-not-load');
     }
 }
 
+type TreeEntry =
+    | { type: 'file'; sha512?: string }
+    | { type: 'directory' }
+    | { type: 'symlink'; target: string }
+    | { type: 'socket' }
+    | { type: 'other' };
+
 function snapshotTree(directory: string) {
-    return new Map(filesBelow(directory).map(filename => [
-        path.relative(directory, filename), sha512File(filename),
-    ]));
+    const entries = new Map<string, TreeEntry>();
+    const visit = (current: string) => {
+        for (const name of fs.readdirSync(current)) {
+            const filename = path.join(current, name);
+            const relative = path.relative(directory, filename);
+            const stat = fs.lstatSync(filename);
+            if (stat.isFile()) entries.set(relative, { type: 'file', sha512: sha512File(filename) });
+            else if (stat.isDirectory()) {
+                entries.set(relative, { type: 'directory' });
+                visit(filename);
+            } else if (stat.isSymbolicLink()) entries.set(relative, { type: 'symlink', target: fs.readlinkSync(filename) });
+            else if (stat.isSocket()) entries.set(relative, { type: 'socket' });
+            else entries.set(relative, { type: 'other' });
+        }
+    };
+    visit(directory);
+    return entries;
+}
+
+function assertExactTargetTree(
+    target: string,
+    baseline: Map<string, TreeEntry>,
+    expectedCreated: Map<string, TreeEntry>,
+) {
+    const after = snapshotTree(target);
+    for (const [filename, entry] of baseline) expect(after.get(filename), `${filename} changed`).toEqual(entry);
+    const created = new Map([...after].filter(([filename]) => !baseline.has(filename)));
+    expect([...created.keys()].sort(), 'target contains unexpected entries').toEqual([...expectedCreated.keys()].sort());
+    for (const [filename, expected] of expectedCreated) {
+        const actual = created.get(filename);
+        expect(actual?.type, `${filename} has unexpected entry type`).toBe(expected.type);
+        if (expected.type === 'symlink') expect(actual).toEqual(expected);
+    }
+    return [...created]
+        .filter(([, entry]) => entry.type === 'file')
+        .map(([filename]) => path.join(target, filename));
 }
 
 function liveEvalSource(provider: Provider) {

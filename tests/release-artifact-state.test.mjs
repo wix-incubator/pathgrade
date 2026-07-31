@@ -25,6 +25,9 @@ test('accepts a byte-identical public artifact only with verified semantic prove
     assert.match(result.calls, /^view /m);
     assert.match(result.calls, /^pack /m);
     assertOnlySupportedNpmReads(result.calls);
+    assert.match(result.verifierCalls, /--certificate-identity https:\/\/github\.com\/wix-incubator\/pathgrade\/\.github\/workflows\/publish\.yml@refs\/tags\/v1\.0\.1/);
+    assert.match(result.verifierCalls, /--certificate-issuer https:\/\/token\.actions\.githubusercontent\.com/);
+    assert.match(result.verifierCalls, /--ct-log-threshold 1 --tlog-threshold 1/);
 });
 
 test('accepts externally verified staged evidence without invoking unsupported OIDC stage reads', () => {
@@ -36,18 +39,72 @@ test('accepts externally verified staged evidence without invoking unsupported O
     assertOnlySupportedNpmReads(result.calls);
 });
 
-test('rejects wrong provenance subject digest, repository, workflow, commit, and predicate', () => {
+test('rejects wrong signed provenance subject digest, repository, workflow, commit, and predicate', () => {
     for (const [field, mutate] of [
-        ['subject identity', e => { e.statement.subject[0].name = 'pkg:npm/attacker/pathgrade@1.0.1'; }],
-        ['subject digest', e => { e.statement.subject[0].digest.sha512 = 'f'.repeat(128); }],
-        ['repository', e => { e.statement.predicate.buildDefinition.externalParameters.workflow.repository = 'https://github.com/attacker/pathgrade'; }],
-        ['workflow', e => { e.statement.predicate.buildDefinition.externalParameters.workflow.path = '.github/workflows/other.yml'; }],
-        ['source commit', e => { e.statement.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit = 'f'.repeat(40); }],
-        ['predicate', e => { e.statement.predicateType = 'https://slsa.dev/provenance/v0.2'; }],
+        ['subject identity', e => { e.subject[0].name = 'pkg:npm/attacker/pathgrade@1.0.1'; }],
+        ['subject digest', e => { e.subject[0].digest.sha512 = 'f'.repeat(128); }],
+        ['repository', e => { e.predicate.buildDefinition.externalParameters.workflow.repository = 'https://github.com/attacker/pathgrade'; }],
+        ['workflow', e => { e.predicate.buildDefinition.externalParameters.workflow.path = '.github/workflows/other.yml'; }],
+        ['source commit', e => { e.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit = 'f'.repeat(40); }],
+        ['predicate', e => { e.predicateType = 'https://slsa.dev/provenance/v0.2'; }],
     ]) {
-        const result = runScenario({ public: matchingMetadata(), publicEvidence: true, mutateEvidence: mutate });
+        const result = runScenario({ public: matchingMetadata(), publicEvidence: true, mutateStatement: mutate });
         assert.notEqual(result.status, 0, field);
         assert.match(result.stderr, new RegExp(field, 'i'));
+    }
+});
+
+test('fails closed for a missing or tampered Sigstore bundle and verifier failure', () => {
+    for (const [diagnostic, scenario] of [
+        ['bundle is required', { omitBundle: true }],
+        ['cryptographic verification failed', { tamperedBundle: true }],
+        ['Sigstore verifier failed', { verifierFailure: true }],
+    ]) {
+        const result = runScenario({ public: matchingMetadata(), publicEvidence: true, ...scenario });
+        assert.notEqual(result.status, 0, diagnostic);
+        assert.match(result.stderr, new RegExp(diagnostic, 'i'));
+    }
+});
+
+test('production pins and invokes the repository-local Sigstore implementation', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    const source = fs.readFileSync(validator, 'utf8');
+    const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/publish.yml'), 'utf8');
+    assert.equal(packageJson.devDependencies.sigstore, '4.0.0');
+    assert.match(source, /scripts\/release\/verify-sigstore-bundle\.mjs|verify-sigstore-bundle\.mjs/);
+    assert.doesNotMatch(workflow, /\bnpx\b|npm install --global[^\n]*sigstore/i);
+});
+
+test('repository-local verifier passes exact Fulcio identity and Rekor policy to sigstore.verify', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-sigstore-policy-'));
+    try {
+        const statement = provenanceStatement('a'.repeat(128));
+        const bundleFile = path.join(directory, 'bundle.json');
+        fs.writeFileSync(bundleFile, JSON.stringify({
+            ...provenanceEvidence().bundle,
+            dsseEnvelope: {
+                payloadType: 'application/vnd.in-toto+json',
+                payload: Buffer.from(JSON.stringify(statement)).toString('base64'),
+            },
+        }));
+        let observed;
+        const { verifyBundle } = await import('../scripts/release/verify-sigstore-bundle.mjs');
+        const verified = await verifyBundle({
+            bundle: bundleFile,
+            certificateIdentity: 'https://github.com/wix-incubator/pathgrade/.github/workflows/publish.yml@refs/tags/v1.0.1',
+            certificateIssuer: 'https://token.actions.githubusercontent.com',
+            ctLogThreshold: 1,
+            tlogThreshold: 1,
+        }, async (_bundle, policy) => { observed = policy; });
+        assert.deepEqual(verified, statement);
+        assert.deepEqual(observed, {
+            certificateIssuer: 'https://token.actions.githubusercontent.com',
+            certificateIdentityURI: '^https://github\\.com/wix-incubator/pathgrade/\\.github/workflows/publish\\.yml@refs/tags/v1\\.0\\.1$',
+            ctLogThreshold: 1,
+            tlogThreshold: 1,
+        });
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
     }
 });
 
@@ -92,16 +149,8 @@ function matchingMetadata() {
     };
 }
 
-function provenanceEvidence(sha512) {
+function provenanceStatement(sha512) {
     return {
-        schema: 'pathgrade-provenance-verification/v1',
-        verification: {
-            status: 'verified', verifier: 'npm-registry-sigstore',
-            repository: 'wix-incubator/pathgrade', workflow: 'publish.yml', source_commit: sourceCommit,
-            bundle_sha256: 'b'.repeat(64), rekor_log_index: 123456,
-            certificate_identity: 'https://github.com/wix-incubator/pathgrade/.github/workflows/publish.yml@refs/tags/v1.0.1',
-        },
-        statement: {
             _type: 'https://in-toto.io/Statement/v1',
             predicateType: 'https://slsa.dev/provenance/v1',
             subject: [{ name: 'pkg:npm/%40wix/pathgrade@1.0.1', digest: { sha512 } }],
@@ -125,6 +174,16 @@ function provenanceEvidence(sha512) {
                     },
                 },
             },
+    };
+}
+
+function provenanceEvidence() {
+    return {
+        schema: 'pathgrade-provenance-verification/v2',
+        bundle: {
+            mediaType: 'application/vnd.dev.sigstore.bundle+json;version=0.3',
+            dsseEnvelope: { payloadType: 'application/vnd.in-toto+json', payload: 'signed-in-test-boundary' },
+            verificationMaterial: { certificate: {}, tlogEntries: [{}] },
         },
     };
 }
@@ -142,19 +201,27 @@ function runScenario(scenario) {
         normalized.downloadedBytes ??= bytes.toString('base64');
         normalized.downloadedBytesEncoding = scenario.downloadedBytes === undefined ? 'base64' : 'utf8';
         const scenarioFile = path.join(directory, 'scenario.json');
-        fs.writeFileSync(scenarioFile, JSON.stringify(normalized));
         const calls = path.join(directory, 'calls.log');
         const fakeNpm = path.join(directory, 'fake-npm.mjs');
         fs.writeFileSync(fakeNpm, fakeNpmSource());
         fs.chmodSync(fakeNpm, 0o755);
+        const verifierCalls = path.join(directory, 'verifier-calls.log');
+        const fakeVerifier = path.join(directory, 'fake-sigstore-verifier.mjs');
+        fs.writeFileSync(fakeVerifier, fakeVerifierSource());
         const args = [
             validator, '--package', '@wix/pathgrade', '--version', '1.0.1', '--tarball', expected,
             '--expected-sha512', sha512, '--source-commit', sourceCommit,
             '--npm-command', scenario.missingCommand ? path.join(directory, scenario.missingCommand) : fakeNpm,
+            '--sigstore-verifier', fakeVerifier,
         ];
         if (scenario.publicEvidence) {
-            const evidence = provenanceEvidence(sha512);
-            scenario.mutateEvidence?.(evidence);
+            const evidence = provenanceEvidence();
+            if (scenario.omitBundle) delete evidence.bundle;
+            if (scenario.tamperedBundle) evidence.bundle.tampered = true;
+            const statement = provenanceStatement(sha512);
+            scenario.mutateStatement?.(statement);
+            normalized.verifiedStatement = statement;
+            normalized.verifierFailure = scenario.verifierFailure ?? false;
             const filename = path.join(directory, 'public-evidence.json');
             fs.writeFileSync(filename, JSON.stringify(evidence));
             args.push('--attestation-evidence', filename);
@@ -167,23 +234,42 @@ function runScenario(scenario) {
                 package: { ...matchingMetadata(), dist: { ...matchingMetadata().dist, integrity } },
                 downloaded_tarball: path.basename(stagedTarball), tarball_sha512: sha512,
                 standalone_smoke: { status: 'pass', tarball_sha512: sha512, rebuilt: false },
-                provenance: provenanceEvidence(sha512),
+                provenance: provenanceEvidence(),
             };
+            normalized.verifiedStatement = provenanceStatement(sha512);
             const filename = path.join(directory, 'staged-evidence.json');
             fs.writeFileSync(filename, JSON.stringify(evidence));
             args.push('--staged-evidence', filename);
         }
+        fs.writeFileSync(scenarioFile, JSON.stringify(normalized));
         const result = spawnSync(process.execPath, args, {
             cwd: repoRoot, encoding: 'utf8',
             env: {
                 ...process.env, FAKE_NPM_SCENARIO: scenarioFile, FAKE_NPM_CALLS: calls,
+                FAKE_SIGSTORE_CALLS: verifierCalls,
                 OPENAI_API_KEY: scenario.secret ?? '', NPM_TOKEN: scenario.secret ?? '',
             },
         });
-        return { ...result, calls: fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8') : '' };
+        return {
+            ...result,
+            calls: fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8') : '',
+            verifierCalls: fs.existsSync(verifierCalls) ? fs.readFileSync(verifierCalls, 'utf8') : '',
+        };
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
     }
+}
+
+function fakeVerifierSource() {
+    return `#!/usr/bin/env node
+import fs from 'node:fs';
+const args=process.argv.slice(2); const s=JSON.parse(fs.readFileSync(process.env.FAKE_NPM_SCENARIO,'utf8'));
+fs.appendFileSync(process.env.FAKE_SIGSTORE_CALLS,args.join(' ')+'\\n');
+const bundleFile=args[args.indexOf('--bundle')+1]; const bundle=JSON.parse(fs.readFileSync(bundleFile,'utf8'));
+if(bundle.tampered){process.stderr.write('cryptographic verification failed\\n');process.exit(1)}
+if(s.verifierFailure){process.stderr.write('Sigstore verifier failed\\n');process.exit(1)}
+process.stdout.write(JSON.stringify(s.verifiedStatement));
+`;
 }
 
 function fakeNpmSource() {
