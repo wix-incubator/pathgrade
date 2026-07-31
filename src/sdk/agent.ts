@@ -13,6 +13,7 @@ import type {
     ConverseOptions,
     Message,
     Agent,
+    AgentInvocationProvenance,
     AgentOptions,
 } from './types.js';
 import type { McpSafetyOptions } from './mcp-safety.js';
@@ -37,6 +38,8 @@ import { createVerboseEmitter, type VerboseEmitter, type VerboseSink } from '../
 import fs from 'fs-extra';
 import * as path from 'path';
 import { isStandaloneMode } from '../standalone/mode.js';
+import { verifyBundledClaudeRuntime } from '../agents/claude-runtime.js';
+import { resolveBundledCodexCommand, verifyBundledCodexRuntime } from '../agents/codex-runtime.js';
 
 /**
  * Test-only injection point: override the sink used by the next emitter
@@ -68,8 +71,9 @@ class AgentImpl implements Agent {
     readonly verbose: VerboseEmitter;
     private transport?: AgentTransport;
     private mcpSafety?: McpSafetyOptions;
+    readonly provenance?: AgentInvocationProvenance;
 
-    constructor(ws: Workspace, agentName: AgentName, llm: LLMPort, timeoutSetting: number | 'auto', conversationWindow: ConversationWindowConfig | false | undefined, modelOpt: string | undefined, debugOpt: boolean | string | undefined, debugName: string, debugBaseDir: string, verbose: VerboseEmitter, transport?: AgentTransport, mcpSafety?: McpSafetyOptions) {
+    constructor(ws: Workspace, agentName: AgentName, llm: LLMPort, timeoutSetting: number | 'auto', conversationWindow: ConversationWindowConfig | false | undefined, modelOpt: string | undefined, debugOpt: boolean | string | undefined, debugName: string, debugBaseDir: string, verbose: VerboseEmitter, transport?: AgentTransport, mcpSafety?: McpSafetyOptions, provenance?: AgentInvocationProvenance) {
         this.ws = ws;
         this.agentName = agentName;
         this.llm = llm;
@@ -82,6 +86,7 @@ class AgentImpl implements Agent {
         this.verbose = verbose;
         this.transport = transport;
         this.mcpSafety = mcpSafety;
+        this.provenance = provenance;
     }
 
     get messages(): Message[] {
@@ -376,6 +381,7 @@ class AgentImpl implements Agent {
             if (this.interactionMode === 'runConversation' && this.lastConversationResult) {
                 const snapshot = buildRunSnapshot({
                     agent: this.agentName,
+                    ...(this.provenance ? { agent_provenance: this.provenance } : {}),
                     messages: this._messages,
                     log: this._log,
                     conversationResult: this.lastConversationResult,
@@ -451,7 +457,57 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
         testName: testCtx.name || undefined,
     });
 
-    const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety);
+    const provenance = standalone
+        ? await buildStandaloneAgentInvocationProvenance({
+            agentName,
+            transport,
+            model: opts.model,
+            workspaceEnv: workspace.env,
+        })
+        : undefined;
+    const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety, provenance);
     lifecycleCore.registerAgent(agent);
     return agent;
+}
+
+async function buildStandaloneAgentInvocationProvenance(input: {
+    agentName: AgentName;
+    transport?: AgentTransport;
+    model?: string;
+    workspaceEnv: Record<string, string>;
+}): Promise<AgentInvocationProvenance> {
+    if (input.agentName === 'claude') {
+        const runtime = await verifyBundledClaudeRuntime();
+        return {
+            agent: 'claude',
+            transport: input.transport ?? 'native',
+            model: input.model === undefined
+                ? { id: null, source: 'provider-default' }
+                : { id: input.model, source: 'user' },
+            authentication: input.workspaceEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
+                ? 'claude-oauth'
+                : 'api-key',
+            runtime: {
+                package: '@anthropic-ai/claude-agent-sdk',
+                package_version: runtime.sdkVersion,
+                embedded_binary_version: runtime.embeddedBinaryVersion,
+                provenance: runtime.provenance,
+            },
+        };
+    }
+
+    const runtime = await verifyBundledCodexRuntime(resolveBundledCodexCommand());
+    return {
+        agent: 'codex',
+        transport: input.transport ?? 'native',
+        model: input.model === undefined
+            ? { id: 'gpt-5.4', source: 'pathgrade-default' }
+            : { id: input.model, source: 'user' },
+        authentication: 'api-key',
+        runtime: {
+            package: '@openai/codex',
+            package_version: runtime.packageVersion,
+            provenance: runtime.provenance,
+        },
+    };
 }

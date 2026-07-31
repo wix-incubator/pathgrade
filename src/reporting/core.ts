@@ -70,6 +70,7 @@ export function buildPathgradeReport(input: ReportRunInput): PathgradeReportBuil
             status,
             groups: consolidatedGroups,
             ...(input.selection ? { selection: input.selection } : {}),
+            ...(input.provenance ? { provenance: input.provenance } : {}),
         },
         traces,
         summaries,

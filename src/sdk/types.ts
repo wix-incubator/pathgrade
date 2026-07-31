@@ -10,6 +10,21 @@ import type { McpSafetyOptions } from './mcp-safety.js';
 
 export type AgentName = 'claude' | 'codex' | 'cursor';
 
+export interface AgentInvocationProvenance {
+    agent: AgentName;
+    transport: 'native' | AgentTransport;
+    model:
+        | { id: string; source: 'user' | 'pathgrade-default' }
+        | { id: null; source: 'provider-default' };
+    authentication: 'api-key' | 'claude-oauth';
+    runtime: {
+        package: string;
+        package_version: string;
+        embedded_binary_version?: string;
+        provenance: 'bundled' | 'project';
+    };
+}
+
 // --- Agent ---
 
 export interface AgentOptions {
@@ -76,6 +91,7 @@ export interface Agent {
     readonly messages: Message[];
     readonly log: LogEntry[];
     readonly workspace: string;
+    readonly provenance?: AgentInvocationProvenance;
     dispose(): Promise<void>;
 }
 

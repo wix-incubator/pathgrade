@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { buildPathgradeReport } from '../src/reporting/core.js';
 import type { ReportRunInput } from '../src/reporting/types.js';
 
+const provenance = {
+    mode: 'standalone' as const,
+    package_version: '1.0.1',
+    vitest_version: '4.1.7',
+    runtimes: {
+        claude: { sdk_version: '0.2.116', claude_code_version: '2.1.116' },
+        codex: { package_version: '0.144.0', native_version: '0.144.0' },
+    },
+    platform: { os: process.platform, arch: process.arch, node: process.version },
+};
+
 describe('runner-neutral reporting contract', () => {
     it('builds compatible report artifacts from pure normalized inputs', () => {
         const input: ReportRunInput = {
@@ -193,6 +204,13 @@ describe('runner-neutral reporting contract', () => {
             selected: ['failing.eval.ts'],
             skipped: [],
         });
+    });
+
+    it('preserves standalone provenance without changing the version-1 report contract', () => {
+        expect(buildPathgradeReport({
+            groups: [],
+            provenance,
+        }).report.provenance).toEqual(provenance);
     });
 
     it('keeps empty-metadata warnings for skipped cases while excluding them from artifacts', () => {

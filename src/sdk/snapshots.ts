@@ -1,6 +1,6 @@
 import type { LogEntry } from '../types.js';
 import type { ToolEvent } from '../tool-events.js';
-import type { AgentName, ConversationResult, Message, TurnTiming } from './types.js';
+import type { AgentInvocationProvenance, AgentName, ConversationResult, Message, TurnTiming } from './types.js';
 import fs from 'fs-extra';
 
 export const RUN_SNAPSHOT_VERSION = 1;
@@ -9,6 +9,7 @@ export interface RunSnapshot {
     version: 1;
     timestamp: string;
     agent: AgentName;
+    agent_provenance?: AgentInvocationProvenance;
     messages: Message[];
     log: LogEntry[];
     toolEvents: ToolEvent[];
@@ -24,13 +25,14 @@ export interface RunSnapshot {
 
 export function buildRunSnapshot(params: {
     agent: AgentName;
+    agent_provenance?: AgentInvocationProvenance;
     messages: Message[];
     log: LogEntry[];
     conversationResult: ConversationResult;
     workspace: string | null;
     timestamp?: string;
 }): RunSnapshot {
-    const { agent, messages, log, conversationResult, workspace, timestamp } = params;
+    const { agent, agent_provenance, messages, log, conversationResult, workspace, timestamp } = params;
     const toolEvents = log
         .filter((entry) => entry.type === 'tool_event' && entry.tool_event)
         .map((entry) => entry.tool_event as ToolEvent);
@@ -39,6 +41,7 @@ export function buildRunSnapshot(params: {
         version: RUN_SNAPSHOT_VERSION,
         timestamp: timestamp ?? new Date().toISOString(),
         agent,
+        ...(agent_provenance ? { agent_provenance } : {}),
         messages: [...messages],
         log: [...log],
         toolEvents,
@@ -163,6 +166,9 @@ function validateRunSnapshot(input: unknown): RunSnapshot {
     if (typeof snapshot.conversationResult.completionReason !== 'string') {
         throw new SnapshotParseError('Snapshot conversationResult is missing required field: completionReason');
     }
+    if (snapshot.agent_provenance !== undefined && !isAgentInvocationProvenance(snapshot.agent_provenance)) {
+        throw new SnapshotParseError('Snapshot agent_provenance is invalid');
+    }
 
     const turnTimings = Array.isArray(snapshot.turnTimings)
         ? snapshot.turnTimings
@@ -172,6 +178,7 @@ function validateRunSnapshot(input: unknown): RunSnapshot {
         version: RUN_SNAPSHOT_VERSION,
         timestamp: typeof snapshot.timestamp === 'string' ? snapshot.timestamp : new Date(0).toISOString(),
         agent: snapshot.agent === 'claude' || snapshot.agent === 'codex' || snapshot.agent === 'cursor' ? snapshot.agent : 'claude',
+        ...(snapshot.agent_provenance ? { agent_provenance: snapshot.agent_provenance } : {}),
         messages: snapshot.messages,
         log: snapshot.log,
         toolEvents: snapshot.toolEvents,
@@ -186,4 +193,21 @@ function validateRunSnapshot(input: unknown): RunSnapshot {
         },
         workspace: typeof snapshot.workspace === 'string' ? snapshot.workspace : null,
     };
+}
+
+function isAgentInvocationProvenance(value: unknown): value is AgentInvocationProvenance {
+    if (!value || typeof value !== 'object') return false;
+    const record = value as Record<string, unknown>;
+    const model = record.model as Record<string, unknown> | undefined;
+    const runtime = record.runtime as Record<string, unknown> | undefined;
+    const hasValidModelId = typeof model?.id === 'string' || model?.id === null;
+    return (record.agent === 'claude' || record.agent === 'codex' || record.agent === 'cursor')
+        && (record.transport === 'native' || record.transport === 'exec' || record.transport === 'app-server')
+        && hasValidModelId
+        && (model?.source === 'user' || model?.source === 'pathgrade-default' || model?.source === 'provider-default')
+        && (record.authentication === 'api-key' || record.authentication === 'claude-oauth')
+        && typeof runtime?.package === 'string'
+        && typeof runtime?.package_version === 'string'
+        && (runtime?.embedded_binary_version === undefined || typeof runtime.embedded_binary_version === 'string')
+        && (runtime?.provenance === 'bundled' || runtime?.provenance === 'project');
 }

@@ -10,6 +10,7 @@ import { createVitestAdapter } from '../../runners/vitest-adapter.js';
 import { runWithAdapter } from '../../runners/orchestrator.js';
 import { resolvePathgradeConfig } from '../../config/pathgrade.js';
 import { isStandaloneMode } from '../../standalone/mode.js';
+import { readStandaloneRunProvenance } from '../../standalone/provenance.js';
 
 /**
  * Custom vitest reporter that layers pathgrade aggregate statistics
@@ -31,6 +32,9 @@ export class PathgradeReporter implements Reporter {
         const mode = this.opts.reporter ?? config.reporter ?? 'cli';
         const outputDir = getPathgradeDir(cwd);
         const adapter = createVitestAdapter({ testModules });
+        const provenance = isStandaloneMode(process.env)
+            ? readStandaloneRunProvenance(process.env)
+            : undefined;
 
         const exitCode = await runWithAdapter({
             adapter,
@@ -42,6 +46,7 @@ export class PathgradeReporter implements Reporter {
                 artifactRoot: outputDir,
                 reporterMode: mode,
                 threshold: this.opts.ci?.threshold ?? config.ci.threshold,
+                provenance,
                 writeEmptyReport: false,
                 warn: warning => console.warn(warning),
                 log: () => console.log(`\n  ${fmt.dim('Results written to')} ${outputDir}\n`),

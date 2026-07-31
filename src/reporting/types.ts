@@ -1,11 +1,13 @@
 import type { DiagnosticsReport } from '../sdk/diagnostics.js';
 import type { PathgradeReport, PathgradeSelectionReport, TrialResult } from '../types.js';
+import type { StandaloneRunProvenance } from '../standalone/provenance.js';
 
 export type ReportCaseState = 'passed' | 'failed' | 'skipped' | 'pending';
 
 export interface ReportRunInput {
     threshold?: number;
     selection?: PathgradeSelectionReport;
+    provenance?: StandaloneRunProvenance;
     groups: ReportGroupInput[];
 }
 

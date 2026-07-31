@@ -12,6 +12,7 @@ import {
     type StandaloneVitestPayload,
 } from './module-aliases.js';
 import { classifyStandaloneVitestFailure } from './diagnostics.js';
+import { buildStandaloneRunProvenance, encodeStandaloneRunProvenance, STANDALONE_PROVENANCE_ENV } from './provenance.js';
 
 const BUNDLED_VITEST_VERSION = '4.1.7';
 const STDERR_LIMIT_BYTES = 64 * 1024;
@@ -92,6 +93,7 @@ export function createStandaloneVitestInvocationAdapter(input: {
             try {
                 const runtime = resolveRuntime();
                 const payload = buildPayload(input.config, runInput, cacheDir);
+                const provenance = await buildStandaloneRunProvenance();
                 const result = await spawn({
                     command: process.execPath,
                     argv: [
@@ -107,6 +109,7 @@ export function createStandaloneVitestInvocationAdapter(input: {
                         ...runInput.env,
                         [STANDALONE_VITEST_PAYLOAD_ENV]:
                             encodeStandaloneVitestPayload(payload),
+                        [STANDALONE_PROVENANCE_ENV]: encodeStandaloneRunProvenance(provenance),
                     },
                 });
                 const normalized = typeof result === 'number'

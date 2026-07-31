@@ -3,6 +3,7 @@ import { writePathgradeArtifacts } from '../reporting/artifacts.js';
 import { projectNormalizedRunSnapshotToReportInput } from './report-projection.js';
 import type { PathgradeSelectionReport } from '../types.js';
 import type { ReportSummaryGroup } from '../reporting/types.js';
+import type { StandaloneRunProvenance } from '../standalone/provenance.js';
 import type {
     AdapterDiscoveryInput,
     AdapterLifecycleHooks,
@@ -21,6 +22,7 @@ export interface PathgradeRunOptions {
     reporterMode?: AdapterReporterMode;
     threshold?: number;
     selection?: PathgradeSelectionReport;
+    provenance?: StandaloneRunProvenance;
     lifecycle?: AdapterLifecycleHooks;
     signal?: AbortSignal;
     printSummary?: (summaries: ReportSummaryGroup[]) => void;
@@ -59,6 +61,7 @@ export async function runWithAdapter(input: {
         );
         let built = buildPathgradeReport({
             threshold: options.threshold,
+            provenance: options.provenance,
             ...reportInput,
         });
 
@@ -75,6 +78,7 @@ export async function runWithAdapter(input: {
             built = buildPathgradeReport({
                 threshold: options.threshold,
                 selection: loadedSelection,
+                provenance: options.provenance,
                 groups: reportInput.groups,
             });
         }

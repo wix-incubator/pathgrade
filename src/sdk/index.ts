@@ -53,6 +53,7 @@ export {
 export { getAgentCapabilities } from './types.js';
 export type {
     AgentTransport,
+    AgentInvocationProvenance,
     AgentCapabilities,
     AgentName,
     McpRunMode,
