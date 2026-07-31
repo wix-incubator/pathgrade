@@ -442,32 +442,37 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
         mcp: mcpConfigFile ? { configFile: mcpConfigFile } : mcpMock ? { mock: mcpMock } : undefined,
     });
 
-    // Create agent LLM once, using the fully-resolved sandbox env (includes
-    // keychain OAuth tokens, API keys, safe host vars).
-    const llm = createAgentLLM(agentName, workspace.env);
+    try {
+        // Create agent LLM once, using the fully-resolved sandbox env (includes
+        // keychain OAuth tokens, API keys, safe host vars).
+        const llm = createAgentLLM(agentName, workspace.env);
 
-    // Fall back to sandbox dir name if no test name resolved
-    const debugName = testCtx.name || path.basename(path.dirname(workspace.path));
-    // Default debug dir is next to the eval file, fallback to cwd
-    const debugBaseDir = testCtx.dir || process.cwd();
+        // Fall back to sandbox dir name if no test name resolved
+        const debugName = testCtx.name || path.basename(path.dirname(workspace.path));
+        // Default debug dir is next to the eval file, fallback to cwd
+        const debugBaseDir = testCtx.dir || process.cwd();
 
-    const verbose = createVerboseEmitter({
-        enabled: process.env.PATHGRADE_VERBOSE === '1',
-        sink: verboseSinkOverride ?? undefined,
-        testName: testCtx.name || undefined,
-    });
+        const verbose = createVerboseEmitter({
+            enabled: process.env.PATHGRADE_VERBOSE === '1',
+            sink: verboseSinkOverride ?? undefined,
+            testName: testCtx.name || undefined,
+        });
 
-    const provenance = standalone
-        ? await buildStandaloneAgentInvocationProvenance({
-            agentName,
-            transport,
-            model: opts.model,
-            workspaceEnv: workspace.env,
-        })
-        : undefined;
-    const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety, provenance);
-    lifecycleCore.registerAgent(agent);
-    return agent;
+        const provenance = standalone
+            ? await buildStandaloneAgentInvocationProvenance({
+                agentName,
+                transport,
+                model: opts.model,
+                workspaceEnv: workspace.env,
+            })
+            : undefined;
+        const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety, provenance);
+        lifecycleCore.registerAgent(agent);
+        return agent;
+    } catch (error) {
+        await workspace.dispose().catch(() => {});
+        throw error;
+    }
 }
 
 async function buildStandaloneAgentInvocationProvenance(input: {

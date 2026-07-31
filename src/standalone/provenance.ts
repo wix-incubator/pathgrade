@@ -62,7 +62,10 @@ export function readStandaloneRunProvenance(
     const encoded = env[STANDALONE_PROVENANCE_ENV];
     if (!encoded) throw packagingDefect('provenance payload is missing');
     try {
-        const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as unknown;
+        if (!/^[A-Za-z0-9_-]+$/.test(encoded)) throw new Error('invalid base64url alphabet');
+        const decoded = Buffer.from(encoded, 'base64url');
+        if (decoded.toString('base64url') !== encoded) throw new Error('noncanonical base64url payload');
+        const parsed = JSON.parse(decoded.toString('utf8')) as unknown;
         if (!isStandaloneRunProvenance(parsed)) throw new Error('invalid shape');
         return parsed;
     } catch {

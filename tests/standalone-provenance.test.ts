@@ -37,6 +37,9 @@ describe('standalone run provenance', () => {
 
         expect(STANDALONE_PROVENANCE_ENV).toBe('PATHGRADE_STANDALONE_PROVENANCE');
         expect(readStandaloneRunProvenance({ [STANDALONE_PROVENANCE_ENV]: encoded })).toEqual(provenance);
+        expect(() => readStandaloneRunProvenance({
+            [STANDALONE_PROVENANCE_ENV]: `${encoded}!`,
+        })).toThrow(/pathgrade standalone: invalid provenance payload; this is a Pathgrade packaging defect/);
         expect(() => readStandaloneRunProvenance({ [STANDALONE_PROVENANCE_ENV]: 'not-provenance' })).toThrow(
             /pathgrade standalone: invalid provenance payload; this is a Pathgrade packaging defect/,
         );
@@ -47,7 +50,7 @@ describe('standalone run provenance', () => {
             'claude',
             { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
             {
-                hostEnv: () => undefined,
+                hostEnv: key => key === 'ANTHROPIC_API_KEY' ? 'host-api-key' : undefined,
                 platform: 'linux',
                 homedir: () => '/tmp',
                 readKeychainToken: async () => undefined,

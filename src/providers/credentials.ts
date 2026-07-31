@@ -126,10 +126,16 @@ async function resolveStandaloneClaude(
     userEnv: Record<string, string>,
     ports: CredentialPorts,
 ): Promise<CredentialResult> {
+    if (userEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1') {
+        if (userEnv.ANTHROPIC_API_KEY || userEnv.ANTHROPIC_BASE_URL) {
+            throw new Error('PATHGRADE_CLAUDE_LOCAL_OAUTH cannot be combined with Anthropic API-key credentials');
+        }
+        return EMPTY;
+    }
+
     const result = await resolveClaude(userEnv, ports);
     if (
         userEnv.ANTHROPIC_API_KEY
-        || userEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
         || result.env.ANTHROPIC_API_KEY
         || result.env.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
     ) {
