@@ -7,6 +7,19 @@ on:
         description: Workflow run containing protected wsl-x64-node24 evidence
         required: true
         type: string
+      provenance_evidence_run_id:
+        description: External run containing verified public npm Sigstore provenance evidence, if public
+        required: false
+        type: string
+      staged_verification_run_id:
+        description: External human-authenticated run containing staged-verification evidence and downloaded tarball
+        required: false
+        type: string
+      submit_to_stage:
+        description: Submit an absent artifact to npm staging, then stop for external human verification
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
@@ -189,7 +202,7 @@ jobs:
           test "$("$claude_binary" --version)" = "2.1.116 (Claude Code)"
           test "$("$codex_binary" --version)" = "codex-cli 0.144.0"
           mkdir -p platform-evidence
-          node -e "const fs=require('node:fs'); const p=require('./package.json'); fs.writeFileSync('platform-evidence/'+process.env.TUPLE_ID+'.json', JSON.stringify({tuple_id:process.env.TUPLE_ID,platform:process.platform,arch:process.arch,node_major:Number(process.versions.node.split('.')[0]),package:{name:p.name,version:p.version},runtimes:{claude:{sdk_version:p.dependencies['@anthropic-ai/claude-agent-sdk'],claude_code_version:'2.1.116'},codex:{package_version:p.dependencies['@openai/codex'],native_version:'0.144.0'}},tarball_sha512:process.env.RETAINED_SCOPED_SHA512,source_commit:process.env.GITHUB_SHA,status:'pass'}))"
+          node -e "const fs=require('node:fs'),os=require('node:os'); const p=require('./package.json'); fs.writeFileSync('platform-evidence/'+process.env.TUPLE_ID+'.json', JSON.stringify({tuple_id:process.env.TUPLE_ID,platform:process.platform,arch:process.arch,node_major:Number(process.versions.node.split('.')[0]),package:{name:p.name,version:p.version},runtimes:{claude:{sdk_version:p.dependencies['@anthropic-ai/claude-agent-sdk'],claude_code_version:'2.1.116'},codex:{package_version:p.dependencies['@openai/codex'],native_version:'0.144.0'}},tarball_sha512:process.env.RETAINED_SCOPED_SHA512,source_commit:process.env.GITHUB_SHA,status:'pass',runtime_environment:{kind:'github-hosted',observed_platform:process.platform,observed_arch:process.arch,wsl:false,kernel_release:process.platform==='linux'?os.release():null,wsl_interop:null}}))"
       - name: Upload platform evidence
         uses: actions/upload-artifact@v4
         with:
@@ -198,7 +211,7 @@ jobs:
           if-no-files-found: error
 
   stage:
-    name: Validate, stage, download, and retest scoped artifact
+    name: Validate or submit scoped artifact, then require external staged verification
     needs: [prepare, live-linux, live-macos-codex, platform-artifact-smoke]
     runs-on: ubuntu-latest
     environment: npm-publish
@@ -245,11 +258,20 @@ jobs:
         run: |
           test -n "$WSL_EVIDENCE_RUN_ID"
           gh run download "$WSL_EVIDENCE_RUN_ID" --name platform-evidence-wsl-x64-node24 --dir platform-evidence
-      - name: Validate protected live records
-        run: >-
-          node -e "const fs=require('node:fs'); const records=fs.readdirSync('live-evidence').map(f=>JSON.parse(fs.readFileSync('live-evidence/'+f))); const ids=records.flatMap(r=>r.providers.filter(p=>p.status==='pass'&&p.skipped===0).map(p=>p.id)).sort(); if(JSON.stringify(ids)!==JSON.stringify(['linux-claude','linux-codex','macos-codex'])) throw new Error('protected live evidence is incomplete: '+JSON.stringify(ids))"
-      - name: Validate all five platform records
-        run: node scripts/release/verify-platform-evidence.mjs --commit "$GITHUB_SHA" --tarball-sha512 "${{ needs.prepare.outputs.sha512 }}" --evidence-dir "$PWD/platform-evidence"
+      - name: Download external public provenance evidence
+        if: inputs.provenance_evidence_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROVENANCE_EVIDENCE_RUN_ID: ${{ inputs.provenance_evidence_run_id }}
+        run: gh run download "$PROVENANCE_EVIDENCE_RUN_ID" --name public-provenance-verification --dir registry-evidence
+      - name: Download external human staged verification evidence
+        if: inputs.staged_verification_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGED_VERIFICATION_RUN_ID: ${{ inputs.staged_verification_run_id }}
+        run: gh run download "$STAGED_VERIFICATION_RUN_ID" --name staged-verification --dir registry-evidence
+      - name: Validate pathgrade-live-evidence/v1 records and all five platform records
+        run: node scripts/release/verify-platform-evidence.mjs --commit "$GITHUB_SHA" --tarball-sha512 "${{ needs.prepare.outputs.sha512 }}" --evidence-dir "$PWD/platform-evidence" --live-evidence-dir "$PWD/live-evidence"
       - name: Verify retained-tarball smoke
         env:
           RETAINED_SCOPED_TARBALL: ${{ github.workspace }}/retained/${{ needs.prepare.outputs.filename }}
@@ -264,38 +286,27 @@ jobs:
           RETAINED_SCOPED_SHA512: ${{ needs.prepare.outputs.sha512 }}
         shell: bash
         run: |
-          node scripts/release/verify-artifact-state.mjs --package @wix/pathgrade --version "${{ needs.prepare.outputs.version }}" --tarball "$RETAINED_SCOPED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512" --source-commit "$GITHUB_SHA" | tee artifact-state.json
+          args=(--package @wix/pathgrade --version "${{ needs.prepare.outputs.version }}" --tarball "$RETAINED_SCOPED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512" --source-commit "$GITHUB_SHA")
+          if [ -f registry-evidence/public-provenance-evidence.json ]; then args+=(--attestation-evidence "$PWD/registry-evidence/public-provenance-evidence.json"); fi
+          if [ -f registry-evidence/staged-evidence.json ]; then args+=(--staged-evidence "$PWD/registry-evidence/staged-evidence.json"); fi
+          node scripts/release/verify-artifact-state.mjs "${args[@]}" | tee artifact-state.json
           echo "state=$(node -p "require('./artifact-state.json').state")" >> "$GITHUB_OUTPUT"
           echo "source=$(node -p "require('./artifact-state.json').source || ''")" >> "$GITHUB_OUTPUT"
           echo "stage_id=$(node -p "require('./artifact-state.json').stage_id || ''")" >> "$GITHUB_OUTPUT"
       - name: Stage the exact retained scoped tarball
         id: staged
-        if: steps.artifact-state.outputs.state == 'absent'
+        if: steps.artifact-state.outputs.state == 'absent' && inputs.submit_to_stage == true && inputs.staged_verification_run_id == ''
         env:
           RETAINED_SCOPED_TARBALL: ${{ github.workspace }}/retained/${{ needs.prepare.outputs.filename }}
         run: npm stage publish "$RETAINED_SCOPED_TARBALL" --registry https://registry.npmjs.org --json > stage-result.json
-      - name: Resolve stage ID
-        if: steps.artifact-state.outputs.source != 'public'
-        shell: bash
+      - name: Stop after OIDC stage submission for external human verification
+        if: steps.staged.outcome == 'success'
         run: |
-          if [ "${{ steps.artifact-state.outputs.state }}" = "absent" ]; then
-            stage_id="$(node -p "const x=require('./stage-result.json'); x.id || x.stageId")"
-          else
-            stage_id="${{ steps.artifact-state.outputs.stage_id }}"
-          fi
-          test -n "$stage_id"
-          echo "STAGE_ID=$stage_id" >> "$GITHUB_ENV"
-      - name: Download the staged artifact
-        if: steps.artifact-state.outputs.source != 'public'
-        shell: bash
+          echo 'Stage submitted. Use a short-lived interactive npm session outside this OIDC job to list, view, download, verify Sigstore provenance, and retest it.' >&2
+          echo 'Upload the pathgrade-staged-verification/v1 record and exact downloaded tarball as the staged-verification artifact, then rerun with staged_verification_run_id.' >&2
+          exit 1
+      - name: Require complete external staged verification before approval
+        if: steps.artifact-state.outputs.state == 'absent'
         run: |
-          mkdir -p staged-download
-          (cd staged-download && npm stage download "$STAGE_ID" --registry https://registry.npmjs.org --json > ../staged-download.json)
-          downloaded="$(node -p "const x=require('./staged-download.json'); require('node:path').resolve('staged-download', (Array.isArray(x)?x[0]:x).filename)")"
-          test -f "$downloaded"
-          echo "DOWNLOADED_STAGED_TARBALL=$downloaded" >> "$GITHUB_ENV"
-      - name: Retest the downloaded staged artifact before human 2FA approval
-        if: steps.artifact-state.outputs.source != 'public'
-        env:
-          RETAINED_SCOPED_SHA512: ${{ needs.prepare.outputs.sha512 }}
-        run: node tests/standalone-package-smoke/run-smoke.mjs --tarball "$DOWNLOADED_STAGED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512"
+          echo 'No matching public artifact or externally verified staged artifact exists. Set submit_to_stage or provide staged_verification_run_id.' >&2
+          exit 1

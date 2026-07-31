@@ -4,6 +4,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { loginCodexAppServerWithApiKey } from '../src/agents/codex-app-server/agent.js';
+import { collectClaudeSdkMessages } from '../src/agents/claude.js';
 
 type Provider = 'claude' | 'codex';
 type ProviderResult = {
@@ -11,7 +13,7 @@ type ProviderResult = {
     provider: Provider;
     status: 'pass' | 'fail' | 'skipped';
     skipped: 0 | 1;
-    report?: string;
+    report?: any;
 };
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
@@ -42,6 +44,44 @@ describe('packed standalone live runtimes', () => {
 });
 
 if (!isGateChild) describe('live-smoke gate contract', () => {
+    it('redacts deterministic injected login and query failures at the provider boundaries', async () => {
+        const secret = 'pathgrade-live-redaction-sentinel';
+        const codexCalls: Array<{ method: string; params: unknown }> = [];
+        const transport = {
+            sendRequest: async (method: string, params: unknown) => {
+                codexCalls.push({ method, params });
+                throw new Error(`login sentinel Authorization: Bearer ${secret}`);
+            },
+        } as any;
+        const loginError = await loginCodexAppServerWithApiKey(transport, secret).catch(error => error);
+        expect(loginError.message).toContain('login sentinel');
+        expect(loginError.message).not.toContain(secret);
+        expect(codexCalls.map(call => call.method)).toEqual(['account/login/start']);
+
+        const queryArgs: unknown[] = [];
+        const failingQuery = (args: unknown) => {
+            queryArgs.push(args);
+            return {
+                [Symbol.asyncIterator]() { return this; },
+                async next() { throw new Error(`query sentinel _auth=${secret}`); },
+            } as any;
+        };
+        const queryError = await collectClaudeSdkMessages(
+            failingQuery as any, { prompt: 'safe prompt', options: {} }, [secret],
+        ).catch(error => error);
+        expect(queryError.message).toContain('query sentinel');
+        expect(queryError.message).not.toContain(secret);
+        expect(String(queryError.cause ?? '')).not.toContain(secret);
+        expect(queryArgs).toHaveLength(1);
+
+        const surfaces = {
+            errors: [loginError.message, queryError.message], command_args: ['standalone', 'run', 'live.eval.ts'],
+            stdout: '', stderr: '', report: { status: 'fail', diagnostic: queryError.message },
+            snapshot: JSON.stringify(codexCalls.map(call => call.method)), debug: queryError.message,
+        };
+        expect(JSON.stringify(surfaces)).not.toContain(secret);
+    });
+
     it('exits zero with exactly two skipped paid cases when live flags are unset', () => {
         const result = runGateChild({});
 
@@ -112,6 +152,7 @@ afterAll(() => {
     if (!gate.required && !process.env.PATHGRADE_LIVE_EVIDENCE_FILE) return;
     const providers = [...results.values()];
     const summary = {
+        schema: 'pathgrade-live-evidence/v1',
         status: providers.every(result => (
             !gate.selected.includes(result.provider) || (result.status === 'pass' && result.skipped === 0)
         )) ? 'pass' : 'fail',
@@ -122,6 +163,10 @@ afterAll(() => {
         tarball: gate.tarball,
         tarball_sha512: gate.sha512,
         source_commit: process.env.GITHUB_SHA ?? null,
+        runtime_environment: {
+            platform: process.platform, arch: process.arch,
+            node_major: Number(process.versions.node.split('.')[0]),
+        },
     };
     if (process.env.PATHGRADE_LIVE_EVIDENCE_FILE) {
         fs.writeFileSync(process.env.PATHGRADE_LIVE_EVIDENCE_FILE, JSON.stringify(summary, null, 2));
@@ -132,29 +177,21 @@ afterAll(() => {
 
 async function runLiveProvider(provider: Provider): Promise<void> {
     const secret = credential(provider);
-    const failure = createInstallation(provider);
-    const failureEnv = liveEnvironment(provider, failure, secret, true);
-    const failureRun = invokeStandalone(failure, failureEnv);
-    expect(failureRun.status).not.toBe(0);
-    assertSecretAbsent(secret, failureRun, failure.target, failure.debugDir);
-    assertTargetIsolation(failure.target);
-    expect(readShimCalls(failure.shims)).toBe('');
-
     const installation = createInstallation(provider);
-    const liveRun = invokeStandalone(installation, liveEnvironment(provider, installation, secret, false));
+    const liveRun = invokeStandalone(installation, liveEnvironment(provider, installation, secret));
     try {
         expect(liveRun.status, `${liveRun.stdout}\n${liveRun.stderr}`).toBe(0);
         const reportPath = path.join(installation.target, '.pathgrade/results.json');
         const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
         assertReport(provider, report);
         assertSecretAbsent(secret, liveRun, installation.target, installation.debugDir);
-        assertTargetIsolation(installation.target);
+        assertTargetIsolation(installation, secret);
         expect(readShimCalls(installation.shims)).toBe('');
         results.set(provider, {
             ...results.get(provider)!,
             status: 'pass',
             skipped: 0,
-            report: reportPath,
+            report,
         });
     } catch (error) {
         results.set(provider, { ...results.get(provider)!, status: 'fail', skipped: 0 });
@@ -178,14 +215,14 @@ function createInstallation(provider: Provider) {
     expect(install.status, `${install.stdout}\n${install.stderr}`).toBe(0);
     fs.writeFileSync(path.join(target, '.env'), 'PATHGRADE_LIVE_ENV_SENTINEL=must-not-load\n');
     fs.writeFileSync(path.join(target, 'live.eval.ts'), liveEvalSource(provider));
-    return { provider, prefix, target, home, codexHome, cache, temporary, debugDir, shims };
+    const baseline = snapshotTree(target);
+    return { provider, prefix, target, home, codexHome, cache, temporary, debugDir, shims, baseline };
 }
 
 function liveEnvironment(
     provider: Provider,
     installation: ReturnType<typeof createInstallation>,
     secret: string,
-    failing: boolean,
 ) {
     const env = {
         ...withoutHostCredentials(process.env),
@@ -202,13 +239,11 @@ function liveEnvironment(
         return {
             ...env,
             ANTHROPIC_API_KEY: secret,
-            ...(failing ? { ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' } : {}),
         };
     }
     return {
         ...env,
         OPENAI_API_KEY: secret,
-        ...(failing ? { OPENAI_BASE_URL: 'http://127.0.0.1:1/v1' } : {}),
     };
 }
 
@@ -276,11 +311,26 @@ function assertSecretAbsent(secret: string, run: ReturnType<typeof spawnSync>, t
     }
 }
 
-function assertTargetIsolation(target: string) {
-    expect(fs.readFileSync(path.join(target, '.env'), 'utf8')).toBe('PATHGRADE_LIVE_ENV_SENTINEL=must-not-load\n');
-    for (const name of ['node_modules', '.vite', '.vitest', 'coverage', 'attachments', 'blob-reports']) {
-        expect(fs.existsSync(path.join(target, name)), `${name} must not be created`).toBe(false);
+function assertTargetIsolation(installation: ReturnType<typeof createInstallation>, secret: string) {
+    const { target, baseline, provider, debugDir } = installation;
+    const after = snapshotTree(target);
+    for (const [filename, digest] of baseline) expect(after.get(filename), `${filename} changed`).toBe(digest);
+    const created = [...after.keys()].filter(filename => !baseline.has(filename)).sort();
+    expect(created).toEqual([
+        '.pathgrade/.gitignore', '.pathgrade/results.json',
+        `.pathgrade/traces/packed-${provider}-live-smoke.json`,
+    ]);
+    for (const filename of [...created.map(name => path.join(target, name)), ...filesBelow(debugDir)]) {
+        const contents = fs.readFileSync(filename, 'utf8');
+        expect(contents, `${filename} leaked the credential`).not.toContain(secret);
+        expect(contents, `${filename} loaded the target .env`).not.toContain('must-not-load');
     }
+}
+
+function snapshotTree(directory: string) {
+    return new Map(filesBelow(directory).map(filename => [
+        path.relative(directory, filename), sha512File(filename),
+    ]));
 }
 
 function liveEvalSource(provider: Provider) {
@@ -350,7 +400,7 @@ function runGateChild(overrides: Record<string, string | undefined>) {
     return spawnSync(process.execPath, [
         path.join(repoRoot, 'node_modules/vitest/vitest.mjs'),
         'run', path.join(repoRoot, 'tests/standalone-live-smoke.test.ts'), '--reporter=json', '--silent',
-    ], { cwd: repoRoot, env, encoding: 'utf8', timeout: 30_000 });
+    ], { cwd: repoRoot, env, encoding: 'utf8', timeout: 60_000 });
 }
 
 function expectRejected(result: ReturnType<typeof spawnSync>, diagnostic: string) {

@@ -43,6 +43,7 @@ Copy this file for each release candidate. Replace every `PENDING` value with in
 | `linux-arm64-node24` | PENDING | PENDING |
 | `linux-x64-node24` | PENDING | PENDING |
 | `wsl-x64-node24` (manual protected evidence) | PENDING | PENDING |
+| WSL runtime discriminator (`kind=wsl`, Microsoft/WSL kernel, observed `WSL_INTEROP`) | PENDING | PENDING |
 | Five-record validator result | PENDING | PENDING |
 
 ## Trusted staging and immutable artifact checks
@@ -59,7 +60,15 @@ Copy this file for each release candidate. Replace every `PENDING` value with in
 | Downloaded staged tarball path and SHA-512 | PENDING | PENDING |
 | Downloaded staged standalone smoke | PENDING | PENDING |
 | Provenance/attestation verification | PENDING | PENDING |
+| SLSA v1 subject SHA-512 equals downloaded tarball | PENDING | PENDING |
+| Attested repository is exactly `wix-incubator/pathgrade` | PENDING | PENDING |
+| Attested workflow is exactly `.github/workflows/publish.yml` | PENDING | PENDING |
+| Attested source commit equals release commit | PENDING | PENDING |
 | Final artifact-state classification | PENDING | PENDING |
+
+The trusted-publishing OIDC token is valid for `npm stage publish` only. It must not be used or described as authorization for `npm stage list`, `npm stage view`, or `npm stage download`. After the workflow submits a stage, it intentionally stops.
+
+An authorized human must use a separate, short-lived interactive npm session outside the OIDC job to list/view/download the staged artifact, verify its npm Sigstore/SLSA provenance, and run the standalone smoke against the downloaded bytes without rebuilding or repacking. Upload these results as a `pathgrade-staged-verification/v1` record plus the exact downloaded tarball. The follow-up workflow validates that external artifact against the retained SHA-512, source commit, package metadata, provenance subject/repository/workflow, and smoke result. Missing or incomplete external evidence blocks approval.
 
 ## Approval
 

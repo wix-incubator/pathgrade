@@ -7,135 +7,144 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const registry = 'https://registry.npmjs.org';
+const repository = 'wix-incubator/pathgrade';
+const workflow = 'publish.yml';
+const predicateType = 'https://slsa.dev/provenance/v1';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     try {
-        const options = parseArgs(process.argv.slice(2));
-        const result = verifyArtifactState(options);
+        const result = verifyArtifactState(parseArgs(process.argv.slice(2)));
         process.stdout.write(`${JSON.stringify(result)}\n`);
     } catch (error) {
-        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+        process.stderr.write(`${redact(error instanceof Error ? error.message : String(error), process.env)}\n`);
         process.exitCode = 1;
     }
 }
 
 export function verifyArtifactState(options) {
     validateOptions(options);
-    const actualExpectedSha512 = sha512File(options.tarball);
-    if (actualExpectedSha512 !== options.expectedSha512) {
+    const retainedSha512 = sha512File(options.tarball);
+    if (retainedSha512 !== options.expectedSha512) {
         throw new Error('retained tarball does not match expected SHA-512');
     }
-    const expectedIntegrity = `sha512-${Buffer.from(options.expectedSha512, 'hex').toString('base64')}`;
+    const expectedIntegrity = toIntegrity(options.expectedSha512);
     const spec = `${options.packageName}@${options.version}`;
     const publicView = npmResult(options.npmCommand, ['view', spec, '--json', '--registry', registry]);
     if (publicView.status === 0) {
         const metadata = parseJsonOutput(publicView.stdout, 'public package metadata');
         verifyMetadata(metadata, options, expectedIntegrity, 'public');
-        const downloaded = downloadPublic(options.npmCommand, spec);
-        verifyContents(downloaded, options.expectedSha512, 'public');
+        verifyContents(downloadPublic(options.npmCommand, spec), options.expectedSha512, 'public');
+        if (!options.attestationEvidence) throw new Error('conflict: verified provenance evidence is required');
+        verifyProvenance(readJsonFile(options.attestationEvidence, 'verified provenance evidence'), options);
         return { state: 'matching', source: 'public', should_stage: false };
     }
     if (!/E404|404 Not Found|is not in this registry/i.test(publicView.stderr)) {
-        throw new Error(`npm view failed without an absence response: ${publicView.stderr.trim()}`);
+        throw new Error(`npm view failed without an absence response: ${redact(publicView.stderr, process.env).trim()}`);
     }
+    if (!options.stagedEvidence) return { state: 'absent', source: null, should_stage: true };
+    const staged = readJsonFile(options.stagedEvidence, 'external staged verification evidence');
+    verifyStagedEvidence(staged, options, expectedIntegrity);
+    return { state: 'matching', source: 'staged', stage_id: staged.stage_id, should_stage: false };
+}
 
-    const stageList = npm(options.npmCommand, ['stage', 'list', spec, '--json', '--registry', registry]);
-    const stages = normalizeStages(parseJsonOutput(stageList.stdout, 'staged package metadata'))
-        .filter(stage => stage.name === options.packageName && stage.version === options.version);
-    if (stages.length > 1) throw new Error(`conflict: multiple staged artifacts exist for ${spec}`);
-    if (stages.length === 0) return { state: 'absent', source: null, should_stage: true };
-
-    const stageSummary = stages[0];
-    const stageView = npm(options.npmCommand, [
-        'stage', 'view', stageSummary.id, '--json', '--registry', registry,
-    ]);
-    const stage = { ...stageSummary, ...parseJsonOutput(stageView.stdout, 'staged package details') };
-    verifyMetadata(stage, options, expectedIntegrity, 'staged');
-    const downloaded = downloadStage(options.npmCommand, stage.id);
-    verifyContents(downloaded, options.expectedSha512, 'staged');
-    return {
-        state: 'matching',
-        source: 'staged',
-        stage_id: stage.id,
-        should_stage: false,
-    };
+function verifyStagedEvidence(evidence, options, expectedIntegrity) {
+    if (evidence.schema !== 'pathgrade-staged-verification/v1' || evidence.status !== 'verified') {
+        throw new Error('external staged verification evidence is not verified');
+    }
+    if (typeof evidence.stage_id !== 'string' || !evidence.stage_id) {
+        throw new Error('external staged verification evidence has no stage ID');
+    }
+    verifyMetadata(evidence.package, options, expectedIntegrity, 'staged');
+    const evidenceDirectory = path.dirname(options.stagedEvidence);
+    const downloadedTarball = path.resolve(evidenceDirectory, evidence.downloaded_tarball ?? '');
+    if (!downloadedTarball.startsWith(`${evidenceDirectory}${path.sep}`) || !fs.existsSync(downloadedTarball)) {
+        throw new Error('external staged verification evidence tarball is unavailable');
+    }
+    verifyContents(downloadedTarball, options.expectedSha512, 'staged');
+    if (evidence.tarball_sha512 !== options.expectedSha512
+        || evidence.standalone_smoke?.status !== 'pass'
+        || evidence.standalone_smoke?.tarball_sha512 !== options.expectedSha512
+        || evidence.standalone_smoke?.rebuilt !== false) {
+        conflict('staged downloaded-tarball smoke evidence');
+    }
+    verifyProvenance(evidence.provenance, options);
 }
 
 function verifyMetadata(metadata, options, expectedIntegrity, source) {
-    if (metadata.name !== options.packageName || metadata.version !== options.version) {
+    if (metadata?.name !== options.packageName || metadata?.version !== options.version) {
         conflict(`${source} package identity`);
     }
     if (metadata.dist?.integrity !== expectedIntegrity) conflict(`${source} integrity`);
     if (metadata.gitHead !== options.sourceCommit) conflict(`${source} source commit`);
     const attestations = metadata.dist?.attestations ?? metadata.attestations;
-    if (!attestations?.url || !attestations?.provenance?.predicateType) {
-        conflict(`${source} provenance or attestation`);
+    if (!attestations?.url || attestations?.provenance?.predicateType !== predicateType) {
+        conflict(`${source} provenance metadata`);
     }
 }
 
-function verifyContents(filename, expectedSha512, source) {
-    if (sha512File(filename) !== expectedSha512) conflict(`${source} contents`);
+function verifyProvenance(evidence, options) {
+    if (evidence?.schema !== 'pathgrade-provenance-verification/v1'
+        || evidence?.verification?.status !== 'verified'
+        || evidence?.verification?.verifier !== 'npm-registry-sigstore'
+        || !/^[a-f\d]{64}$/i.test(evidence?.verification?.bundle_sha256 ?? '')
+        || !Number.isSafeInteger(evidence?.verification?.rekor_log_index)
+        || evidence.verification.rekor_log_index < 0) {
+        throw new Error('conflict: verified provenance evidence is invalid');
+    }
+    if (evidence.verification.repository !== repository) conflict('provenance repository');
+    if (evidence.verification.workflow !== workflow) conflict('provenance workflow');
+    if (evidence.verification.source_commit !== options.sourceCommit) conflict('provenance source commit');
+    const statement = evidence.statement;
+    if (statement?._type !== 'https://in-toto.io/Statement/v1') conflict('provenance statement type');
+    if (statement?.predicateType !== predicateType) conflict('provenance predicate');
+    const expectedSubject = `pkg:npm/${encodeURIComponent(options.packageName).replace('%2F', '/')}@${options.version}`;
+    const subject = statement?.subject?.find(value => value?.name === expectedSubject);
+    if (!subject) conflict('provenance subject identity');
+    if (subject.digest?.sha512 !== options.expectedSha512) conflict('provenance subject digest');
+    const dependencies = statement?.predicate?.buildDefinition?.resolvedDependencies;
+    const build = statement?.predicate?.buildDefinition;
+    if (build?.buildType !== 'https://actions.github.io/buildtypes/workflow/v1') {
+        conflict('provenance build type');
+    }
+    if (build?.externalParameters?.workflow?.repository !== `https://github.com/${repository}`) {
+        conflict('provenance repository');
+    }
+    if (build?.externalParameters?.workflow?.path !== `.github/workflows/${workflow}`) {
+        conflict('provenance workflow');
+    }
+    const source = Array.isArray(dependencies) && dependencies.find(value => (
+        typeof value?.uri === 'string'
+        && value.uri.startsWith(`git+https://github.com/${repository}@`)
+    ));
+    if (!source || source.digest?.gitCommit !== options.sourceCommit) conflict('provenance source commit');
+    const builderId = statement?.predicate?.runDetails?.builder?.id;
+    if (typeof builderId !== 'string'
+        || !builderId.startsWith(`https://github.com/${repository}/.github/workflows/${workflow}@`)) {
+        conflict('provenance workflow');
+    }
+    if (evidence.verification.certificate_identity !== builderId) conflict('provenance certificate identity');
 }
 
 function downloadPublic(npmCommand, spec) {
-    return withTempDirectory(directory => {
-        const result = npm(npmCommand, [
-            'pack', spec, '--json', '--pack-destination', directory, '--registry', registry,
-        ]);
-        return downloadedFilename(directory, result.stdout, 'public package download');
-    });
-}
-
-function downloadStage(npmCommand, stageId) {
-    return withTempDirectory(directory => {
-        const result = npm(npmCommand, [
-            'stage', 'download', stageId, '--json', '--registry', registry,
-        ], { cwd: directory });
-        return downloadedFilename(directory, result.stdout, 'staged package download');
-    });
-}
-
-function withTempDirectory(callback) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-artifact-state-'));
     try {
-        const filename = callback(directory);
-        const copy = path.join(os.tmpdir(), `pathgrade-artifact-${process.pid}-${Date.now()}.tgz`);
-        fs.copyFileSync(filename, copy);
-        return copy;
+        const result = npm(npmCommand, ['pack', spec, '--json', '--pack-destination', directory, '--registry', registry]);
+        const parsed = parseJsonOutput(result.stdout, 'public package download');
+        const filename = Array.isArray(parsed) ? parsed[0]?.filename : parsed?.filename;
+        if (typeof filename !== 'string') throw new Error('public package download did not name a tarball');
+        const resolved = path.resolve(directory, filename);
+        if (!resolved.startsWith(`${path.resolve(directory)}${path.sep}`) || !fs.existsSync(resolved)) {
+            throw new Error('public package download tarball is unavailable');
+        }
+        return fs.readFileSync(resolved);
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 }
 
-function downloadedFilename(directory, stdout, label) {
-    const parsed = parseJsonOutput(stdout, label);
-    const filename = Array.isArray(parsed) ? parsed[0]?.filename : parsed?.filename;
-    if (typeof filename !== 'string') throw new Error(`${label} did not name a tarball`);
-    const resolved = path.resolve(directory, filename);
-    if (!resolved.startsWith(`${path.resolve(directory)}${path.sep}`) || !fs.existsSync(resolved)) {
-        throw new Error(`${label} tarball is unavailable`);
-    }
-    return resolved;
-}
-
-function normalizeStages(value) {
-    const stages = Array.isArray(value)
-        ? value
-        : Array.isArray(value?.stages)
-            ? value.stages
-            : value && typeof value === 'object'
-                ? Object.values(value)
-                : undefined;
-    if (!Array.isArray(stages)) throw new Error('staged package metadata must be an array');
-    return stages.map(stage => {
-        const packageSpec = typeof stage.package === 'string' ? stage.package : undefined;
-        const parsedSpec = packageSpec?.match(/^(@[^/]+\/[^@]+|[^@]+)@(.+)$/);
-        return {
-            ...stage,
-            name: stage.name ?? stage.package?.name ?? parsedSpec?.[1],
-            version: stage.version ?? stage.package?.version ?? parsedSpec?.[2],
-        };
-    });
+function verifyContents(filenameOrBytes, expectedSha512, source) {
+    const bytes = Buffer.isBuffer(filenameOrBytes) ? filenameOrBytes : fs.readFileSync(filenameOrBytes);
+    if (sha512(bytes) !== expectedSha512) conflict(`${source} contents`);
 }
 
 function npm(command, args, options = {}) {
@@ -148,31 +157,27 @@ function npm(command, args, options = {}) {
 
 function npmResult(command, args, options = {}) {
     const result = spawnSync(command, args, { encoding: 'utf8', env: process.env, ...options });
-    if (result.error) throw new Error(`npm command could not start: ${result.error.message}`);
+    if (result.error) throw new Error(`npm command could not start: ${redact(result.error.message, process.env)}`);
     return result;
 }
 
 function redact(value, env) {
-    let redacted = value.replace(/(?:npm_[A-Za-z_]*token|NODE_AUTH_TOKEN|NPM_TOKEN)=\S+/gi, '[credential redacted]');
+    let output = String(value);
     for (const [key, secret] of Object.entries(env)) {
-        if (/token|credential|oidc/i.test(key) && typeof secret === 'string' && secret.length >= 6) {
-            redacted = redacted.replaceAll(secret, '[credential redacted]');
+        if (/token|credential|oidc|auth|api[_-]?key|secret/i.test(key)
+            && typeof secret === 'string' && secret.length >= 6) {
+            output = output.replaceAll(secret, '[credential redacted]');
         }
     }
-    return redacted;
-}
-
-function parseJsonOutput(value, label) {
-    try {
-        return JSON.parse(value);
-    } catch {
-        throw new Error(`${label} returned malformed JSON`);
-    }
+    return output
+        .replace(/(?:Authorization\s*:\s*)?Bearer\s+\S+/gi, '[credential redacted]')
+        .replace(/(?:npm_[\w-]*token|NODE_AUTH_TOKEN|NPM_TOKEN|_authToken|_auth)=\S+/gi, '[credential redacted]');
 }
 
 function parseArgs(args) {
     const allowed = new Set([
         '--package', '--version', '--tarball', '--expected-sha512', '--source-commit', '--npm-command',
+        '--attestation-evidence', '--staged-evidence',
     ]);
     const parsed = {};
     for (let index = 0; index < args.length; index += 2) {
@@ -183,33 +188,34 @@ function parseArgs(args) {
         parsed[option] = value;
     }
     return {
-        packageName: parsed['--package'] ?? '@wix/pathgrade',
-        version: parsed['--version'],
-        tarball: parsed['--tarball'],
-        expectedSha512: parsed['--expected-sha512'],
-        sourceCommit: parsed['--source-commit'],
-        npmCommand: parsed['--npm-command'] ?? 'npm',
+        packageName: parsed['--package'] ?? '@wix/pathgrade', version: parsed['--version'],
+        tarball: parsed['--tarball'], expectedSha512: parsed['--expected-sha512'],
+        sourceCommit: parsed['--source-commit'], npmCommand: parsed['--npm-command'] ?? 'npm',
+        attestationEvidence: parsed['--attestation-evidence'], stagedEvidence: parsed['--staged-evidence'],
     };
 }
 
 function validateOptions(options) {
-    for (const [name, value] of Object.entries(options)) {
-        if (typeof value !== 'string' || value.length === 0) throw new Error(`${name} is required`);
+    for (const name of ['packageName', 'version', 'tarball', 'expectedSha512', 'sourceCommit', 'npmCommand']) {
+        if (typeof options[name] !== 'string' || !options[name]) throw new Error(`${name} is required`);
     }
     if (!path.isAbsolute(options.tarball) || !fs.existsSync(options.tarball)) {
         throw new Error('tarball must be an existing absolute path');
     }
     if (!/^[a-f\d]{128}$/i.test(options.expectedSha512)) throw new Error('expected-sha512 is invalid');
+    if (!/^[a-f\d]{40}$/i.test(options.sourceCommit)) throw new Error('source-commit is invalid');
 }
 
-function sha512File(filename) {
-    const digest = createHash('sha512').update(fs.readFileSync(filename)).digest('hex');
-    if (filename.startsWith(os.tmpdir()) && path.basename(filename).startsWith('pathgrade-artifact-')) {
-        fs.rmSync(filename, { force: true });
-    }
-    return digest;
+function readJsonFile(filename, label) {
+    if (!path.isAbsolute(filename) || !fs.existsSync(filename)) throw new Error(`${label} file is unavailable`);
+    return parseJsonOutput(fs.readFileSync(filename, 'utf8'), label);
 }
 
-function conflict(field) {
-    throw new Error(`conflict: ${field} differs; npm versions cannot be overwritten`);
+function parseJsonOutput(value, label) {
+    try { return JSON.parse(value); } catch { throw new Error(`${label} contains malformed JSON`); }
 }
+
+function sha512File(filename) { return sha512(fs.readFileSync(filename)); }
+function sha512(bytes) { return createHash('sha512').update(bytes).digest('hex'); }
+function toIntegrity(hex) { return `sha512-${Buffer.from(hex, 'hex').toString('base64')}`; }
+function conflict(field) { throw new Error(`conflict: ${field} differs; npm versions cannot be overwritten`); }

@@ -72,6 +72,36 @@ test('rejects wrong runtime versions and non-passing records by field', () => {
     assertRejected(runValidator(failed), 'linux-x64-node24 status');
 });
 
+test('rejects native Linux evidence relabeled as WSL', () => {
+    const records = validRecords();
+    const index = records.findIndex(record => record.tuple_id === 'wsl-x64-node24');
+    records[index] = {
+        ...records[index],
+        runtime_environment: {
+            kind: 'github-hosted', observed_platform: 'linux', observed_arch: 'x64',
+            wsl: false, kernel_release: '6.8.0-generic', wsl_interop: null,
+        },
+    };
+    assertRejected(runValidator(records), 'wsl-x64-node24 runtime_environment.kind');
+});
+
+test('validates exact provider count, versions, model, authentication, transport, commit, and digest', () => {
+    const liveDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-live-evidence-'));
+    try {
+        fs.writeFileSync(path.join(liveDirectory, 'linux.json'), JSON.stringify(liveEvidence('linux', ['claude', 'codex'])));
+        fs.writeFileSync(path.join(liveDirectory, 'macos.json'), JSON.stringify(liveEvidence('darwin', ['codex'])));
+        const result = runValidator(validRecords(), liveDirectory);
+        assert.equal(result.status, 0, result.stderr);
+
+        const forged = liveEvidence('linux', ['claude', 'codex']);
+        forged.providers[1].report.groups[0].trials[0].agent_provenance.model.id = 'forged-model';
+        fs.writeFileSync(path.join(liveDirectory, 'linux.json'), JSON.stringify(forged));
+        assertRejected(runValidator(validRecords(), liveDirectory), 'linux-codex model.id');
+    } finally {
+        fs.rmSync(liveDirectory, { recursive: true, force: true });
+    }
+});
+
 test('rejects malformed JSON with the evidence filename', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-platform-evidence-'));
     try {
@@ -87,6 +117,7 @@ function validRecords() {
 }
 
 function evidence(tupleId, platform, arch) {
+    const wsl = tupleId === 'wsl-x64-node24';
     return {
         tuple_id: tupleId,
         platform,
@@ -100,28 +131,71 @@ function evidence(tupleId, platform, arch) {
         tarball_sha512: tarballSha512,
         source_commit: commit,
         status: 'pass',
+        runtime_environment: wsl ? {
+            kind: 'wsl', observed_platform: 'linux', observed_arch: 'x64', wsl: true,
+            kernel_release: '5.15.153.1-microsoft-standard-WSL2', wsl_interop: '/run/WSL/123_interop',
+        } : {
+            kind: 'github-hosted', observed_platform: platform, observed_arch: arch, wsl: false,
+            kernel_release: platform === 'linux' ? '6.8.0-generic' : null, wsl_interop: null,
+        },
     };
 }
 
-function runValidator(records) {
+function runValidator(records, liveEvidenceDir) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-platform-evidence-'));
     try {
         records.forEach((record, index) => {
             fs.writeFileSync(path.join(directory, `${index}-${record.tuple_id}.json`), JSON.stringify(record));
         });
-        return run(directory);
+        return run(directory, liveEvidenceDir);
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 }
 
-function run(evidenceDir) {
-    return spawnSync(process.execPath, [
+function run(evidenceDir, liveEvidenceDir) {
+    const args = [
         validator,
         '--commit', commit,
         '--tarball-sha512', tarballSha512,
         '--evidence-dir', evidenceDir,
-    ], { cwd: repoRoot, encoding: 'utf8' });
+    ];
+    if (liveEvidenceDir) args.push('--live-evidence-dir', liveEvidenceDir);
+    return spawnSync(process.execPath, args, { cwd: repoRoot, encoding: 'utf8' });
+}
+
+function liveEvidence(platform, selected) {
+    const providers = ['claude', 'codex'].map(provider => {
+        const isSelected = selected.includes(provider);
+        const runtime = provider === 'claude'
+            ? { package: '@anthropic-ai/claude-agent-sdk', package_version: '0.2.116', embedded_binary_version: '2.1.116', provenance: 'bundled' }
+            : { package: '@openai/codex', package_version: '0.144.0', embedded_binary_version: '0.144.0', provenance: 'bundled' };
+        const agentProvenance = {
+            agent: provider, transport: provider === 'claude' ? 'native' : 'app-server',
+            model: provider === 'claude' ? { id: null, source: 'provider-default' } : { id: 'gpt-5.4', source: 'pathgrade-default' },
+            authentication: 'api-key', runtime,
+        };
+        return {
+            id: `${platform === 'darwin' ? 'macos' : 'linux'}-${provider}`, provider,
+            status: isSelected ? 'pass' : 'skipped', skipped: isSelected ? 0 : 1,
+            ...(isSelected ? { report: {
+                version: 1, status: 'pass', overall_pass_rate: 1,
+                provenance: {
+                    mode: 'standalone', runtimes: {
+                        claude: { sdk_version: '0.2.116', claude_code_version: '2.1.116' },
+                        codex: { package_version: '0.144.0', native_version: '0.144.0' },
+                    },
+                },
+                groups: [{ trials: [{ reward: 1, agent_provenance: agentProvenance }] }],
+            } } : {}),
+        };
+    });
+    return {
+        schema: 'pathgrade-live-evidence/v1', status: 'pass', selected,
+        passed: selected.length, skipped: 2 - selected.length, providers,
+        tarball_sha512: tarballSha512, source_commit: commit,
+        runtime_environment: { platform, arch: platform === 'darwin' ? 'arm64' : 'x64', node_major: 24 },
+    };
 }
 
 function assertRejected(result, diagnostic) {

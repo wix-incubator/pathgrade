@@ -82,6 +82,28 @@ export interface ClaudeAgentOptions {
     claudeCodeExecutable?: string;
 }
 
+export async function collectClaudeSdkMessages(
+    queryFn: ClaudeSdkQueryFn,
+    args: Parameters<ClaudeSdkQueryFn>[0],
+    secrets: Array<string | undefined> = [],
+): Promise<SDKMessage[]> {
+    try {
+        const messages: SDKMessage[] = [];
+        const stream = queryFn(args);
+        for await (const message of stream as unknown as AsyncIterable<SDKMessage>) messages.push(message);
+        return messages;
+    } catch (error) {
+        let message = error instanceof Error ? error.message : String(error);
+        for (const secret of secrets) {
+            if (secret && secret.length >= 6) message = message.replaceAll(secret, '[redacted]');
+        }
+        message = message
+            .replace(/(?:Authorization\s*:\s*)?Bearer\s+\S+/gi, '[redacted]')
+            .replace(/(?:_authToken|_auth|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)=\S+/gi, '[redacted]');
+        throw new Error(message);
+    }
+}
+
 function createLinkedAbortController(signal: AbortSignal | undefined): AbortController {
     const controller = new AbortController();
     if (!signal) return controller;
@@ -185,11 +207,15 @@ export class ClaudeAgent extends BaseAgent {
                 abortController: createLinkedAbortController(getTurnAbortSignal(sessionOptions)),
             });
 
-            const messages: SDKMessage[] = [];
-            const stream = queryFn({ prompt: message, options: sdkOptions });
-            for await (const msg of stream as unknown as AsyncIterable<SDKMessage>) {
-                messages.push(msg);
-            }
+            const runtimeEnv = getRuntimeEnv(runtime);
+            const messages = await collectClaudeSdkMessages(
+                queryFn,
+                { prompt: message, options: sdkOptions },
+                [
+                    hostEnv.ANTHROPIC_API_KEY, hostEnv.ANTHROPIC_AUTH_TOKEN, hostEnv.CLAUDE_CODE_OAUTH_TOKEN,
+                    runtimeEnv.ANTHROPIC_API_KEY, runtimeEnv.ANTHROPIC_AUTH_TOKEN, runtimeEnv.CLAUDE_CODE_OAUTH_TOKEN,
+                ],
+            );
             // The legacy NDJSON parser only synthesized the slash-command
             // `use_skill` event from the *opening* user message. The Claude
             // SDK emits a fresh `init` system message (carrying `skills`) on

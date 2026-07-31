@@ -17,6 +17,8 @@ test('publishes only through one protected trusted-publishing stage operation', 
     assert.match(workflow, /id-token:\s*write/);
     assert.match(workflow, /environment:\s*npm-publish/);
     assert.equal((workflow.match(/npm stage publish/g) ?? []).length, 1);
+    assert.match(workflow, /submit_to_stage/);
+    assert.match(workflow, /steps\.artifact-state\.outputs\.state == 'absent'[\s\S]*inputs\.submit_to_stage == true/);
     assert.doesNotMatch(workflow, /(?:^|\s)(?:npm|yarn npm) publish(?:\s|$)/m);
     assert.doesNotMatch(workflow, /NPM_TOKEN|NODE_AUTH_TOKEN|registry[_-]?token/i);
     assert.match(workflow, /package-manager-cache:\s*false/);
@@ -42,14 +44,28 @@ test('staging has hard dependencies on every retained-artifact release gate', ()
     assert.doesNotMatch(workflow, /continue-on-error:\s*true|if:\s*always\(\)/);
 });
 
-test('post-stage verification downloads the staged artifact without rebuilding it', () => {
+test('OIDC job never performs unsupported stage reads and stops after a stage submission', () => {
     const workflow = fs.readFileSync(workflowPath, 'utf8');
     const afterStage = workflow.slice(workflow.indexOf('npm stage publish'));
 
-    assert.match(afterStage, /npm stage download/);
-    assert.match(afterStage, /run-smoke\.mjs[^\n]*--tarball[^\n]*DOWNLOADED_STAGED_TARBALL[^\n]*--expected-sha512[^\n]*RETAINED_SCOPED_SHA512/);
-    assert.doesNotMatch(afterStage, /npm pack|yarn build/);
+    assert.doesNotMatch(workflow, /npm stage (?:list|view|download)/);
+    assert.match(afterStage, /external staged verification|short-lived.*session|exit 1/is);
+    assert.match(workflow, /staged_verification_run_id/);
+    assert.match(workflow, /pathgrade-staged-verification\/v1|staged-evidence\.json/);
+    assert.match(workflow, /gh run download[^\n]*staged-verification/);
     assert.match(workflow, /npm view\s+['"]?@wix\/pathgrade['"]?/);
+});
+
+test('approval gate validates auditable live records and provenance against the exact release', () => {
+    const workflow = fs.readFileSync(workflowPath, 'utf8');
+    const stageJob = workflow.slice(workflow.indexOf('\n  stage:'));
+
+    assert.match(stageJob, /verify-platform-evidence\.mjs[^\n]*--commit[^\n]*GITHUB_SHA[^\n]*--tarball-sha512[^\n]*--live-evidence-dir/);
+    assert.match(stageJob, /args=\([^\n]*--source-commit[^\n]*GITHUB_SHA/);
+    assert.match(stageJob, /verify-artifact-state\.mjs/);
+    assert.match(stageJob, /--attestation-evidence|--staged-evidence/);
+    assert.match(workflow, /pathgrade-live-evidence\/v1/);
+    assert.match(workflow, /runtime_environment/);
 });
 
 test('quality scripts actually inspect untracked release JavaScript', () => {
