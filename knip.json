@@ -23,6 +23,7 @@
     "tests/fixtures/**"
   ],
   "ignoreDependencies": [
-    "jest"
+    "jest",
+    "@openai/codex"
   ]
 }

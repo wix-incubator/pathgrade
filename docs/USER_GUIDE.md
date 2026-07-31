@@ -48,7 +48,7 @@ Pathgrade evaluates whether AI agents correctly discover and use your skills. Yo
 
 ## Installation
 
-**Prerequisites**: Node.js 20+, Vitest 4+ or Jest 30+
+**Project-local prerequisites**: Node.js 20+, Vitest 4+ or Jest 30+. These prerequisites and the runtime overrides below apply to the existing project-local commands.
 
 ```bash
 npm i @wix/pathgrade vitest
@@ -65,6 +65,21 @@ npm i @wix/pathgrade jest
   See [Claude SDK driver](#claude-sdk-driver) for the full override precedence.
 - **Codex**: install the Codex CLI per OpenAI's documentation; pathgrade shells out to it.
 - **Cursor**: install `cursor-agent` per Cursor's documentation; pathgrade shells out to it.
+
+### Standalone—Node only
+
+Standalone v0 has a separate contract: Node.js 22 or 24 on macOS, Linux, or WSL (`x64` or `arm64`). It bundles Pathgrade, Vitest, the Claude Agent SDK and Claude Code binary, and the Codex `app-server`, so it needs no local Pathgrade, Vitest, Claude, or Codex install:
+
+```text
+npx @wix/pathgrade standalone
+npx @wix/pathgrade standalone run path/to/example.eval.ts
+npm install --global @wix/pathgrade
+pathgrade standalone
+```
+
+Credentials and network access remain required for live Claude or Codex requests. Standalone v0 supports imports from root `vitest`, not Vitest subpaths such as `vitest/config`; application dependencies remain your responsibility. The project Vitest configuration is ignored, and standalone does not load `.env`.
+
+Temporary HOME, cache, and workspace directories isolate local state, but local workspace isolation is not a security sandbox. Jest, Cursor, Codex `exec`, Docker, declarative specs, recording, and baselines are deferred. Existing project-local commands remain unchanged unless the explicit `standalone` namespace is selected, and this release does not install or publish an unscoped `pathgrade` package.
 
 ## Quick Start
 
@@ -1275,6 +1290,8 @@ interface LLMPort {
 The pathgrade vitest plugin uses `setRuntime({ onResult })` internally to capture eval results and surface them in the reporter. You generally don't need to set `onResult` yourself unless building custom tooling.
 
 ## Environment Variables
+
+This section describes project-local execution. `pathgrade run` loads the project's `.env` as before. In contrast, `pathgrade standalone` does not load `.env`; provide selected-provider credentials in the invoking process environment. Standalone also ignores local runtime executable overrides and project Vitest configuration.
 
 | Variable | Used By |
 |----------|---------|

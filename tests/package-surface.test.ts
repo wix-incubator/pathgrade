@@ -53,4 +53,21 @@ describe('package surface', () => {
             default: './dist/adapters/jest/reporter.cjs',
         });
     });
+
+    it('keeps the standalone runtime pins exact and publishes only the scoped package', () => {
+        expect(packageJson.name).toBe('@wix/pathgrade');
+        expect(packageJson.bin).toBe('bin/pathgrade.js');
+        expect(packageJson.repository.url).toBe('git+https://github.com/wix-incubator/pathgrade.git');
+        expect(packageJson.dependencies.vitest).toBe('4.1.7');
+        expect(packageJson.dependencies['@anthropic-ai/claude-agent-sdk']).toBe('0.2.116');
+        expect(packageJson.dependencies['@openai/codex']).toBe('0.144.0');
+        expect(packageJson.scripts['test:release-contracts']).toBe(
+            'node tests/release-artifact-state.test.mjs && node tests/release-platform-evidence.test.mjs && node tests/publish-workflow-contract.test.mjs',
+        );
+        expect(packageJson.scripts.test).toBe(
+            'yarn build && vitest run && yarn test:runner-cli-smoke && yarn test:standalone-package-smoke && yarn test:release-contracts',
+        );
+        expect(packageJson.files).toContain('dist/**/*.js');
+        expect(packageJson).not.toHaveProperty('workspaces');
+    });
 });

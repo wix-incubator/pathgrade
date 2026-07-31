@@ -15,12 +15,12 @@ esac
 
 allowlist_cap() {
   case "$1" in
-    src/agents/codex-app-server/agent.ts) echo 811 ;;
+    src/agents/codex-app-server/agent.ts) echo 865 ;;
     src/viewer.html) echo 1178 ;;
     tests/claude-ask-user-bridge.test.ts) echo 604 ;;
     tests/claude-sdk-driver.test.ts) echo 697 ;;
     tests/claude-sdk-projector.test.ts) echo 774 ;;
-    tests/codex-app-server-agent.test.ts) echo 1285 ;;
+    tests/codex-app-server-agent.test.ts) echo 1437 ;;
     tests/commands.run-changed.test.ts) echo 609 ;;
     tests/converse.test.ts) echo 608 ;;
     tests/grading-pipeline.test.ts) echo 691 ;;
@@ -60,7 +60,7 @@ should_check() {
 
 emit_files() {
   if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$root" ls-files -z
+    git -C "$root" ls-files --cached --others --exclude-standard -z
   else
     find "$root" \
       \( -path "*/.git" -o -path "*/node_modules" -o -path "*/dist" -o -path "*/build" -o -path "*/coverage" -o -path "*/.next" -o -path "*/.nuxt" -o -path "*/.turbo" -o -path "*/.cache" \) -prune \

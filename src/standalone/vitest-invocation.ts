@@ -1,27 +1,21 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { spawn as spawnChild } from 'node:child_process';
 import type { ResolvedPathgradeConfig } from '../config/pathgrade.js';
 import type { RunnerInvocationAdapter } from '../runners/invocation.js';
 import {
     encodeStandaloneVitestPayload,
-    selectStandaloneEsmExportTarget,
     STANDALONE_VITEST_PAYLOAD_ENV,
     type StandaloneVitestPayload,
 } from './module-aliases.js';
 import { classifyStandaloneVitestFailure } from './diagnostics.js';
 import { buildStandaloneRunProvenance, encodeStandaloneRunProvenance, STANDALONE_PROVENANCE_ENV } from './provenance.js';
+import { resolveBundledVitestCli, type BundledVitestRuntime } from './vitest-runtime.js';
 
-const BUNDLED_VITEST_VERSION = '4.1.7';
+export { resolveBundledVitestCli, type BundledVitestRuntime } from './vitest-runtime.js';
+
 const STDERR_LIMIT_BYTES = 64 * 1024;
-
-export interface BundledVitestRuntime {
-    cliPath: string;
-    version: string;
-    entryPath: string;
-}
 
 export interface SpawnStandaloneVitestRequest {
     command: string;
@@ -38,38 +32,6 @@ export interface SpawnStandaloneVitestResult {
 export type SpawnStandaloneVitest = (
     request: SpawnStandaloneVitestRequest,
 ) => Promise<number | SpawnStandaloneVitestResult> | number | SpawnStandaloneVitestResult;
-
-export function resolveBundledVitestCli(): BundledVitestRuntime {
-    try {
-        const require = createRequire(import.meta.url);
-        const packageJsonPath = require.resolve('vitest/package.json');
-        const packageJson = JSON.parse(
-            fs.readFileSync(packageJsonPath, 'utf8'),
-        ) as {
-            version?: string;
-            bin?: string | Record<string, string>;
-            exports?: Record<string, unknown>;
-        };
-        const bin = typeof packageJson.bin === 'string'
-            ? packageJson.bin
-            : packageJson.bin?.vitest;
-        const entry = selectStandaloneEsmExportTarget(packageJson.exports?.['.']);
-        if (packageJson.version !== BUNDLED_VITEST_VERSION || !bin || !entry) {
-            throw new Error('unexpected bundled Vitest metadata');
-        }
-        const packageRoot = path.dirname(packageJsonPath);
-        return {
-            cliPath: path.resolve(packageRoot, bin),
-            version: packageJson.version,
-            entryPath: path.resolve(packageRoot, entry),
-        };
-    } catch {
-        throw new Error(
-            `pathgrade standalone: bundled Vitest ${BUNDLED_VITEST_VERSION} ` +
-            'could not be resolved; this is a Pathgrade packaging defect',
-        );
-    }
-}
 
 export function createStandaloneVitestInvocationAdapter(input: {
     config: ResolvedPathgradeConfig;

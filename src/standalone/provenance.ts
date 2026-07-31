@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { verifyBundledClaudeRuntime } from '../agents/claude-runtime.js';
 import { resolveBundledCodexCommand, verifyBundledCodexRuntime } from '../agents/codex-runtime.js';
-import { resolveBundledVitestCli } from './vitest-invocation.js';
+import { resolveBundledVitestCli } from './vitest-runtime.js';
 
 export const STANDALONE_PROVENANCE_ENV = 'PATHGRADE_STANDALONE_PROVENANCE' as const;
 
