@@ -202,6 +202,7 @@ function createNdjsonTransportInternal(
 
 export interface SpawnAppServerTransportInput {
     binary?: string;
+    prefixArgs?: readonly string[];
     args?: readonly string[];
     env?: NodeJS.ProcessEnv;
     cwd?: string;
@@ -237,6 +238,14 @@ export function buildAppServerSpawnArgs(
         ...args,
         'app-server',
     ];
+}
+
+export function buildAppServerProcessArgs(
+    prefixArgs: readonly string[] = [],
+    args: readonly string[] = [],
+    env: NodeJS.ProcessEnv = process.env,
+): string[] {
+    return [...prefixArgs, ...buildAppServerSpawnArgs(args, env)];
 }
 
 /**
@@ -328,7 +337,7 @@ export function spawnAppServerTransport(
     const binary = cfg.binary ?? 'codex';
     const args = cfg.args ?? [];
     const env = cfg.env ?? process.env;
-    const child: ChildProcessWithoutNullStreams = spawn(binary, buildAppServerSpawnArgs(args, env), {
+    const child: ChildProcessWithoutNullStreams = spawn(binary, buildAppServerProcessArgs(cfg.prefixArgs, args, env), {
         stdio: ['pipe', 'pipe', 'pipe'],
         env,
         cwd: cfg.cwd,

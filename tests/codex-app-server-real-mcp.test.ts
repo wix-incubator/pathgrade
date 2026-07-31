@@ -63,8 +63,6 @@ suite('Codex app-server real MCP mounting', () => {
             approvalPolicy: 'never',
             sandbox: 'workspace-write',
             ephemeral: true,
-            experimentalRawEvents: false,
-            persistExtendedHistory: false,
             model: process.env.PATHGRADE_REAL_CODEX_MODEL ?? 'gpt-5.4',
             config: mcpConfig,
         });

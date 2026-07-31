@@ -1,4 +1,4 @@
-// Vendored from openai/codex@rust-v0.124.0
+// Vendored from openai/codex@rust-v0.144.0
 // Source: codex-rs/app-server-protocol/schema/typescript/v2/McpServerElicitationRequestParams.ts
 // GENERATED CODE in upstream; do not modify locally either.
 //
@@ -20,5 +20,6 @@ export type McpElicitationRequestParams = {
     serverName: string;
 } & (
     | { mode: 'form'; _meta: JsonValue | null; message: string; requestedSchema: McpElicitationSchema }
+    | { mode: 'openai/form'; _meta: JsonValue | null; message: string; requestedSchema: JsonValue }
     | { mode: 'url'; _meta: JsonValue | null; message: string; url: string; elicitationId: string }
 );

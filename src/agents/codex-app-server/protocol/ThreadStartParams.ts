@@ -1,4 +1,4 @@
-// Vendored from openai/codex@rust-v0.124.0
+// Vendored from openai/codex@rust-v0.144.0
 // Source: codex-rs/app-server-protocol/schema/typescript/v2/ThreadStartParams.ts
 // GENERATED CODE in upstream; do not modify locally either.
 //
@@ -12,12 +12,12 @@ import type { SandboxMode } from './SandboxMode.js';
 
 // Opaque aliases — shapes the driver does not yet destructure.
 export type Personality = unknown;
-export type ServiceTier = unknown;
+export type ServiceTier = string;
 export type JsonValue = unknown;
 export type ApprovalsReviewer = unknown;
 export type AskForApproval = unknown;
-export type PermissionProfile = unknown;
 export type ThreadStartSource = unknown;
+export type ThreadSource = unknown;
 
 export type ThreadStartParams = {
     model?: string | null;
@@ -31,11 +31,6 @@ export type ThreadStartParams = {
      */
     approvalsReviewer?: ApprovalsReviewer | null;
     sandbox?: SandboxMode | null;
-    /**
-     * Full permissions override for this thread. Cannot be combined with
-     * `sandbox`.
-     */
-    permissionProfile?: PermissionProfile | null;
     config?: { [key: string]: JsonValue | undefined } | null;
     serviceName?: string | null;
     baseInstructions?: string | null;
@@ -43,14 +38,6 @@ export type ThreadStartParams = {
     personality?: Personality | null;
     ephemeral?: boolean | null;
     sessionStartSource?: ThreadStartSource | null;
-    /**
-     * If true, opt into emitting raw Responses API items on the event stream.
-     * This is for internal use only (e.g. Codex Cloud).
-     */
-    experimentalRawEvents: boolean;
-    /**
-     * If true, persist additional rollout EventMsg variants required to
-     * reconstruct a richer thread history on resume/fork/read.
-     */
-    persistExtendedHistory: boolean;
+    /** Optional client-supplied analytics source classification for this thread. */
+    threadSource?: ThreadSource | null;
 };

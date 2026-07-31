@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'stream';
 import {
     buildAppServerSpawnArgs,
+    buildAppServerProcessArgs,
     createAppServerSessionHandle,
     createNdjsonTransport,
     type SessionChildHandle,
@@ -199,6 +200,23 @@ describe('buildAppServerSpawnArgs', () => {
             '-c', 'model_providers.pathgrade_openai_proxy.wire_api="responses"',
             '-c', 'model_providers.pathgrade_openai_proxy.supports_websockets=false',
             '--verbose',
+            'app-server',
+        ]);
+    });
+});
+
+describe('buildAppServerProcessArgs', () => {
+    it('places a bundled JavaScript launcher before Codex app-server arguments', () => {
+        expect(buildAppServerProcessArgs(
+            ['/tool/codex.js'],
+            ['--model', 'gpt-5.4'],
+            {},
+        )).toEqual([
+            '/tool/codex.js',
+            '-c',
+            'features.default_mode_request_user_input=true',
+            '--model',
+            'gpt-5.4',
             'app-server',
         ]);
     });

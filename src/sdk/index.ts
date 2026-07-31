@@ -5,6 +5,7 @@ export {
     resolveAgentName,
     resolveCodexTransport,
     InvalidTransportEnvError,
+    StandaloneCodexTransportError,
 } from './agent-resolution.js';
 export { AgentCrashError } from './agent-crash.js';
 export { check, score, judge, toolUsage } from './scorers.js';

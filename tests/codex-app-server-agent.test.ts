@@ -11,7 +11,10 @@ import type {
     AppServerTransport,
     TransportCloseInfo,
 } from '../src/agents/codex-app-server/transport.js';
-import { CodexAppServerAgent } from '../src/agents/codex-app-server/agent.js';
+import {
+    CodexAppServerAgent,
+    loginCodexAppServerWithApiKey,
+} from '../src/agents/codex-app-server/agent.js';
 import { createAskBus } from '../src/sdk/ask-bus/bus.js';
 import { isMcpToolCall } from '../src/sdk/mcp-evidence.js';
 import type { AgentSessionOptions, TrialRuntime } from '../src/types.js';
@@ -31,6 +34,7 @@ interface ClientResponseCapture {
 
 interface ServerSim {
     transport: AppServerTransport;
+    clientMethods: string[];
     sendServerRequest: (method: string, params: unknown) => { id: number };
     sendNotification: (method: string, params: unknown) => void;
     awaitRequest: (method: string) => Promise<ClientRequestCapture>;
@@ -58,6 +62,7 @@ function createServerSim(): ServerSim {
         resolve: (v: unknown) => void;
     }
     const awaiters: PendingMatcher[] = [];
+    const clientMethods: string[] = [];
     const bufferedRequests = new Map<string, ClientRequestCapture[]>();
     const bufferedNotifications = new Map<string, ClientNotificationCapture[]>();
     const bufferedResponses = new Map<number | string, ClientResponseCapture>();
@@ -75,6 +80,7 @@ function createServerSim(): ServerSim {
         } catch {
             return;
         }
+        if (parsed.method) clientMethods.push(parsed.method);
         if (parsed.method === 'initialize' && parsed.id !== undefined) {
             // Capture the initialize params so individual tests can assert on
             // the handshake capability shape.
@@ -158,6 +164,7 @@ function createServerSim(): ServerSim {
 
     return {
         transport: driverTransport,
+        clientMethods,
         sendServerRequest(method, params) {
             const id = nextServerId++;
             serverToClient.write(
@@ -264,6 +271,82 @@ async function runSingleTrivialTurn(
 }
 
 describe('CodexAppServerAgent — handshake', () => {
+    it('in standalone mode logs in after initialized and before thread/start', async () => {
+        vi.stubEnv('PATHGRADE_STANDALONE', '1');
+        try {
+            await withAgent(async ({ sim, agent, options }) => {
+                const session = await agent.createSession(
+                    { handle: '/tmp/ws', workspacePath: '/tmp/ws', env: { OPENAI_API_KEY: 'sk-secret' } },
+                    async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+                    options,
+                );
+                const turnPromise = session.start({ message: 'hi' });
+
+                await sim.awaitRequest('initialize');
+                await sim.awaitNotification('initialized');
+                const login = await sim.awaitRequest('account/login/start');
+                expect(login.params).toEqual({ type: 'apiKey', apiKey: 'sk-secret' });
+                sim.sendResult(login.id, { type: 'apiKey' });
+                await runSingleTrivialTurn(sim);
+                await turnPromise;
+                expect(sim.clientMethods).toEqual([
+                    'initialize',
+                    'initialized',
+                    'account/login/start',
+                    'thread/start',
+                    'turn/start',
+                ]);
+            });
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('does not expose the API key when isolated login fails', async () => {
+        const transport = {
+            sendRequest: async () => { throw new Error('upstream rejected sk-do-not-leak'); },
+        } as unknown as AppServerTransport;
+        const rejected = await loginCodexAppServerWithApiKey(transport, 'sk-do-not-leak')
+            .then(() => undefined, (error: unknown) => error as Error);
+        expect(rejected?.message).toContain('upstream rejected [redacted]');
+        expect(rejected?.message).not.toContain('sk-do-not-leak');
+        await expect(loginCodexAppServerWithApiKey(transport, ''))
+            .rejects.toThrow(/OPENAI_API_KEY/);
+    });
+
+    it('fails missing standalone API key before requesting thread/start', async () => {
+        vi.stubEnv('PATHGRADE_STANDALONE', '1');
+        let threadStarted = false;
+        const transport = {
+            sendRequest: async (method: string) => {
+                if (method === 'initialize') return {};
+                if (method === 'thread/start') threadStarted = true;
+                return {};
+            },
+            sendNotification: () => undefined,
+            sendResponse: () => undefined,
+            sendErrorResponse: () => undefined,
+            onServerRequest: () => () => undefined,
+            onNotification: () => () => undefined,
+            onClose: () => () => undefined,
+            close: async () => undefined,
+        } as AppServerTransport;
+        try {
+            const agent = new CodexAppServerAgent({
+                createTransport: async () => createAppServerSessionHandle({ transport, child: null }),
+            });
+            const session = await agent.createSession(
+                { handle: '/tmp/ws', workspacePath: '/tmp/ws', env: {} },
+                async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+                { askBus: createAskBus({ askUserTimeoutMs: 1_000 }) },
+            );
+            await expect(session.start({ message: 'hi' })).rejects.toThrow(/OPENAI_API_KEY/);
+            expect(threadStarted).toBe(false);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
     it('passes the isolated runtime env to the app-server transport factory', async () => {
         const sim = createServerSim();
         let capturedCtx: unknown;
@@ -326,6 +409,7 @@ describe('CodexAppServerAgent — handshake', () => {
             sim.sendResult(st.id, { turnId: 'u' });
             sim.sendNotification('turn/completed', {});
             await turnPromise;
+            expect(sim.clientMethods).not.toContain('account/login/start');
         });
     });
 
@@ -359,8 +443,8 @@ describe('CodexAppServerAgent — handshake', () => {
             expect(params.approvalPolicy).toBe('never');
             expect(params.sandbox).toBe('workspace-write');
             expect(params.ephemeral).toBe(true);
-            expect(params.experimentalRawEvents).toBe(false);
-            expect(params.persistExtendedHistory).toBe(false);
+            expect(params.experimentalRawEvents).toBeUndefined();
+            expect(params.persistExtendedHistory).toBeUndefined();
             expect(params.baseInstructions).toBeUndefined();
             expect(params.developerInstructions).toBeUndefined();
             sim.sendResult(nt.id, { thread: { id: 'thread-1' } });

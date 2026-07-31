@@ -3,6 +3,7 @@ import {
     resolveAgentName,
     resolveCodexTransport,
     InvalidTransportEnvError,
+    StandaloneCodexTransportError,
 } from '../src/sdk/agent-resolution.js';
 import { createAgentEnvironment } from '../src/agents/registry.js';
 import { CodexAgent } from '../src/agents/codex.js';
@@ -72,6 +73,19 @@ describe('resolveCodexTransport', () => {
     it('does NOT throw on empty/undefined env value (falls through to default)', () => {
         expect(resolveCodexTransport({}, { PATHGRADE_CODEX_TRANSPORT: '' })).toBe('app-server');
         expect(resolveCodexTransport({}, {})).toBe('app-server');
+    });
+
+    it('rejects standalone exec from either option or environment', () => {
+        const standalone = { PATHGRADE_STANDALONE: '1' };
+        expect(() => resolveCodexTransport({ transport: 'exec' }, standalone)).toThrow(
+            StandaloneCodexTransportError,
+        );
+        expect(() => resolveCodexTransport(
+            {},
+            { ...standalone, PATHGRADE_CODEX_TRANSPORT: 'exec' },
+        )).toThrow(
+            "pathgrade standalone supports Codex app-server only; remove transport: 'exec' or use project-local @wix/pathgrade",
+        );
     });
 });
 
