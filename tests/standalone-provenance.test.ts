@@ -5,6 +5,7 @@ import {
     readStandaloneRunProvenance,
     STANDALONE_PROVENANCE_ENV,
 } from '../src/standalone/provenance.js';
+import { resolveCredentials } from '../src/providers/credentials.js';
 
 describe('standalone run provenance', () => {
     it('builds exact verified package and platform provenance', async () => {
@@ -39,5 +40,21 @@ describe('standalone run provenance', () => {
         expect(() => readStandaloneRunProvenance({ [STANDALONE_PROVENANCE_ENV]: 'not-provenance' })).toThrow(
             /pathgrade standalone: invalid provenance payload; this is a Pathgrade packaging defect/,
         );
+    });
+
+    it('accepts the workspace Claude OAuth marker in standalone mode', async () => {
+        await expect(resolveCredentials(
+            'claude',
+            { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
+            {
+                hostEnv: () => undefined,
+                platform: 'linux',
+                homedir: () => '/tmp',
+                readKeychainToken: async () => undefined,
+                keychainEntryExists: async () => false,
+                fileExists: async () => false,
+            },
+            { mode: 'standalone' },
+        )).resolves.toEqual({ env: {}, setupCommands: [], copyFromHome: [] });
     });
 });

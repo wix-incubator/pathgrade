@@ -85,9 +85,6 @@ describe('evaluate.fromSnapshot', () => {
         const agent = makeAgent({ provenance });
         const scorers: Scorer[] = [{ type: 'check', name: 'passes', weight: 1, fn: () => true }];
         const live = await evaluate(agent, scorers);
-        const oauthLive = await evaluate(makeAgent({
-            provenance: { ...provenance, authentication: 'claude-oauth' },
-        }), scorers);
 
         const snapshotDir = path.join(os.tmpdir(), `pg-from-snapshot-provenance-${Math.random().toString(36).slice(2)}`);
         tempPaths.push(snapshotDir);
@@ -104,7 +101,6 @@ describe('evaluate.fromSnapshot', () => {
         const replayed = await evaluate.fromSnapshot(snapshotPath, scorers);
 
         expect(live.trial?.agent_provenance).toEqual(provenance);
-        expect(oauthLive.trial?.agent_provenance?.authentication).toBe('claude-oauth');
         expect(replayed.trial?.agent_provenance).toEqual(provenance);
     });
 
@@ -119,9 +115,13 @@ describe('evaluate.fromSnapshot', () => {
             const apiKeyAgent = await createAgent({
                 agent: 'claude', workspace: workspaceDir, env: { ANTHROPIC_API_KEY: 'test-key' },
             });
+            const oauthAgent = await createAgent({
+                agent: 'claude', workspace: workspaceDir, env: { PATHGRADE_CLAUDE_LOCAL_OAUTH: '1' },
+            });
             const scorers: Scorer[] = [{ type: 'check', name: 'passes', weight: 1, fn: () => true }];
 
             const apiKeyTrial = (await evaluate(apiKeyAgent, scorers)).trial;
+            const oauthTrial = (await evaluate(oauthAgent, scorers)).trial;
 
             expect(apiKeyTrial?.agent_provenance).toEqual({
                 agent: 'claude',
@@ -135,8 +135,44 @@ describe('evaluate.fromSnapshot', () => {
                     provenance: 'bundled',
                 },
             });
+            expect(oauthTrial?.agent_provenance?.authentication).toBe('claude-oauth');
 
             await apiKeyAgent.dispose();
+            await oauthAgent.dispose();
+        } finally {
+            if (originalStandalone === undefined) delete process.env.PATHGRADE_STANDALONE;
+            else process.env.PATHGRADE_STANDALONE = originalStandalone;
+        }
+    });
+
+    it('records Codex native runtime provenance after its bundled version probe', async () => {
+        const workspaceDir = path.join(os.tmpdir(), `pg-codex-provenance-${Math.random().toString(36).slice(2)}`);
+        tempPaths.push(workspaceDir);
+        await fs.ensureDir(workspaceDir);
+        const originalStandalone = process.env.PATHGRADE_STANDALONE;
+        process.env.PATHGRADE_STANDALONE = '1';
+
+        try {
+            const agent = await createAgent({
+                agent: 'codex', workspace: workspaceDir, env: { OPENAI_API_KEY: 'test-key' },
+            });
+            const result = await evaluate(agent, [{
+                type: 'check', name: 'passes', weight: 1, fn: () => true,
+            }]);
+
+            expect(result.trial?.agent_provenance).toMatchObject({
+                agent: 'codex',
+                transport: 'app-server',
+                model: { id: 'gpt-5.4', source: 'pathgrade-default' },
+                runtime: {
+                    package: '@openai/codex',
+                    package_version: '0.144.0',
+                    embedded_binary_version: '0.144.0',
+                    provenance: 'bundled',
+                },
+            });
+
+            await agent.dispose();
         } finally {
             if (originalStandalone === undefined) delete process.env.PATHGRADE_STANDALONE;
             else process.env.PATHGRADE_STANDALONE = originalStandalone;
@@ -165,6 +201,40 @@ describe('evaluate.fromSnapshot', () => {
         }]);
 
         expect(replayed.trial?.agent_provenance).toBeUndefined();
+    });
+
+    it('rejects snapshots with an invalid provenance model union', async () => {
+        const snapshotDir = path.join(os.tmpdir(), `pg-from-snapshot-invalid-provenance-${Math.random().toString(36).slice(2)}`);
+        tempPaths.push(snapshotDir);
+        await fs.ensureDir(snapshotDir);
+        const snapshotPath = path.join(snapshotDir, 'run-snapshot.json');
+        await fs.writeJSON(snapshotPath, {
+            version: 1,
+            timestamp: '2026-01-01T00:00:00.000Z',
+            agent: 'claude',
+            agent_provenance: {
+                agent: 'claude',
+                transport: 'native',
+                model: { id: null, source: 'user' },
+                authentication: 'api-key',
+                runtime: {
+                    package: '@anthropic-ai/claude-agent-sdk',
+                    package_version: '0.2.116',
+                    provenance: 'bundled',
+                },
+            },
+            messages: [],
+            log: [],
+            toolEvents: [],
+            turnTimings: [],
+            conversationResult: { turns: 0, completionReason: 'until', turnTimings: [] },
+            workspace: null,
+        });
+
+        await expect(evaluate.fromSnapshot(snapshotPath, [])).rejects.toMatchObject({
+            name: 'SnapshotParseError',
+            message: 'Snapshot agent_provenance is invalid',
+        });
     });
 
     it('matches live deterministic scorer results for the same artifacts', async () => {

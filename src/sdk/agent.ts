@@ -507,6 +507,7 @@ async function buildStandaloneAgentInvocationProvenance(input: {
         runtime: {
             package: '@openai/codex',
             package_version: runtime.packageVersion,
+            embedded_binary_version: runtime.nativeVersion,
             provenance: runtime.provenance,
         },
     };

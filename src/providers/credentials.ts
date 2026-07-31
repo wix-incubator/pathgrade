@@ -129,6 +129,7 @@ async function resolveStandaloneClaude(
     const result = await resolveClaude(userEnv, ports);
     if (
         userEnv.ANTHROPIC_API_KEY
+        || userEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
         || result.env.ANTHROPIC_API_KEY
         || result.env.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
     ) {

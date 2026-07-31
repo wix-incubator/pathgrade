@@ -200,11 +200,12 @@ function isAgentInvocationProvenance(value: unknown): value is AgentInvocationPr
     const record = value as Record<string, unknown>;
     const model = record.model as Record<string, unknown> | undefined;
     const runtime = record.runtime as Record<string, unknown> | undefined;
-    const hasValidModelId = typeof model?.id === 'string' || model?.id === null;
+    const hasValidModel = (typeof model?.id === 'string'
+        && (model.source === 'user' || model.source === 'pathgrade-default'))
+        || (model?.id === null && model.source === 'provider-default');
     return (record.agent === 'claude' || record.agent === 'codex' || record.agent === 'cursor')
         && (record.transport === 'native' || record.transport === 'exec' || record.transport === 'app-server')
-        && hasValidModelId
-        && (model?.source === 'user' || model?.source === 'pathgrade-default' || model?.source === 'provider-default')
+        && hasValidModel
         && (record.authentication === 'api-key' || record.authentication === 'claude-oauth')
         && typeof runtime?.package === 'string'
         && typeof runtime?.package_version === 'string'
