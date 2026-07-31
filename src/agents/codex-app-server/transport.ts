@@ -347,12 +347,41 @@ export function spawnAppServerTransport(
     // this, a codex auth or connectivity failure just shows up as an empty
     // turn with no explanation — especially painful in CI logs.
     let stderrBuf = '';
+    let stderrPending = '';
     const STDERR_CAP_BYTES = 8_192;
+    const apiKey = env.OPENAI_API_KEY;
+    const appendStderr = (value: string): void => {
+        if (stderrBuf.length >= STDERR_CAP_BYTES) return;
+        stderrBuf += value;
+        if (stderrBuf.length > STDERR_CAP_BYTES) stderrBuf = stderrBuf.slice(0, STDERR_CAP_BYTES);
+    };
+    const consumeStderr = (flush: boolean): void => {
+        if (!apiKey) {
+            appendStderr(stderrPending);
+            stderrPending = '';
+            return;
+        }
+        let secretIndex = stderrPending.indexOf(apiKey);
+        while (secretIndex !== -1) {
+            appendStderr(stderrPending.slice(0, secretIndex));
+            appendStderr('[redacted]');
+            stderrPending = stderrPending.slice(secretIndex + apiKey.length);
+            secretIndex = stderrPending.indexOf(apiKey);
+        }
+        if (flush) {
+            appendStderr(stderrPending);
+            stderrPending = '';
+            return;
+        }
+        const retainedLength = Math.min(stderrPending.length, apiKey.length - 1);
+        const emittedLength = stderrPending.length - retainedLength;
+        appendStderr(stderrPending.slice(0, emittedLength));
+        stderrPending = stderrPending.slice(emittedLength);
+    };
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => {
-        if (stderrBuf.length >= STDERR_CAP_BYTES) return;
-        stderrBuf += chunk;
-        if (stderrBuf.length > STDERR_CAP_BYTES) stderrBuf = stderrBuf.slice(0, STDERR_CAP_BYTES);
+        stderrPending += chunk;
+        consumeStderr(false);
     });
 
     const transport = createNdjsonTransportInternal({
@@ -362,6 +391,7 @@ export function spawnAppServerTransport(
     });
 
     child.on('exit', (exitCode, signal) => {
+        consumeStderr(true);
         if (stderrBuf.trim().length > 0) {
             console.error(
                 `[codex app-server pid=${child.pid}] exited with code=${exitCode} signal=${signal}. stderr:\n${stderrBuf}`,

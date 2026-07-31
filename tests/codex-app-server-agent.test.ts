@@ -347,6 +347,74 @@ describe('CodexAppServerAgent — handshake', () => {
         }
     });
 
+    it('retries the full standalone handshake after login failure and closes the failed transport', async () => {
+        vi.stubEnv('PATHGRADE_STANDALONE', '1');
+        const first = createServerSim();
+        const second = createServerSim();
+        const firstClose = vi.spyOn(first.transport, 'close');
+        let factoryCalls = 0;
+        let session: Awaited<ReturnType<CodexAppServerAgent['createSession']>> | undefined;
+        let retryTurn: ReturnType<NonNullable<typeof session>['reply']> | undefined;
+
+        try {
+            const agent = new CodexAppServerAgent({
+                createTransport: async () => {
+                    factoryCalls += 1;
+                    const sim = factoryCalls === 1 ? first : second;
+                    return createAppServerSessionHandle({ transport: sim.transport, child: null });
+                },
+            });
+            session = await agent.createSession(
+                {
+                    handle: '/tmp/ws',
+                    workspacePath: '/tmp/ws',
+                    env: { OPENAI_API_KEY: 'fixture-api-key' },
+                },
+                async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+                { askBus: createAskBus({ askUserTimeoutMs: 1_000 }) },
+            );
+
+            const failedTurn = session.start({ message: 'first' });
+            const firstLogin = await first.awaitRequest('account/login/start');
+            first.sendError(firstLogin.id, 401, 'login rejected');
+            await expect(failedTurn).rejects.toThrow('login rejected');
+            expect(first.clientMethods).not.toContain('thread/start');
+
+            retryTurn = session.reply({ message: 'second' });
+            const retryOutcome = await Promise.race([
+                second.awaitRequest('initialize').then(() => ({ kind: 'initialize' as const })),
+                first.awaitRequest('thread/start').then((request) => ({
+                    kind: 'bypassed' as const,
+                    request,
+                })),
+            ]);
+            if (retryOutcome.kind === 'bypassed') {
+                first.sendResult(retryOutcome.request.id, { thread: { id: 'bypassed-thread' } });
+                const bypassedTurn = await first.awaitRequest('turn/start');
+                first.sendResult(bypassedTurn.id, { turnId: 'bypassed-turn' });
+                first.sendNotification('turn/completed', {});
+                await retryTurn;
+            }
+            expect(retryOutcome.kind).toBe('initialize');
+
+            await second.awaitNotification('initialized');
+            const secondLogin = await second.awaitRequest('account/login/start');
+            expect(second.clientMethods).not.toContain('thread/start');
+            second.sendResult(secondLogin.id, { type: 'apiKey' });
+            await runSingleTrivialTurn(second);
+            if (retryTurn) await retryTurn;
+
+            expect(factoryCalls).toBe(2);
+            expect(firstClose).toHaveBeenCalledTimes(1);
+        } finally {
+            await session?.dispose();
+            await retryTurn?.catch(() => undefined);
+            await first.transport.close();
+            await second.transport.close();
+            vi.unstubAllEnvs();
+        }
+    });
+
     it('passes the isolated runtime env to the app-server transport factory', async () => {
         const sim = createServerSim();
         let capturedCtx: unknown;

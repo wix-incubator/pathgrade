@@ -423,19 +423,20 @@ export class CodexAppServerAgent extends BaseAgent {
                             env: ctx.env,
                         });
                     });
-            handle = await factory({ workspacePath, env: runtimeEnv });
-            const transport = handle.transport;
-            transport.onServerRequest((req) => this.dispatchServerRequest(req, {
+            const candidate = await factory({ workspacePath, env: runtimeEnv });
+            const transport = candidate.transport;
+            closeInfo = null;
+            const serverRequestOff = transport.onServerRequest((req) => this.dispatchServerRequest(req, {
                 transport,
                 askBus,
                 activeTurn: () => activeTurn,
                 onPermissionGrant: this.deps.onPermissionGrant,
                 mcpSafety: options?.mcpSafety,
             }));
-            transport.onClose((info) => {
+            const closeOff = transport.onClose((info) => {
                 closeInfo = info;
             });
-            transport.onNotification((n) => {
+            const notificationOff = transport.onNotification((n) => {
                 if (process.env.PATHGRADE_CODEX_DEBUG) {
                     console.error(`[codex app-server] notification method=${n.method} params=${JSON.stringify(n.params).slice(0, 300)}`);
                 }
@@ -456,18 +457,32 @@ export class CodexAppServerAgent extends BaseAgent {
                 if (!params?.item) return;
                 projectItemIntoTurn(params.item, turn);
             });
-            await transport.sendRequest('initialize', {
-                clientInfo: { name: 'pathgrade', version: '0.5.0', title: null },
-                capabilities: { experimentalApi: true, optOutNotificationMethods: null },
-            });
-            // Upstream ClientNotification = { method: "initialized" }: send it
-            // before any thread/start so the handshake matches the v0.144
-            // contract and is forward-compatible with servers that enforce it.
-            transport.sendNotification('initialized', null);
-            if (standalone) {
-                await loginCodexAppServerWithApiKey(transport, runtimeEnv.OPENAI_API_KEY ?? '');
+            try {
+                await transport.sendRequest('initialize', {
+                    clientInfo: { name: 'pathgrade', version: '0.5.0', title: null },
+                    capabilities: { experimentalApi: true, optOutNotificationMethods: null },
+                });
+                // Upstream ClientNotification = { method: "initialized" }: send it
+                // before any thread/start so the handshake matches the v0.144
+                // contract and is forward-compatible with servers that enforce it.
+                transport.sendNotification('initialized', null);
+                if (standalone) {
+                    await loginCodexAppServerWithApiKey(transport, runtimeEnv.OPENAI_API_KEY ?? '');
+                }
+                handle = candidate;
+                return transport;
+            } catch (error) {
+                serverRequestOff();
+                closeOff();
+                notificationOff();
+                closeInfo = null;
+                try {
+                    await candidate.close();
+                } catch {
+                    // Preserve the handshake failure as the actionable error.
+                }
+                throw error;
             }
-            return transport;
         };
 
         const runTurn = async (message: string): Promise<AgentTurnResult> => {

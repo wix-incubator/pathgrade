@@ -176,6 +176,8 @@ describe('vendored codex-app-server protocol types', () => {
     it('Other vendored types compile standalone', () => {
         // Ensure standalone vendored types import without errors.
         const thread: ThreadStartParams = { threadSource: 'pathgrade' };
+        // @ts-expect-error — rust-v0.144.0 ThreadSource is a string.
+        const invalidThreadSource: ThreadStartParams = { threadSource: { source: 'pathgrade' } };
         const opt: ToolRequestUserInputOption = { label: 'x', description: 'y' };
         const perm: PermissionsRequestApprovalParams = {
             threadId: 't', turnId: 'turn', itemId: 'item', cwd: '/tmp', reason: null, permissions: null,
@@ -194,5 +196,6 @@ describe('vendored codex-app-server protocol types', () => {
         };
         const turn: TurnCompletedNotification = { threadId: 't', turn: null };
         expect([thread.threadSource, opt.label, perm.environmentId, perm.startedAtMs, dyn.tool, elicit.mode, turn.threadId]).toBeDefined();
+        void invalidThreadSource;
     });
 });

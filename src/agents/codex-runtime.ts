@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 const CODEX_VERSION = '0.144.0' as const;
-const require = createRequire(import.meta.url);
+const pathgradeRequire = createRequire(import.meta.url);
 
 export interface BundledCodexCommand {
     executable: string;
@@ -33,7 +33,8 @@ function packagingDefect(message: string): Error {
     return new Error(`Pathgrade packaging defect: bundled Codex ${message}`);
 }
 
-function resolveNativeCodexArtifact(): void {
+/** @internal Exported for package-layout regression coverage. */
+export function resolveBundledCodexNativeArtifact(packageJsonPath: string): string {
     const target = `${process.platform}:${process.arch}`;
     const platformPackageByTarget: Record<string, string> = {
         'darwin:x64': '@openai/codex-darwin-x64',
@@ -47,7 +48,8 @@ function resolveNativeCodexArtifact(): void {
     }
     let artifactPackageJson: string;
     try {
-        artifactPackageJson = require.resolve(`${platformPackage}/package.json`);
+        const codexRequire = createRequire(packageJsonPath);
+        artifactPackageJson = codexRequire.resolve(`${platformPackage}/package.json`);
     } catch {
         throw packagingDefect(`native artifact ${platformPackage} is unavailable`);
     }
@@ -68,6 +70,7 @@ function resolveNativeCodexArtifact(): void {
     if (!existsSync(executable)) {
         throw packagingDefect(`native artifact ${platformPackage} is unavailable`);
     }
+    return executable;
 }
 
 export function resolveBundledCodexCommand(): BundledCodexCommand {
@@ -79,7 +82,7 @@ export function resolveBundledCodexCommand(): BundledCodexCommand {
 
     let packageJsonPath: string;
     try {
-        packageJsonPath = require.resolve('@openai/codex/package.json');
+        packageJsonPath = pathgradeRequire.resolve('@openai/codex/package.json');
     } catch {
         throw packagingDefect('@openai/codex is unavailable');
     }
@@ -99,7 +102,7 @@ export function resolveBundledCodexCommand(): BundledCodexCommand {
     }
     const launcherPath = resolve(dirname(packageJsonPath), launcher);
     if (!existsSync(launcherPath)) throw packagingDefect('launcher is unavailable');
-    resolveNativeCodexArtifact();
+    resolveBundledCodexNativeArtifact(packageJsonPath);
 
     return {
         executable: process.execPath,

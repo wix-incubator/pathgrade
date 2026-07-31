@@ -17,7 +17,7 @@ export type JsonValue = unknown;
 export type ApprovalsReviewer = unknown;
 export type AskForApproval = unknown;
 export type ThreadStartSource = unknown;
-export type ThreadSource = unknown;
+export type ThreadSource = string;
 
 export type ThreadStartParams = {
     model?: string | null;
