@@ -188,7 +188,16 @@ function currentFileContext(): CaseContext | null {
 function recordVitestResult(result: RecordedEvalResult, agent: Agent): void {
     const current = getCurrentCaseContext();
     const taskId = currentTaskId();
-    const owner = lifecycleCore.getAgentOwner(agent);
+    let owner = lifecycleCore.getAgentOwner(agent);
+    if (!owner && current.status === 'active') {
+        owner = current.context.scope === 'runner-case'
+            ? { type: 'runner-case', caseId: current.context.caseId }
+            : { type: 'runner-suite-shared', caseId: current.context.caseId };
+        lifecycleCore.registerAgent(agent, owner);
+    } else if (!owner && taskId) {
+        owner = { type: 'runner-case', caseId: taskId };
+        lifecycleCore.registerAgent(agent, owner);
+    }
     if (owner?.type !== 'runner-case' && (current.status !== 'active' || current.context.scope !== 'runner-case')) {
         if (!taskId) {
             lifecycleCore.recordResult(result, agent);
