@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
     resolveBundledCodexCommand,
+    resolveBundledCodexNativeArtifact,
     verifyBundledCodexRuntime,
 } from '../src/agents/codex-runtime.js';
 
@@ -30,65 +31,27 @@ describe('bundled Codex runtime', () => {
         expect(runtime.executable).toBe(process.execPath);
         expect(runtime.argsPrefix[0]).toMatch(/@openai[/\\]codex[/\\]bin[/\\]codex\.js$/);
         expect(runtime.packageVersion).toBe('0.144.0');
+        expect(runtime.nativeVersion).toBe('0.144.0');
         expect(runtime.provenance).toBe('bundled');
     });
 
-    it('resolves the native artifact from a non-hoisted Codex installation', async () => {
-        const fixtureRoot = mkdtempSync(join(tmpdir(), 'pathgrade-codex-non-hoisted-'));
-        const codexRoot = join(fixtureRoot, 'node_modules', '@openai', 'codex');
-        const packageByTarget: Record<string, { packageName: string; triple: string }> = {
-            'darwin:x64': {
-                packageName: '@openai/codex-darwin-x64',
-                triple: 'x86_64-apple-darwin',
-            },
-            'darwin:arm64': {
-                packageName: '@openai/codex-darwin-arm64',
-                triple: 'aarch64-apple-darwin',
-            },
-            'linux:x64': {
-                packageName: '@openai/codex-linux-x64',
-                triple: 'x86_64-unknown-linux-musl',
-            },
-            'linux:arm64': {
-                packageName: '@openai/codex-linux-arm64',
-                triple: 'aarch64-unknown-linux-musl',
-            },
-        };
-        const target = packageByTarget[`${process.platform}:${process.arch}`]!;
-        const platformRoot = join(
-            codexRoot,
-            'node_modules',
-            ...target.packageName.split('/'),
-        );
-        const nativeExecutable = join(platformRoot, 'vendor', target.triple, 'bin', 'codex');
-
+    it('resolves the native artifact from a non-hoisted Codex installation', () => {
+        const fixture = createCodexFixture('0.144.0');
         try {
-            mkdirSync(join(codexRoot, 'bin'), { recursive: true });
-            mkdirSync(join(platformRoot, 'vendor', target.triple, 'bin'), { recursive: true });
-            writeFileSync(
-                join(codexRoot, 'package.json'),
-                JSON.stringify({
-                    name: '@openai/codex',
-                    version: '0.144.0',
-                    bin: { codex: 'bin/codex.js' },
-                }),
-            );
-            writeFileSync(join(codexRoot, 'bin', 'codex.js'), '');
-            writeFileSync(
-                join(platformRoot, 'package.json'),
-                JSON.stringify({ name: target.packageName, version: '0.144.0' }),
-            );
-            writeFileSync(nativeExecutable, '');
-
-            const runtimeModule = await import('../src/agents/codex-runtime.js') as unknown as {
-                resolveBundledCodexNativeArtifact?: (packageJsonPath: string) => string;
-            };
-            expect(runtimeModule.resolveBundledCodexNativeArtifact).toBeTypeOf('function');
-            expect(runtimeModule.resolveBundledCodexNativeArtifact?.(
-                join(codexRoot, 'package.json'),
-            )).toBe(realpathSync(nativeExecutable));
+            expect(resolveBundledCodexNativeArtifact(fixture.packageJsonPath))
+                .toBe(realpathSync(fixture.nativeExecutable));
         } finally {
-            rmSync(fixtureRoot, { recursive: true, force: true });
+            fixture.cleanup();
+        }
+    });
+
+    it('rejects a mismatched native package version before reporting provenance', () => {
+        const fixture = createCodexFixture('0.143.0');
+        try {
+            expect(() => resolveBundledCodexNativeArtifact(fixture.packageJsonPath))
+                .toThrow(/native artifact version must be 0\.144\.0-(darwin|linux)-(arm64|x64)/);
+        } finally {
+            fixture.cleanup();
         }
     });
 
@@ -101,3 +64,65 @@ describe('bundled Codex runtime', () => {
             });
     });
 });
+
+function createCodexFixture(nativeVersion: string): {
+    packageJsonPath: string;
+    nativeExecutable: string;
+    cleanup: () => void;
+} {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'pathgrade-codex-non-hoisted-'));
+    const codexRoot = join(fixtureRoot, 'node_modules', '@openai', 'codex');
+    const packageByTarget: Record<string, { packageName: string; triple: string; versionSuffix: string }> = {
+        'darwin:x64': {
+            packageName: '@openai/codex-darwin-x64',
+            triple: 'x86_64-apple-darwin',
+            versionSuffix: 'darwin-x64',
+        },
+        'darwin:arm64': {
+            packageName: '@openai/codex-darwin-arm64',
+            triple: 'aarch64-apple-darwin',
+            versionSuffix: 'darwin-arm64',
+        },
+        'linux:x64': {
+            packageName: '@openai/codex-linux-x64',
+            triple: 'x86_64-unknown-linux-musl',
+            versionSuffix: 'linux-x64',
+        },
+        'linux:arm64': {
+            packageName: '@openai/codex-linux-arm64',
+            triple: 'aarch64-unknown-linux-musl',
+            versionSuffix: 'linux-arm64',
+        },
+    };
+    const target = packageByTarget[`${process.platform}:${process.arch}`]!;
+    const platformRoot = join(
+        codexRoot,
+        'node_modules',
+        ...target.packageName.split('/'),
+    );
+    const packageJsonPath = join(codexRoot, 'package.json');
+    const nativeExecutable = join(platformRoot, 'vendor', target.triple, 'bin', 'codex');
+
+    mkdirSync(join(codexRoot, 'bin'), { recursive: true });
+    mkdirSync(join(platformRoot, 'vendor', target.triple, 'bin'), { recursive: true });
+    writeFileSync(packageJsonPath, JSON.stringify({
+        name: '@openai/codex',
+        version: '0.144.0',
+        bin: { codex: 'bin/codex.js' },
+    }));
+    writeFileSync(join(codexRoot, 'bin', 'codex.js'), '');
+    writeFileSync(
+        join(platformRoot, 'package.json'),
+        JSON.stringify({
+            name: '@openai/codex',
+            version: `${nativeVersion}-${target.versionSuffix}`,
+        }),
+    );
+    writeFileSync(nativeExecutable, '');
+
+    return {
+        packageJsonPath,
+        nativeExecutable,
+        cleanup: () => rmSync(fixtureRoot, { recursive: true, force: true }),
+    };
+}

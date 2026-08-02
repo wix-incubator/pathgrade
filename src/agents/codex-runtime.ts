@@ -17,7 +17,8 @@ const pathgradeRequire = createRequire(import.meta.url);
 export interface BundledCodexCommand {
     executable: string;
     argsPrefix: string[];
-    packageVersion: string;
+    packageVersion: typeof CODEX_VERSION;
+    nativeVersion: typeof CODEX_VERSION;
     provenance: 'bundled';
 }
 
@@ -35,6 +36,13 @@ function packagingDefect(message: string): Error {
 
 /** @internal Exported for package-layout regression coverage. */
 export function resolveBundledCodexNativeArtifact(packageJsonPath: string): string {
+    return resolveBundledCodexNativeArtifactMetadata(packageJsonPath).executable;
+}
+
+function resolveBundledCodexNativeArtifactMetadata(packageJsonPath: string): {
+    executable: string;
+    version: typeof CODEX_VERSION;
+} {
     const target = `${process.platform}:${process.arch}`;
     const platformPackageByTarget: Record<string, string> = {
         'darwin:x64': '@openai/codex-darwin-x64',
@@ -53,6 +61,22 @@ export function resolveBundledCodexNativeArtifact(packageJsonPath: string): stri
     } catch {
         throw packagingDefect(`native artifact ${platformPackage} is unavailable`);
     }
+    let artifactMetadata: { version?: unknown };
+    try {
+        artifactMetadata = JSON.parse(readFileSync(artifactPackageJson, 'utf8')) as { version?: unknown };
+    } catch {
+        throw packagingDefect('native artifact metadata is unreadable');
+    }
+    const artifactVersionSuffixByTarget: Record<string, string> = {
+        'darwin:x64': 'darwin-x64',
+        'darwin:arm64': 'darwin-arm64',
+        'linux:x64': 'linux-x64',
+        'linux:arm64': 'linux-arm64',
+    };
+    const expectedArtifactVersion = `${CODEX_VERSION}-${artifactVersionSuffixByTarget[target]}`;
+    if (artifactMetadata.version !== expectedArtifactVersion) {
+        throw packagingDefect(`native artifact version must be ${expectedArtifactVersion}`);
+    }
     const targetTripleByTarget: Record<string, string> = {
         'darwin:x64': 'x86_64-apple-darwin',
         'darwin:arm64': 'aarch64-apple-darwin',
@@ -70,7 +94,7 @@ export function resolveBundledCodexNativeArtifact(packageJsonPath: string): stri
     if (!existsSync(executable)) {
         throw packagingDefect(`native artifact ${platformPackage} is unavailable`);
     }
-    return executable;
+    return { executable, version: CODEX_VERSION };
 }
 
 export function resolveBundledCodexCommand(): BundledCodexCommand {
@@ -102,12 +126,13 @@ export function resolveBundledCodexCommand(): BundledCodexCommand {
     }
     const launcherPath = resolve(dirname(packageJsonPath), launcher);
     if (!existsSync(launcherPath)) throw packagingDefect('launcher is unavailable');
-    resolveBundledCodexNativeArtifact(packageJsonPath);
+    const nativeArtifact = resolveBundledCodexNativeArtifactMetadata(packageJsonPath);
 
     return {
         executable: process.execPath,
         argsPrefix: [launcherPath],
         packageVersion: CODEX_VERSION,
+        nativeVersion: nativeArtifact.version,
         provenance: 'bundled',
     };
 }

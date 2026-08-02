@@ -8,7 +8,7 @@ import {
 import { resolveCredentials } from '../src/providers/credentials.js';
 
 describe('standalone run provenance', () => {
-    it('builds exact verified package and platform provenance', async () => {
+    it('builds the exact bundled package and platform manifest', async () => {
         await expect(buildStandaloneRunProvenance()).resolves.toMatchObject({
             mode: 'standalone',
             package_version: '1.0.1',
