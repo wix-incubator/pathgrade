@@ -4,6 +4,7 @@ import type { PathgradePluginOptions } from '../../sdk/types.js';
 import { PathgradeReporter } from './reporter.js';
 import { discoverPathgradeEvalFiles } from '../../evals/discovery.js';
 import { DEFAULT_EVAL_EXCLUDE, DEFAULT_EVAL_INCLUDE } from '../../config/pathgrade.js';
+import { isStandaloneMode } from '../../standalone/mode.js';
 
 export type { PathgradePluginOptions };
 
@@ -50,7 +51,7 @@ export function pathgrade(opts?: PathgradePluginOptions): any {
                     testTimeout: (timeoutSec + 30) * 1000,
                     setupFiles: [resolveSetupFile()],
                     reporters: [
-                        'default',
+                        isStandaloneMode(process.env) ? 'minimal' : 'default',
                         new PathgradeReporter(opts),
                     ],
                 },

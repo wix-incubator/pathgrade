@@ -28,6 +28,8 @@ Evals may import from root `vitest`, `@wix/pathgrade`, and the documented standa
 
 Standalone ignores project Vitest configuration and does not load `.env`. Its temporary HOME, cache, and workspace isolation prevents accidental project mutation, but local workspace isolation is not a security sandbox. Jest, Cursor, Codex `exec`, Docker, declarative specs, recording, and baselines are deferred beyond standalone v0.
 
+Standalone uses a compact, color-aware progress view in interactive terminals and stable line-oriented output in CI or redirected streams. Use `--verbose` for an agent-labeled live trace, `--quiet` for failures and the final status only, or `--diagnostics` for expanded final diagnostics. `--quiet` and `--verbose` are mutually exclusive. Color is semantic and never replaces status text; `NO_COLOR` or `FORCE_COLOR=0` disables it.
+
 Existing project-local `@wix/pathgrade` commands remain unchanged unless you select the explicit `standalone` namespace; project-local configuration, `.env`, adapters, and executable overrides retain their current behavior. This release installs and publishes only `@wix/pathgrade`: no unscoped `pathgrade` package is installed or published.
 
 ## Quick Start

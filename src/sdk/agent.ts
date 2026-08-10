@@ -409,12 +409,13 @@ function slugify(s: string): string {
         .toLowerCase();
 }
 
-function resolveCaseDebugContext(): { name: string; dir: string } {
+function resolveCaseContext(): { displayName: string; debugName: string; dir: string } {
     const current = getCurrentCaseContext();
-    if (current.status !== 'active') return { name: '', dir: '' };
+    if (current.status !== 'active') return { displayName: '', debugName: '', dir: '' };
 
     return {
-        name: current.context.caseName ? slugify(current.context.caseName) : '',
+        displayName: current.context.caseName ?? '',
+        debugName: current.context.caseName ? slugify(current.context.caseName) : '',
         dir: current.context.filePath ? path.dirname(current.context.filePath) : '',
     };
 }
@@ -431,7 +432,10 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
     const timeoutSetting = opts.timeout ?? 300;
 
     // Capture runner context now; adapters own installation and restoration.
-    const testCtx = opts.debug ? resolveCaseDebugContext() : { name: '', dir: '' };
+    const caseContext = resolveCaseContext();
+    const testCtx = opts.debug
+        ? { name: caseContext.debugName, dir: caseContext.dir }
+        : { name: '', dir: '' };
 
     const { timeout: _, mcpMock, mcpConfigFile, agent: __, debug: ___, model: ____, transport: _____, mcpSafety: ______, ...rest } = opts;
     const workspace = await prepareWorkspace({
@@ -455,7 +459,8 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
         const verbose = createVerboseEmitter({
             enabled: process.env.PATHGRADE_VERBOSE === '1',
             sink: verboseSinkOverride ?? undefined,
-            testName: testCtx.name || undefined,
+            testName: caseContext.displayName || undefined,
+            ...(standalone ? { agentName } : {}),
         });
 
         const provenance = standalone

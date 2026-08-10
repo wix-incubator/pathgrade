@@ -12,6 +12,8 @@ import {
 import { classifyStandaloneVitestFailure } from './diagnostics.js';
 import { buildStandaloneRunProvenance, encodeStandaloneRunProvenance, STANDALONE_PROVENANCE_ENV } from './provenance.js';
 import { resolveBundledVitestCli, type BundledVitestRuntime } from './vitest-runtime.js';
+import { StandaloneOutputController } from './ui/output-controller.js';
+import { createStandaloneTheme } from './ui/theme.js';
 
 export { resolveBundledVitestCli, type BundledVitestRuntime } from './vitest-runtime.js';
 
@@ -55,6 +57,7 @@ export function createStandaloneVitestInvocationAdapter(input: {
             try {
                 const runtime = resolveRuntime();
                 const payload = buildPayload(input.config, runInput, cacheDir);
+                const outerTheme = createStandaloneTheme(process.stdout, runInput.env);
                 const provenance = await buildStandaloneRunProvenance();
                 const result = await spawn({
                     command: process.execPath,
@@ -72,6 +75,8 @@ export function createStandaloneVitestInvocationAdapter(input: {
                         [STANDALONE_VITEST_PAYLOAD_ENV]:
                             encodeStandaloneVitestPayload(payload),
                         [STANDALONE_PROVENANCE_ENV]: encodeStandaloneRunProvenance(provenance),
+                        PATHGRADE_REPORTER_MODE: payload.reporter ?? 'cli',
+                        PATHGRADE_UI_COLOR: outerTheme.color ? '1' : '0',
                     },
                 });
                 const normalized = typeof result === 'number'
@@ -119,21 +124,27 @@ async function defaultSpawnStandaloneVitest(
 ): Promise<SpawnStandaloneVitestResult> {
     return await new Promise((resolve, reject) => {
         const child = spawnChild(request.command, request.argv, {
-            stdio: ['inherit', 'pipe', 'pipe'],
+            stdio: ['inherit', 'pipe', 'pipe', 'pipe'],
             cwd: request.cwd,
             env: request.env,
         });
         let retainedStderr: Buffer = Buffer.alloc(0);
+        const output = new StandaloneOutputController(request.env);
 
         child.stdout?.on('data', (chunk: Buffer | string) => {
-            process.stdout.write(chunk);
+            output.stdout(chunk);
         });
         child.stderr?.on('data', (chunk: Buffer | string) => {
-            process.stderr.write(chunk);
+            output.stderr(chunk);
             retainedStderr = retainTail(retainedStderr, chunk);
         });
-        child.once('error', reject);
+        child.stdio[3]?.on('data', (chunk: Buffer | string) => output.protocol(chunk));
+        child.once('error', error => {
+            output.dispose();
+            reject(error);
+        });
         child.once('close', (code) => {
+            output.finish(code ?? 1);
             resolve({
                 exitCode: code ?? 1,
                 stderr: retainedStderr.toString('utf8'),

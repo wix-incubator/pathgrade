@@ -160,6 +160,34 @@ if (!isGateChild) describe('live-smoke gate contract', () => {
             ANTHROPIC_API_KEY: 'claude-only-key',
         }), 'OPENAI_API_KEY');
     });
+
+    it('forwards only the selected provider base URL into the isolated live run', () => {
+        const installation = {
+            home: '/isolated/home',
+            codexHome: '/isolated/codex',
+            cache: '/isolated/cache',
+            temporary: '/isolated/tmp',
+            shims: '/isolated/shims',
+            debugDir: '/isolated/debug',
+        } as ReturnType<typeof createInstallation>;
+        const hostEnv = {
+            PATH: '/host/bin',
+            ANTHROPIC_BASE_URL: 'https://anthropic.example.test',
+            OPENAI_BASE_URL: 'https://openai.example.test/v1',
+        };
+        const claude = liveEnvironment('claude', installation, 'claude-key', hostEnv);
+        const codex = liveEnvironment('codex', installation, 'codex-key', hostEnv);
+        expect(claude).toMatchObject({
+            ANTHROPIC_API_KEY: 'claude-key',
+            ANTHROPIC_BASE_URL: 'https://anthropic.example.test',
+        });
+        expect(claude.OPENAI_BASE_URL).toBe('');
+        expect(codex).toMatchObject({
+            OPENAI_API_KEY: 'codex-key',
+            OPENAI_BASE_URL: 'https://openai.example.test/v1',
+        });
+        expect(codex.ANTHROPIC_BASE_URL).toBe('');
+    });
 });
 
 afterEach(() => {
@@ -241,15 +269,16 @@ function liveEnvironment(
     provider: Provider,
     installation: ReturnType<typeof createInstallation>,
     secret: string,
+    hostEnv: NodeJS.ProcessEnv = process.env,
 ) {
     const env = {
-        ...withoutHostCredentials(process.env),
+        ...withoutHostCredentials(hostEnv),
         HOME: installation.home,
         CODEX_HOME: installation.codexHome,
         XDG_CACHE_HOME: installation.cache,
         npm_config_cache: installation.cache,
         TMPDIR: installation.temporary,
-        PATH: `${installation.shims}${path.delimiter}${process.env.PATH ?? ''}`,
+        PATH: `${installation.shims}${path.delimiter}${hostEnv.PATH ?? ''}`,
         PATHGRADE_LIVE_DEBUG_DIR: installation.debugDir,
         PATHGRADE_LIVE_PROVIDER_CASE: provider,
     };
@@ -257,11 +286,13 @@ function liveEnvironment(
         return {
             ...env,
             ANTHROPIC_API_KEY: secret,
+            ...(hostEnv.ANTHROPIC_BASE_URL ? { ANTHROPIC_BASE_URL: hostEnv.ANTHROPIC_BASE_URL } : {}),
         };
     }
     return {
         ...env,
         OPENAI_API_KEY: secret,
+        ...(hostEnv.OPENAI_BASE_URL ? { OPENAI_BASE_URL: hostEnv.OPENAI_BASE_URL } : {}),
     };
 }
 
@@ -336,7 +367,7 @@ function assertTargetIsolation(installation: ReturnType<typeof createInstallatio
         ['.pathgrade/.gitignore', { type: 'file' }],
         ['.pathgrade/results.json', { type: 'file' }],
         ['.pathgrade/traces', { type: 'directory' }],
-        [`.pathgrade/traces/packed-${provider}-live-smoke.json`, { type: 'file' }],
+        [`.pathgrade/traces/live-eval-ts-packed-${provider}-live-smoke.json`, { type: 'file' }],
     ]);
     const createdFiles = assertExactTargetTree(target, baseline, expectedCreated);
     for (const filename of [...createdFiles, ...filesBelow(debugDir)]) {

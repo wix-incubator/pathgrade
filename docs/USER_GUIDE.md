@@ -81,6 +81,8 @@ Credentials and network access remain required for live Claude or Codex requests
 
 Temporary HOME, cache, and workspace directories isolate local state, but local workspace isolation is not a security sandbox. Jest, Cursor, Codex `exec`, Docker, declarative specs, recording, and baselines are deferred. Existing project-local commands remain unchanged unless the explicit `standalone` namespace is selected, and this release does not install or publish an unscoped `pathgrade` package.
 
+Interactive standalone runs use the compact Calm Runner view. CI and redirected streams automatically receive stable line-oriented output. Pass `--verbose` for an agent-labeled Live Trace, `--quiet` to keep only failures and the authoritative final status, or `--diagnostics` to expand final diagnostics. `--quiet` and `--verbose` cannot be combined. Semantic color is optional: set `NO_COLOR` or `FORCE_COLOR=0` to disable it without changing the displayed status words.
+
 ## Quick Start
 
 1. Create a `vitest.config.ts` with the Pathgrade Vitest adapter plugin:

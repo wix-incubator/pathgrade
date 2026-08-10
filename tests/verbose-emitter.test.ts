@@ -57,6 +57,19 @@ describe('createVerboseEmitter', () => {
         expect(stripAnsi(sink.lines[0])).toBe('  · read_file src/foo.ts');
     });
 
+    it('labels every standalone trace line with the agent', () => {
+        const sink = createFakeSink();
+        const emitter = createVerboseEmitter({ enabled: true, sink, agentName: 'codex' });
+        emitter.turnStart({ turn: 1, kind: 'agent_start', message: 'inspect' });
+        emitter.toolEvent({ action: 'read_file', summary: 'src/foo.ts' });
+        emitter.conversationEnd({ reason: 'done', turns: 1, durationMs: 10 });
+        expect(sink.lines.map(stripAnsi)).toEqual([
+            'CODEX   TURN 1 [agent_start] "inspect"',
+            'CODEX   TOOL read_file src/foo.ts',
+            'CODEX   END  reason=done  turns=1  0.0s',
+        ]);
+    });
+
     it('formats turnEnd as `← Turn N Ns Nl "preview"`', () => {
         const sink = createFakeSink();
         const emitter = createVerboseEmitter({ enabled: true, sink });

@@ -3,6 +3,7 @@ import { writePathgradeArtifacts } from '../reporting/artifacts.js';
 import { projectNormalizedRunSnapshotToReportInput } from './report-projection.js';
 import type { PathgradeSelectionReport } from '../types.js';
 import type { ReportSummaryGroup } from '../reporting/types.js';
+import type { ArtifactWriteResult, PathgradeReportBuildResult } from '../reporting/types.js';
 import type { StandaloneRunProvenance } from '../standalone/provenance.js';
 import type {
     AdapterDiscoveryInput,
@@ -32,6 +33,10 @@ export interface PathgradeRunOptions {
     writeEmptyReport?: boolean;
     log?: (message: string) => void;
     warn?: (message: string) => void;
+    onArtifactsWritten?: (input: {
+        built: PathgradeReportBuildResult;
+        artifacts: ArtifactWriteResult;
+    }) => void | Promise<void>;
 }
 
 export async function runWithAdapter(input: {
@@ -88,7 +93,8 @@ export async function runWithAdapter(input: {
             options.printSummary?.(built.summaries);
         }
 
-        await writePathgradeArtifacts(options.artifactRoot, built);
+        const artifacts = await writePathgradeArtifacts(options.artifactRoot, built);
+        await options.onArtifactsWritten?.({ built, artifacts });
         options.log?.(`results:${options.artifactRoot}`);
 
         if (mode === 'browser') {

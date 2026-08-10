@@ -24,6 +24,17 @@ describe('standalone Vitest config', () => {
         expect(config.cacheDir).toBe('/tmp/pathgrade-cache/vite');
         expect(config.test?.include).toEqual(['**/*.eval.ts']);
         expect(config.test?.exclude).toEqual(['**/fixtures/**']);
+        const previousMode = process.env.PATHGRADE_STANDALONE;
+        process.env.PATHGRADE_STANDALONE = '1';
+        try {
+            const pluginConfig = (config.plugins?.[0] as {
+                config(): { test: { reporters: unknown[] } };
+            }).config();
+            expect(pluginConfig.test.reporters[0]).toBe('minimal');
+        } finally {
+            if (previousMode === undefined) delete process.env.PATHGRADE_STANDALONE;
+            else process.env.PATHGRADE_STANDALONE = previousMode;
+        }
         expect(config.test?.coverage?.reportsDirectory)
             .toBe('/tmp/pathgrade-cache/coverage');
         expect(config.test?.attachmentsDir).toBe('/tmp/pathgrade-cache/attachments');

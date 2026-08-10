@@ -35,6 +35,7 @@ export interface VerboseEmitterOptions {
      * Helps the reader locate the beginning of each test block.
      */
     testName?: string;
+    agentName?: string;
 }
 
 export interface TurnStartArgs {
@@ -129,6 +130,11 @@ export function createVerboseEmitter(opts: VerboseEmitterOptions): VerboseEmitte
     }
     const sink = opts.sink ?? stderrSink();
     const testName = opts.testName;
+    const agentLabel = opts.agentName?.toUpperCase().padEnd(7);
+    const traceColor = process.env.PATHGRADE_UI_COLOR === '1';
+    const tracePaint = (code: number, value: string) => traceColor
+        ? `\x1b[${code}m${value}\x1b[0m`
+        : value;
     let headerPrinted = false;
 
     const emitHeaderOnce = () => {
@@ -149,39 +155,47 @@ export function createVerboseEmitter(opts: VerboseEmitterOptions): VerboseEmitte
 
         turnStart({ turn, kind, message }) {
             const p = preview(message, PREVIEW_MAX_CHARS);
-            writeLine(`${fmt.cyan('→')} Turn ${fmt.bold(String(turn))} ${fmt.dim(`[${kind}]`)} "${p}"`);
+            writeLine(agentLabel
+                ? `${agentLabel} ${tracePaint(36, 'TURN')} ${tracePaint(1, String(turn))} ${tracePaint(2, `[${kind}]`)} "${p}"`
+                : `${fmt.cyan('→')} Turn ${fmt.bold(String(turn))} ${fmt.dim(`[${kind}]`)} "${p}"`);
         },
 
         toolEvent({ action, summary }) {
-            writeLine(`  ${fmt.dim('·')} ${fmt.cyan(action)} ${summary}`);
+            writeLine(agentLabel
+                ? `${agentLabel} ${tracePaint(36, 'TOOL')} ${action} ${summary}`
+                : `  ${fmt.dim('·')} ${fmt.cyan(action)} ${summary}`);
         },
 
         turnEnd({ turn, durationMs, outputLines, messagePreview }) {
             const p = preview(messagePreview, PREVIEW_MAX_CHARS);
             const duration = formatDurationSeconds(durationMs);
-            writeLine(
-                `${fmt.green('←')} Turn ${fmt.bold(String(turn))}  ${fmt.dim(duration)}  ${fmt.dim(`${outputLines}l`)}  "${p}"`,
-            );
+            writeLine(agentLabel
+                ? `${agentLabel} ${tracePaint(32, 'TURN')} ${tracePaint(1, String(turn))}  ${tracePaint(2, duration)}  ${tracePaint(2, `${outputLines}l`)}  "${p}"`
+                : `${fmt.green('←')} Turn ${fmt.bold(String(turn))}  ${fmt.dim(duration)}  ${fmt.dim(`${outputLines}l`)}  "${p}"`);
         },
 
         retry({ attempt, maxAttempts, errorMessage }) {
             const msg = preview(errorMessage, RETRY_ERROR_MAX_CHARS);
-            writeLine(`  ${fmt.red('⟲')} retry ${attempt}/${maxAttempts}: ${msg}`);
+            writeLine(agentLabel
+                ? `${agentLabel} ${tracePaint(33, 'RETRY')} ${attempt}/${maxAttempts}: ${msg}`
+                : `  ${fmt.red('⟲')} retry ${attempt}/${maxAttempts}: ${msg}`);
         },
 
         reactionFired({ reactionIndex, pattern, reply }) {
             const p = preview(reply, PREVIEW_MAX_CHARS);
-            writeLine(`  ${fmt.cyan('⚡')} reaction ${fmt.bold(`#${reactionIndex}`)} ${fmt.dim(pattern)} → "${p}"`);
+            writeLine(agentLabel
+                ? `${agentLabel} ${tracePaint(35, 'REACTION')} ${tracePaint(1, `#${reactionIndex}`)} ${tracePaint(2, pattern)} → "${p}"`
+                : `  ${fmt.cyan('⚡')} reaction ${fmt.bold(`#${reactionIndex}`)} ${fmt.dim(pattern)} → "${p}"`);
         },
 
         conversationEnd({ reason, turns, durationMs, detail }) {
             const duration = formatDurationSeconds(durationMs);
             const detailSuffix = detail
-                ? `  ${fmt.red('detail=')}${preview(detail, RETRY_ERROR_MAX_CHARS)}`
+                ? `  ${agentLabel ? tracePaint(31, 'detail=') : fmt.red('detail=')}${preview(detail, RETRY_ERROR_MAX_CHARS)}`
                 : '';
-            writeLine(
-                `${fmt.bold('■')} end  ${fmt.dim('reason=')}${reason}  ${fmt.dim('turns=')}${turns}  ${fmt.dim(duration)}${detailSuffix}`,
-            );
+            writeLine(agentLabel
+                ? `${agentLabel} ${tracePaint(1, 'END')}  ${tracePaint(2, 'reason=')}${reason}  ${tracePaint(2, 'turns=')}${turns}  ${tracePaint(2, duration)}${detailSuffix}`
+                : `${fmt.bold('■')} end  ${fmt.dim('reason=')}${reason}  ${fmt.dim('turns=')}${turns}  ${fmt.dim(duration)}${detailSuffix}`);
         },
     };
 }

@@ -61,13 +61,15 @@ function loadDotenv(): void {
 function validateApiKeys(standalone = false): void {
     const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
-    const hasClaude = !!process.env.HOME; // Claude CLI uses OS keychain, just check it exists
+
+    // Standalone validates the selected provider at invocation time. A generic
+    // warning here is both noisy for deterministic evals and unable to account
+    // for Claude keychain or Codex cached authentication.
+    if (standalone) return;
 
     if (!hasAnthropic && !hasOpenAI) {
-        const location = standalone ? 'environment' : '.env or environment';
-        const fallback = standalone
-            ? 'Claude OAuth from the macOS keychain may still work.'
-            : 'Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.';
+        const location = '.env or environment';
+        const fallback = 'Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.';
         console.log(
             `\n  ${fmt.dim('warning:')} No API keys found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in ${location}.\n` +
             `  ${fmt.dim(`         ${fallback}`)}\n`,
@@ -87,9 +89,24 @@ async function main() {
     const args = parsedCommand.args;
     const command = args[0];
 
-    if (parsedCommand.standalone && command !== 'run' && command !== 'affected') {
+    if (parsedCommand.standalone && (command === '--help' || command === '-h')) {
+        printStandaloneHelp();
+        return;
+    }
+
+    if (parsedCommand.standalone && command === '--version') {
+        console.log(await readPackageVersion());
+        return;
+    }
+
+    if (
+        parsedCommand.standalone
+        && command !== 'run'
+        && command !== 'affected'
+        && !command.startsWith('-')
+    ) {
         console.error(`pathgrade standalone: unsupported command "${command}"`);
-        console.error('Supported standalone commands are "run" and "affected".');
+        console.error('Run "pathgrade standalone --help" for supported commands.');
         process.exitCode = 1;
         return;
     }
@@ -113,13 +130,8 @@ async function main() {
         return;
     }
 
-    if (command === '--version' || command === '-v') {
-        const pkg = JSON.parse(
-            await import('fs').then(fs => fs.promises.readFile(
-                new URL('../package.json', import.meta.url), 'utf-8'
-            ))
-        );
-        console.log(pkg.version);
+    if (command === '--version' || (!parsedCommand.standalone && command === '-v')) {
+        console.log(await readPackageVersion());
         return;
     }
 
@@ -215,6 +227,12 @@ async function main() {
 
         const parsed = parsePathgradeRunArgs(command === 'run' ? args.slice(1) : args);
 
+        if (parsedCommand.standalone && parsed.forceVerbose && parsed.quiet) {
+            console.error('pathgrade standalone: --quiet and --verbose are mutually exclusive');
+            process.exitCode = 1;
+            return;
+        }
+
         for (const warning of parsed.warnings ?? []) {
             console.error(`pathgrade: ${warning}`);
         }
@@ -238,6 +256,7 @@ async function main() {
             ...process.env,
             ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
             ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
+            ...(parsed.quiet ? { PATHGRADE_QUIET: '1' } : {}),
         };
         try {
             const config = await resolvePathgradeConfig({
@@ -320,6 +339,36 @@ function printHelp() {
     pathgrade preview browser        # open web UI
     pathgrade preview-reactions --snapshot ./pathgrade-debug/run-snapshot.json --reactions ./reactions.ts
 `);
+}
+
+function printStandaloneHelp(): void {
+    console.log(`
+  pathgrade standalone - Run evals with the embedded Vitest runtime
+
+  Usage:
+    pathgrade standalone [run] [eval-files...] [options]
+    pathgrade standalone affected [options]
+
+  Run options:
+    --verbose, -v                  Stream live agent events
+    --quiet                        Suppress progress and passing case details
+    --diagnostics                  Print expanded final diagnostics
+    --changed                      Run only affected evals
+    --since=<ref>                  Override the affected base ref
+    --changed-files=<path>         Read changed files from a newline-delimited file
+    -t, --testNamePattern=<name>   Filter Vitest cases by name
+
+  Affected options:
+    --since=<ref>                  Diff <ref>...HEAD
+    --changed-files=<path>         Read an explicit changed-file list
+    --explain                      Explain each selection decision on stderr
+    --json                         Emit structured JSON on stdout
+`);
+}
+
+async function readPackageVersion(): Promise<string> {
+    const content = await fs.promises.readFile(new URL('../package.json', import.meta.url), 'utf-8');
+    return (JSON.parse(content) as { version: string }).version;
 }
 
 main().catch(err => {

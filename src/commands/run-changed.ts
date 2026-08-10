@@ -43,6 +43,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
         ...process.env,
         ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
         ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
+        ...(parsed.quiet ? { PATHGRADE_QUIET: '1' } : {}),
     };
     const configPath = findVitestConfigArg(parsed.runnerArgs);
 
