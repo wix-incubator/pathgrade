@@ -1,74 +1,75 @@
-name: Stage npm release
+name: Publish
 
 on:
   workflow_dispatch:
-
-concurrency:
-  group: stage-npm-${{ github.ref }}
-  cancel-in-progress: false
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
-  prepare:
+  publish:
+    name: Publish to npm
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      sha512: ${{ steps.package.outputs.sha512 }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - run: yarn install --immutable
-      - id: package
-        shell: bash
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          test "$GITHUB_REF_TYPE" = tag
-          test "$GITHUB_REF_NAME" = "v$version"
-          yarn build
-          mkdir retained
-          npm pack --json --pack-destination retained > retained/pack.json
-          filename="$(node -p "require('./retained/pack.json')[0].filename")"
-          tarball="$PWD/retained/$filename"
-          sha512="$(node -e "const fs=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$tarball")"
-          node tests/standalone-package-smoke/run-smoke.mjs --tarball "$tarball" --expected-sha512 "$sha512"
-          echo "sha512=$sha512" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: npm-package
-          path: retained/*.tgz
-          if-no-files-found: error
-
-  stage:
-    needs: prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
     environment: npm-publish
-    permissions:
-      actions: read
-      id-token: write
+
     steps:
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - run: npm install --global npm@11.18.0
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: npm-package
-          path: retained
-      - name: Verify and stage
-        shell: bash
+
+      - name: Install dependencies
+        run: printf 'y\n' | NPQ_PKG_MGR=yarn npx --yes npq install
         env:
-          EXPECTED_SHA512: ${{ needs.prepare.outputs.sha512 }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Verify npm OIDC support
         run: |
-          tarball="$(find "$PWD/retained" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
-          test -n "$tarball"
-          actual="$(node -e "const fs=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$tarball")"
-          test "$actual" = "$EXPECTED_SHA512"
-          npm stage publish "$tarball" --registry https://registry.npmjs.org
+          npm_version="$(npm --version)"
+          echo "npm version: $npm_version"
+          NPM_VERSION="$npm_version" node -e "const actual = process.env.NPM_VERSION.split('.').map(Number); const [major = 0, minor = 0, patch = 0] = actual; const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))); if (!ok) { throw new Error('npm 11.5.1 or newer is required for Trusted Publishing OIDC'); }"
+
+      - name: Build
+        run: yarn build
+
+      - name: Test
+        run: yarn test
+
+      - name: Verify release tag
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "Publish must run from a tag, got $GITHUB_REF_TYPE"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Publish must run from tag v$version, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - name: Verify version is unpublished
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "@wix/pathgrade@$version" version --registry https://registry.npmjs.org >npm-view.log 2>npm-view.err; then
+            echo "@wix/pathgrade@$version is already published"
+            exit 1
+          fi
+          if ! grep -Eq "E404|404 Not Found|is not in this registry" npm-view.err; then
+            cat npm-view.err
+            exit 1
+          fi
+
+      - name: Validate package contents
+        run: npm pack --dry-run
+
+      - name: Publish package
+        run: npm publish --registry https://registry.npmjs.org --provenance --access public
