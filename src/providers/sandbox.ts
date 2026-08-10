@@ -18,6 +18,10 @@ export interface SandboxConfig {
      * When omitted, DEFAULT_COPY_IGNORE is used.
      */
     copyIgnore?: string[];
+    /** Internal credential policy propagated by standalone mode. */
+    credentialMode?: 'project' | 'standalone';
+    /** Internal agent transport used during credential resolution. */
+    transport?: import('../sdk/types.js').AgentTransport;
 }
 
 export interface Sandbox {

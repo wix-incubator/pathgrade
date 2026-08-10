@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -30,6 +30,32 @@ describe('local-first CLI surface', () => {
     expect(output).toContain('pathgrade preview-reactions');
     expect(output).toContain('PATHGRADE_AGENT');
     expect(output).not.toContain('--provider=');
+  });
+
+  it('provides scoped standalone help and version', () => {
+    const help = execFileSync(process.execPath, [binEntry, 'standalone', '--help'], {
+      cwd: packageRoot,
+      encoding: 'utf-8',
+      env: { ...process.env, FORCE_COLOR: '0' },
+    });
+    const version = execFileSync(process.execPath, [binEntry, 'standalone', '--version'], {
+      cwd: packageRoot,
+      encoding: 'utf-8',
+      env: { ...process.env, FORCE_COLOR: '0' },
+    });
+    expect(help).toContain('pathgrade standalone - Run evals with the embedded Vitest runtime');
+    expect(help).toContain('--testNamePattern');
+    expect(version.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('rejects contradictory standalone output modes', () => {
+    const result = spawnSync(process.execPath, [binEntry, 'standalone', 'run', '--quiet', '--verbose'], {
+      cwd: packageRoot,
+      encoding: 'utf-8',
+      env: { ...process.env, FORCE_COLOR: '0' },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('--quiet and --verbose are mutually exclusive');
   });
 
   it('documents local-first usage in the README', () => {

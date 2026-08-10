@@ -3,33 +3,84 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - master
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build and test
-    runs-on: ubuntu-latest
-
+  compatibility:
+    name: Test (Node 20.11.0)
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version-file: .nvmrc
+          node-version: 20.11.0
+          package-manager-cache: false
+      - run: yarn install --immutable
+      - run: yarn build && yarn vitest run && yarn test:runner-cli-smoke
 
-      - name: Install dependencies
-        run: printf 'y\n' | NPQ_PKG_MGR=yarn npx --yes npq install
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+  package:
+    name: Test and package (Node 24)
+    runs-on: ubuntu-24.04
+    outputs:
+      sha512: ${{ steps.pack.outputs.sha512 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: yarn install --immutable
+      - run: yarn quality
+      - run: yarn build && yarn vitest run && yarn test:runner-cli-smoke && yarn test:release-contracts
+      - id: pack
+        run: |
+          mkdir retained
+          filename="$(npm pack --pack-destination retained)"
+          mv "retained/$filename" retained/pathgrade.tgz
+          echo "sha512=$(sha512sum retained/pathgrade.tgz | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pathgrade-package
+          path: retained/pathgrade.tgz
+          if-no-files-found: error
 
-      - name: Build
-        run: yarn build
-
-      - name: Test
-        run: yarn test
+  package-smoke:
+    name: Package smoke (${{ matrix.runner }}, Node ${{ matrix.node }})
+    needs: [compatibility, package]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, node: 20.11.0 }
+          - { runner: ubuntu-24.04, node: 24 }
+          - { runner: ubuntu-24.04-arm, node: 24 }
+          - { runner: macos-15, node: 24 }
+          - { runner: macos-15-intel, node: 24 }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pathgrade-package
+          path: retained
+      - run: node tests/standalone-package-smoke/run-smoke.mjs --tarball "$PWD/retained/pathgrade.tgz" --expected-sha512 "${{ needs.package.outputs.sha512 }}"
+      - run: |
+          prefix="$RUNNER_TEMP/pathgrade-prefix"
+          npm install --global --prefix "$prefix" --ignore-scripts retained/pathgrade.tgz
+          graph="$prefix/lib/node_modules/@wix/pathgrade/node_modules"
+          claude="$(find "$graph" -type f -name claude -perm -111 -print -quit)"
+          codex="$(find "$graph" -type f -name codex -perm -111 -print -quit)"
+          test -x "$claude" && test -x "$codex"
+          "$claude" --version
+          "$codex" --version

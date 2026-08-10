@@ -16,7 +16,7 @@ import { execSync, execFileSync } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import fs from 'fs-extra';
-import type { AgentName } from '../sdk/types.js';
+import type { AgentName, AgentTransport } from '../sdk/types.js';
 
 export interface CredentialPorts {
     /** Read a host environment variable. */
@@ -50,6 +50,11 @@ export interface CredentialResult {
      * host (e.g. macOS `Library/Keychains`). Optional; defaults to none.
      */
     linkFromHome?: string[];
+}
+
+export interface CredentialResolutionOptions {
+    mode: 'project' | 'standalone';
+    transport?: AgentTransport;
 }
 
 const EMPTY: CredentialResult = { env: {}, setupCommands: [], copyFromHome: [] };
@@ -97,19 +102,70 @@ export async function resolveCredentials(
     agent: AgentName,
     userEnv: Record<string, string>,
     ports?: CredentialPorts,
+    options: CredentialResolutionOptions = { mode: 'project' },
 ): Promise<CredentialResult> {
     const p = ports ?? defaultPorts();
 
     switch (agent) {
         case 'claude':
-            return resolveClaude(userEnv, p);
+            return options.mode === 'standalone'
+                ? resolveStandaloneClaude(userEnv, p)
+                : resolveClaude(userEnv, p);
         case 'codex':
-            return resolveCodex(userEnv, p);
+            return options.mode === 'standalone'
+                ? resolveStandaloneCodex(userEnv, p, options.transport)
+                : resolveCodex(userEnv, p);
         case 'cursor':
             return resolveCursor(userEnv, p);
         default:
             return EMPTY;
     }
+}
+
+async function resolveStandaloneClaude(
+    userEnv: Record<string, string>,
+    ports: CredentialPorts,
+): Promise<CredentialResult> {
+    if (userEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1') {
+        if (userEnv.ANTHROPIC_API_KEY || userEnv.ANTHROPIC_BASE_URL) {
+            throw new Error('PATHGRADE_CLAUDE_LOCAL_OAUTH cannot be combined with Anthropic API-key credentials');
+        }
+        return EMPTY;
+    }
+
+    const result = await resolveClaude(userEnv, ports);
+    if (
+        userEnv.ANTHROPIC_API_KEY
+        || result.env.ANTHROPIC_API_KEY
+        || result.env.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
+    ) {
+        return result;
+    }
+    throw new Error('Claude authentication required for pathgrade standalone');
+}
+
+function resolveStandaloneCodex(
+    userEnv: Record<string, string>,
+    ports: CredentialPorts,
+    transport: AgentTransport | undefined,
+): CredentialResult {
+    if (transport !== undefined && transport !== 'app-server') {
+        throw new Error('pathgrade standalone supports Codex app-server only');
+    }
+
+    const userKey = userEnv.OPENAI_API_KEY;
+    const hostKey = ports.hostEnv('OPENAI_API_KEY');
+    if (!userKey && !hostKey) {
+        throw new Error('Codex authentication required for pathgrade standalone; set OPENAI_API_KEY');
+    }
+
+    const env: Record<string, string> = {};
+    if (!userKey && hostKey) env.OPENAI_API_KEY = hostKey;
+    if (!userEnv.OPENAI_BASE_URL) {
+        const hostBaseUrl = ports.hostEnv('OPENAI_BASE_URL');
+        if (hostBaseUrl) env.OPENAI_BASE_URL = hostBaseUrl;
+    }
+    return { env, setupCommands: [], copyFromHome: [] };
 }
 
 async function resolveClaude(

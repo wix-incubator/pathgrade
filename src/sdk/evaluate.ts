@@ -120,6 +120,7 @@ function makeEvaluateAgent() {
                 { ...evalResult, tokenUsage: deltaTokenUsage },
                 conversationTokens,
                 conversationCost,
+                agent.provenance,
             ),
         };
         emitEvalResult({ result: recordedResult, agent });
@@ -161,7 +162,7 @@ async function fromSnapshot(
     const evalResult = await evaluateWithContext(ctx, scorers, { ...opts, llm: trackedLLM });
     const recordedResult: RecordedEvalResult = {
         ...evalResult,
-        trial: buildTrialResult(snapshot.log, evalResult),
+        trial: buildTrialResult(snapshot.log, evalResult, undefined, undefined, snapshot.agent_provenance),
     };
     maybeThrowOnScorerErrors(recordedResult, opts?.onScorerError ?? 'skip');
     return recordedResult;
@@ -329,6 +330,7 @@ function buildTrialResult(
     result: EvalResult,
     conversationTokens?: { conversation_input_tokens: number; conversation_output_tokens: number },
     conversationCost?: { conversation_cost_usd: number },
+    agentProvenance?: import('./types.js').AgentInvocationProvenance,
 ): TrialResult {
     const nCommands = log.filter((entry) => entry.type === 'command').length;
     const skills = extractSkillsFromLog(log);
@@ -349,6 +351,7 @@ function buildTrialResult(
         // guaranteed cost surface; future judge-cost work unlocks the total
         // field.
         ...conversationCost,
+        ...(agentProvenance ? { agent_provenance: agentProvenance } : {}),
         session_log: [...log],
         ...(skills.length > 0 ? { skills_used: skills } : {}),
     };

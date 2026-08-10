@@ -4,6 +4,22 @@ set -euo pipefail
 root="${1:-.}"
 cd "$root"
 
+release_scripts=()
+while IFS= read -r file; do
+  release_scripts+=("$file")
+done < <(find scripts/release -type f -name '*.mjs' 2>/dev/null | sort)
+
+for file in "${release_scripts[@]}"; do
+  if ! node --check "$file"; then
+    echo "Release script failed syntax validation: $file" >&2
+    exit 1
+  fi
+done
+
+if (( ${#release_scripts[@]} > 0 )); then
+  echo "Release-script syntax boundaries are clean (${#release_scripts[@]} files)."
+fi
+
 result_capture_files=()
 while IFS= read -r file; do
   result_capture_files+=("$file")

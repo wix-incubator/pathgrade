@@ -40,6 +40,8 @@ import {
 } from './wire-translators.js';
 import { extractTurnCompletionFailure } from './turn-completion.js';
 import type { ToolRequestUserInputParams } from './protocol/index.js';
+import { resolveBundledCodexCommand, verifyBundledCodexRuntime } from '../codex-runtime.js';
+import { isStandaloneMode } from '../../standalone/mode.js';
 
 const DEFAULT_MODEL = 'gpt-5.4';
 const TURN_COMPLETED_METHOD = 'turn/completed';
@@ -71,6 +73,27 @@ export interface CodexAppServerAgentDeps {
     sandboxMode?: SandboxMode;
     /** Observer for per-grant audit entries (§7 of design decisions). */
     onPermissionGrant?: (entry: PermissionGrantLogEntry) => void;
+}
+
+export async function loginCodexAppServerWithApiKey(
+    transport: AppServerTransport,
+    apiKey: string,
+): Promise<void> {
+    if (!apiKey) {
+        throw new Error('Codex app-server requires OPENAI_API_KEY for pathgrade standalone');
+    }
+    try {
+        const response = await transport.sendRequest<{ type?: unknown }>('account/login/start', {
+            type: 'apiKey',
+            apiKey,
+        });
+        if (response?.type !== 'apiKey') {
+            throw new Error('Codex app-server did not confirm API-key login');
+        }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(message.split(apiKey).join('[redacted]'));
+    }
 }
 
 interface ActiveTurnState {
@@ -368,6 +391,7 @@ export class CodexAppServerAgent extends BaseAgent {
         const askBus = requireAskBusForLiveBatches(options, 'CodexAppServerAgent');
         const workspacePath = getWorkspacePath(runtime);
         const runtimeEnv = getRuntimeEnv(runtime) as NodeJS.ProcessEnv;
+        const standalone = isStandaloneMode();
         const model = options?.model ?? DEFAULT_MODEL;
         const sandboxMode: SandboxMode = this.deps.sandboxMode ?? 'workspace-write';
 
@@ -383,20 +407,36 @@ export class CodexAppServerAgent extends BaseAgent {
             if (handle) return handle.transport;
             const factory = this.deps.createTransport
                 ?? (async (ctx: { workspacePath: string; env: NodeJS.ProcessEnv }) =>
-                    spawnAppServerTransport({ cwd: ctx.workspacePath, env: ctx.env }));
-            handle = await factory({ workspacePath, env: runtimeEnv });
-            const transport = handle.transport;
-            transport.onServerRequest((req) => this.dispatchServerRequest(req, {
+                    {
+                        if (!isStandaloneMode()) {
+                            return spawnAppServerTransport({ cwd: ctx.workspacePath, env: ctx.env });
+                        }
+                        const command = resolveBundledCodexCommand();
+                        const verifiedRuntime = await verifyBundledCodexRuntime(command);
+                        if (verifiedRuntime.packageVersion !== command.packageVersion) {
+                            throw new Error('Pathgrade packaging defect: bundled Codex version mismatch');
+                        }
+                        return spawnAppServerTransport({
+                            binary: command.executable,
+                            prefixArgs: command.argsPrefix,
+                            cwd: ctx.workspacePath,
+                            env: ctx.env,
+                        });
+                    });
+            const candidate = await factory({ workspacePath, env: runtimeEnv });
+            const transport = candidate.transport;
+            closeInfo = null;
+            const serverRequestOff = transport.onServerRequest((req) => this.dispatchServerRequest(req, {
                 transport,
                 askBus,
                 activeTurn: () => activeTurn,
                 onPermissionGrant: this.deps.onPermissionGrant,
                 mcpSafety: options?.mcpSafety,
             }));
-            transport.onClose((info) => {
+            const closeOff = transport.onClose((info) => {
                 closeInfo = info;
             });
-            transport.onNotification((n) => {
+            const notificationOff = transport.onNotification((n) => {
                 if (process.env.PATHGRADE_CODEX_DEBUG) {
                     console.error(`[codex app-server] notification method=${n.method} params=${JSON.stringify(n.params).slice(0, 300)}`);
                 }
@@ -417,15 +457,32 @@ export class CodexAppServerAgent extends BaseAgent {
                 if (!params?.item) return;
                 projectItemIntoTurn(params.item, turn);
             });
-            await transport.sendRequest('initialize', {
-                clientInfo: { name: 'pathgrade', version: '0.5.0', title: null },
-                capabilities: { experimentalApi: true, optOutNotificationMethods: null },
-            });
-            // Upstream ClientNotification = { method: "initialized" }: send it
-            // before any thread/start so the handshake matches the v0.124
-            // contract and is forward-compatible with servers that enforce it.
-            transport.sendNotification('initialized', null);
-            return transport;
+            try {
+                await transport.sendRequest('initialize', {
+                    clientInfo: { name: 'pathgrade', version: '0.5.0', title: null },
+                    capabilities: { experimentalApi: true, optOutNotificationMethods: null },
+                });
+                // Upstream ClientNotification = { method: "initialized" }: send it
+                // before any thread/start so the handshake matches the v0.144
+                // contract and is forward-compatible with servers that enforce it.
+                transport.sendNotification('initialized', null);
+                if (standalone) {
+                    await loginCodexAppServerWithApiKey(transport, runtimeEnv.OPENAI_API_KEY ?? '');
+                }
+                handle = candidate;
+                return transport;
+            } catch (error) {
+                serverRequestOff();
+                closeOff();
+                notificationOff();
+                closeInfo = null;
+                try {
+                    await candidate.close();
+                } catch {
+                    // Preserve the handshake failure as the actionable error.
+                }
+                throw error;
+            }
         };
 
         const runTurn = async (message: string): Promise<AgentTurnResult> => {
@@ -756,8 +813,6 @@ function buildThreadStartParams(opts: {
         approvalPolicy: 'never',
         sandbox: opts.sandboxMode,
         ephemeral: true,
-        experimentalRawEvents: false,
-        persistExtendedHistory: false,
         model: opts.model,
         ...(opts.mcpConfig ? { config: opts.mcpConfig } : {}),
     };

@@ -11,6 +11,27 @@
 - Debug long conversations with preserved workspaces and run snapshots
 - Use the same evals locally and in CI
 
+## Standalone—Node only
+
+Run a TypeScript eval without adding Pathgrade, Vitest, Claude, or Codex to the target project:
+
+```text
+npx @wix/pathgrade standalone
+npx @wix/pathgrade standalone run path/to/example.eval.ts
+npm install --global @wix/pathgrade
+pathgrade standalone
+```
+
+Standalone v0 supports Node.js 22 or 24 on macOS, Linux, or WSL (`x64` and `arm64`). It runs Claude through the bundled Claude Agent SDK and Claude Code binary, or Codex through the bundled Codex `app-server`; credentials and network access for the selected provider are still required. No local Pathgrade, Vitest, Claude, or Codex install is used, and there is no fallback to `PATH`, `npx`, or a target `node_modules` for those runtimes.
+
+Evals may import from root `vitest`, `@wix/pathgrade`, and the documented standalone Pathgrade eval subpaths. Vitest subpaths such as `vitest/config` are not supported in standalone v0. Application dependencies remain your responsibility and must be installed or otherwise resolvable by the target project.
+
+Standalone ignores project Vitest configuration and does not load `.env`. Its temporary HOME, cache, and workspace isolation prevents accidental project mutation, but local workspace isolation is not a security sandbox. Jest, Cursor, Codex `exec`, Docker, declarative specs, recording, and baselines are deferred beyond standalone v0.
+
+Standalone uses a compact, color-aware progress view in interactive terminals and stable line-oriented output in CI or redirected streams. Use `--verbose` for an agent-labeled live trace, `--quiet` for failures and the final status only, or `--diagnostics` for expanded final diagnostics. `--quiet` and `--verbose` are mutually exclusive. Color is semantic and never replaces status text; `NO_COLOR` or `FORCE_COLOR=0` disables it.
+
+Existing project-local `@wix/pathgrade` commands remain unchanged unless you select the explicit `standalone` namespace; project-local configuration, `.env`, adapters, and executable overrides retain their current behavior. This release installs and publishes only `@wix/pathgrade`: no unscoped `pathgrade` package is installed or published.
+
 ## Quick Start
 
 **Prerequisites**: Node.js 20.11+, Vitest 4+ or Jest 30+, and at least one configured agent runtime. Claude uses the bundled `@anthropic-ai/claude-agent-sdk` binary by default; Codex requires the `codex` CLI; Cursor requires the `cursor-agent` CLI.

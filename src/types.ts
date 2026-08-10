@@ -1,6 +1,8 @@
 import type { DiagnosticsReport } from './sdk/diagnostics.js';
 import type { RuntimePolicyDescriptor } from './sdk/runtime-policy.js';
 import type { LLMPort } from './utils/llm-types.js';
+import type { AgentInvocationProvenance } from './sdk/types.js';
+import type { StandaloneRunProvenance } from './standalone/provenance.js';
 
 export interface CommandResult {
     stdout: string;
@@ -181,6 +183,7 @@ export interface TrialResult {
     session_log: LogEntry[];
     skills_used?: string[];
     diagnostics?: DiagnosticsReport;
+    agent_provenance?: AgentInvocationProvenance;
     conversation?: {
         turns: ConversationTurn[];
         total_turns: number;
@@ -259,6 +262,7 @@ export interface PathgradeReport {
      * this field.
      */
     selection?: PathgradeSelectionReport;
+    provenance?: StandaloneRunProvenance;
 }
 
 export interface TrialPaths {

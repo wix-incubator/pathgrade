@@ -7,6 +7,7 @@ function canonicalCodexRequestUserInput(): ToolRequestUserInputParams {
         threadId: 'thread-1',
         turnId: 'turn-1',
         itemId: 'tool-use-abc',
+        autoResolutionMs: null,
         questions: [
             {
                 id: 'q-0',

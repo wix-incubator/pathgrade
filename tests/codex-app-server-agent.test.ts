@@ -11,7 +11,10 @@ import type {
     AppServerTransport,
     TransportCloseInfo,
 } from '../src/agents/codex-app-server/transport.js';
-import { CodexAppServerAgent } from '../src/agents/codex-app-server/agent.js';
+import {
+    CodexAppServerAgent,
+    loginCodexAppServerWithApiKey,
+} from '../src/agents/codex-app-server/agent.js';
 import { createAskBus } from '../src/sdk/ask-bus/bus.js';
 import { isMcpToolCall } from '../src/sdk/mcp-evidence.js';
 import type { AgentSessionOptions, TrialRuntime } from '../src/types.js';
@@ -31,6 +34,7 @@ interface ClientResponseCapture {
 
 interface ServerSim {
     transport: AppServerTransport;
+    clientMethods: string[];
     sendServerRequest: (method: string, params: unknown) => { id: number };
     sendNotification: (method: string, params: unknown) => void;
     awaitRequest: (method: string) => Promise<ClientRequestCapture>;
@@ -58,6 +62,7 @@ function createServerSim(): ServerSim {
         resolve: (v: unknown) => void;
     }
     const awaiters: PendingMatcher[] = [];
+    const clientMethods: string[] = [];
     const bufferedRequests = new Map<string, ClientRequestCapture[]>();
     const bufferedNotifications = new Map<string, ClientNotificationCapture[]>();
     const bufferedResponses = new Map<number | string, ClientResponseCapture>();
@@ -75,6 +80,7 @@ function createServerSim(): ServerSim {
         } catch {
             return;
         }
+        if (parsed.method) clientMethods.push(parsed.method);
         if (parsed.method === 'initialize' && parsed.id !== undefined) {
             // Capture the initialize params so individual tests can assert on
             // the handshake capability shape.
@@ -158,6 +164,7 @@ function createServerSim(): ServerSim {
 
     return {
         transport: driverTransport,
+        clientMethods,
         sendServerRequest(method, params) {
             const id = nextServerId++;
             serverToClient.write(
@@ -264,6 +271,150 @@ async function runSingleTrivialTurn(
 }
 
 describe('CodexAppServerAgent — handshake', () => {
+    it('in standalone mode logs in after initialized and before thread/start', async () => {
+        vi.stubEnv('PATHGRADE_STANDALONE', '1');
+        try {
+            await withAgent(async ({ sim, agent, options }) => {
+                const session = await agent.createSession(
+                    { handle: '/tmp/ws', workspacePath: '/tmp/ws', env: { OPENAI_API_KEY: 'sk-secret' } },
+                    async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+                    options,
+                );
+                const turnPromise = session.start({ message: 'hi' });
+
+                await sim.awaitRequest('initialize');
+                await sim.awaitNotification('initialized');
+                const login = await sim.awaitRequest('account/login/start');
+                expect(login.params).toEqual({ type: 'apiKey', apiKey: 'sk-secret' });
+                sim.sendResult(login.id, { type: 'apiKey' });
+                await runSingleTrivialTurn(sim);
+                await turnPromise;
+                expect(sim.clientMethods).toEqual([
+                    'initialize',
+                    'initialized',
+                    'account/login/start',
+                    'thread/start',
+                    'turn/start',
+                ]);
+            });
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('does not expose the API key when isolated login fails', async () => {
+        const transport = {
+            sendRequest: async () => { throw new Error('upstream rejected sk-do-not-leak'); },
+        } as unknown as AppServerTransport;
+        const rejected = await loginCodexAppServerWithApiKey(transport, 'sk-do-not-leak')
+            .then(() => undefined, (error: unknown) => error as Error);
+        expect(rejected?.message).toContain('upstream rejected [redacted]');
+        expect(rejected?.message).not.toContain('sk-do-not-leak');
+        await expect(loginCodexAppServerWithApiKey(transport, ''))
+            .rejects.toThrow(/OPENAI_API_KEY/);
+    });
+
+    it('fails missing standalone API key before requesting thread/start', async () => {
+        vi.stubEnv('PATHGRADE_STANDALONE', '1');
+        let threadStarted = false;
+        const transport = {
+            sendRequest: async (method: string) => {
+                if (method === 'initialize') return {};
+                if (method === 'thread/start') threadStarted = true;
+                return {};
+            },
+            sendNotification: () => undefined,
+            sendResponse: () => undefined,
+            sendErrorResponse: () => undefined,
+            onServerRequest: () => () => undefined,
+            onNotification: () => () => undefined,
+            onClose: () => () => undefined,
+            close: async () => undefined,
+        } as AppServerTransport;
+        try {
+            const agent = new CodexAppServerAgent({
+                createTransport: async () => createAppServerSessionHandle({ transport, child: null }),
+            });
+            const session = await agent.createSession(
+                { handle: '/tmp/ws', workspacePath: '/tmp/ws', env: {} },
+                async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+                { askBus: createAskBus({ askUserTimeoutMs: 1_000 }) },
+            );
+            await expect(session.start({ message: 'hi' })).rejects.toThrow(/OPENAI_API_KEY/);
+            expect(threadStarted).toBe(false);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('retries the full standalone handshake after login failure and closes the failed transport', async () => {
+        vi.stubEnv('PATHGRADE_STANDALONE', '1');
+        const first = createServerSim();
+        const second = createServerSim();
+        const firstClose = vi.spyOn(first.transport, 'close');
+        let factoryCalls = 0;
+        let session: Awaited<ReturnType<CodexAppServerAgent['createSession']>> | undefined;
+        let retryTurn: ReturnType<NonNullable<typeof session>['reply']> | undefined;
+
+        try {
+            const agent = new CodexAppServerAgent({
+                createTransport: async () => {
+                    factoryCalls += 1;
+                    const sim = factoryCalls === 1 ? first : second;
+                    return createAppServerSessionHandle({ transport: sim.transport, child: null });
+                },
+            });
+            session = await agent.createSession(
+                {
+                    handle: '/tmp/ws',
+                    workspacePath: '/tmp/ws',
+                    env: { OPENAI_API_KEY: 'fixture-api-key' },
+                },
+                async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+                { askBus: createAskBus({ askUserTimeoutMs: 1_000 }) },
+            );
+
+            const failedTurn = session.start({ message: 'first' });
+            const firstLogin = await first.awaitRequest('account/login/start');
+            first.sendError(firstLogin.id, 401, 'login rejected');
+            await expect(failedTurn).rejects.toThrow('login rejected');
+            expect(first.clientMethods).not.toContain('thread/start');
+
+            retryTurn = session.reply({ message: 'second' });
+            const retryOutcome = await Promise.race([
+                second.awaitRequest('initialize').then(() => ({ kind: 'initialize' as const })),
+                first.awaitRequest('thread/start').then((request) => ({
+                    kind: 'bypassed' as const,
+                    request,
+                })),
+            ]);
+            if (retryOutcome.kind === 'bypassed') {
+                first.sendResult(retryOutcome.request.id, { thread: { id: 'bypassed-thread' } });
+                const bypassedTurn = await first.awaitRequest('turn/start');
+                first.sendResult(bypassedTurn.id, { turnId: 'bypassed-turn' });
+                first.sendNotification('turn/completed', {});
+                await retryTurn;
+            }
+            expect(retryOutcome.kind).toBe('initialize');
+
+            await second.awaitNotification('initialized');
+            const secondLogin = await second.awaitRequest('account/login/start');
+            expect(second.clientMethods).not.toContain('thread/start');
+            second.sendResult(secondLogin.id, { type: 'apiKey' });
+            await runSingleTrivialTurn(second);
+            if (retryTurn) await retryTurn;
+
+            expect(factoryCalls).toBe(2);
+            expect(firstClose).toHaveBeenCalledTimes(1);
+        } finally {
+            await session?.dispose();
+            await retryTurn?.catch(() => undefined);
+            await first.transport.close();
+            await second.transport.close();
+            vi.unstubAllEnvs();
+        }
+    });
+
     it('passes the isolated runtime env to the app-server transport factory', async () => {
         const sim = createServerSim();
         let capturedCtx: unknown;
@@ -326,6 +477,7 @@ describe('CodexAppServerAgent — handshake', () => {
             sim.sendResult(st.id, { turnId: 'u' });
             sim.sendNotification('turn/completed', {});
             await turnPromise;
+            expect(sim.clientMethods).not.toContain('account/login/start');
         });
     });
 
@@ -359,8 +511,8 @@ describe('CodexAppServerAgent — handshake', () => {
             expect(params.approvalPolicy).toBe('never');
             expect(params.sandbox).toBe('workspace-write');
             expect(params.ephemeral).toBe(true);
-            expect(params.experimentalRawEvents).toBe(false);
-            expect(params.persistExtendedHistory).toBe(false);
+            expect(params.experimentalRawEvents).toBeUndefined();
+            expect(params.persistExtendedHistory).toBeUndefined();
             expect(params.baseInstructions).toBeUndefined();
             expect(params.developerInstructions).toBeUndefined();
             sim.sendResult(nt.id, { thread: { id: 'thread-1' } });

@@ -13,10 +13,15 @@ import type {
     ConverseOptions,
     Message,
     Agent,
+    AgentInvocationProvenance,
     AgentOptions,
 } from './types.js';
 import type { McpSafetyOptions } from './mcp-safety.js';
-import { resolveAgentName, resolveCodexTransport } from './agent-resolution.js';
+import {
+    assertStandaloneAgent,
+    resolveAgentName,
+    resolveCodexTransport,
+} from './agent-resolution.js';
 import { lifecycleCore } from './lifecycle.js';
 import { ChatSessionImpl } from './chat.js';
 import { runConversation } from './converse.js';
@@ -32,6 +37,9 @@ import { getCurrentCaseContext } from './case-context.js';
 import { createVerboseEmitter, type VerboseEmitter, type VerboseSink } from '../reporters/verbose-emitter.js';
 import fs from 'fs-extra';
 import * as path from 'path';
+import { isStandaloneMode } from '../standalone/mode.js';
+import { verifyBundledClaudeRuntime } from '../agents/claude-runtime.js';
+import { resolveBundledCodexCommand, verifyBundledCodexRuntime } from '../agents/codex-runtime.js';
 
 /**
  * Test-only injection point: override the sink used by the next emitter
@@ -63,8 +71,9 @@ class AgentImpl implements Agent {
     readonly verbose: VerboseEmitter;
     private transport?: AgentTransport;
     private mcpSafety?: McpSafetyOptions;
+    readonly provenance?: AgentInvocationProvenance;
 
-    constructor(ws: Workspace, agentName: AgentName, llm: LLMPort, timeoutSetting: number | 'auto', conversationWindow: ConversationWindowConfig | false | undefined, modelOpt: string | undefined, debugOpt: boolean | string | undefined, debugName: string, debugBaseDir: string, verbose: VerboseEmitter, transport?: AgentTransport, mcpSafety?: McpSafetyOptions) {
+    constructor(ws: Workspace, agentName: AgentName, llm: LLMPort, timeoutSetting: number | 'auto', conversationWindow: ConversationWindowConfig | false | undefined, modelOpt: string | undefined, debugOpt: boolean | string | undefined, debugName: string, debugBaseDir: string, verbose: VerboseEmitter, transport?: AgentTransport, mcpSafety?: McpSafetyOptions, provenance?: AgentInvocationProvenance) {
         this.ws = ws;
         this.agentName = agentName;
         this.llm = llm;
@@ -77,6 +86,7 @@ class AgentImpl implements Agent {
         this.verbose = verbose;
         this.transport = transport;
         this.mcpSafety = mcpSafety;
+        this.provenance = provenance;
     }
 
     get messages(): Message[] {
@@ -371,6 +381,7 @@ class AgentImpl implements Agent {
             if (this.interactionMode === 'runConversation' && this.lastConversationResult) {
                 const snapshot = buildRunSnapshot({
                     agent: this.agentName,
+                    ...(this.provenance ? { agent_provenance: this.provenance } : {}),
                     messages: this._messages,
                     log: this._log,
                     conversationResult: this.lastConversationResult,
@@ -398,12 +409,13 @@ function slugify(s: string): string {
         .toLowerCase();
 }
 
-function resolveCaseDebugContext(): { name: string; dir: string } {
+function resolveCaseContext(): { displayName: string; debugName: string; dir: string } {
     const current = getCurrentCaseContext();
-    if (current.status !== 'active') return { name: '', dir: '' };
+    if (current.status !== 'active') return { displayName: '', debugName: '', dir: '' };
 
     return {
-        name: current.context.caseName ? slugify(current.context.caseName) : '',
+        displayName: current.context.caseName ?? '',
+        debugName: current.context.caseName ? slugify(current.context.caseName) : '',
         dir: current.context.filePath ? path.dirname(current.context.filePath) : '',
     };
 }
@@ -413,34 +425,100 @@ export async function createAgent(opts: AgentOptions): Promise<Agent> {
     const transport: AgentTransport | undefined = agentName === 'codex'
         ? resolveCodexTransport(opts, process.env)
         : undefined;
+    const standalone = isStandaloneMode(process.env);
+    if (standalone) {
+        assertStandaloneAgent(agentName, transport);
+    }
     const timeoutSetting = opts.timeout ?? 300;
 
     // Capture runner context now; adapters own installation and restoration.
-    const testCtx = opts.debug ? resolveCaseDebugContext() : { name: '', dir: '' };
+    const caseContext = resolveCaseContext();
+    const testCtx = opts.debug
+        ? { name: caseContext.debugName, dir: caseContext.dir }
+        : { name: '', dir: '' };
 
     const { timeout: _, mcpMock, mcpConfigFile, agent: __, debug: ___, model: ____, transport: _____, mcpSafety: ______, ...rest } = opts;
     const workspace = await prepareWorkspace({
         ...rest,
         agent: agentName,
+        credentialMode: standalone ? 'standalone' : 'project',
+        transport,
         mcp: mcpConfigFile ? { configFile: mcpConfigFile } : mcpMock ? { mock: mcpMock } : undefined,
     });
 
-    // Create agent LLM once, using the fully-resolved sandbox env (includes
-    // keychain OAuth tokens, API keys, safe host vars).
-    const llm = createAgentLLM(agentName, workspace.env);
+    try {
+        // Create agent LLM once, using the fully-resolved sandbox env (includes
+        // keychain OAuth tokens, API keys, safe host vars).
+        const llm = createAgentLLM(agentName, workspace.env);
 
-    // Fall back to sandbox dir name if no test name resolved
-    const debugName = testCtx.name || path.basename(path.dirname(workspace.path));
-    // Default debug dir is next to the eval file, fallback to cwd
-    const debugBaseDir = testCtx.dir || process.cwd();
+        // Fall back to sandbox dir name if no test name resolved
+        const debugName = testCtx.name || path.basename(path.dirname(workspace.path));
+        // Default debug dir is next to the eval file, fallback to cwd
+        const debugBaseDir = testCtx.dir || process.cwd();
 
-    const verbose = createVerboseEmitter({
-        enabled: process.env.PATHGRADE_VERBOSE === '1',
-        sink: verboseSinkOverride ?? undefined,
-        testName: testCtx.name || undefined,
-    });
+        const verbose = createVerboseEmitter({
+            enabled: process.env.PATHGRADE_VERBOSE === '1',
+            sink: verboseSinkOverride ?? undefined,
+            testName: caseContext.displayName || undefined,
+            ...(standalone ? { agentName } : {}),
+        });
 
-    const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety);
-    lifecycleCore.registerAgent(agent);
-    return agent;
+        const provenance = standalone
+            ? await buildStandaloneAgentInvocationProvenance({
+                agentName,
+                transport,
+                model: opts.model,
+                workspaceEnv: workspace.env,
+            })
+            : undefined;
+        const agent = new AgentImpl(workspace, agentName, llm, timeoutSetting, opts.conversationWindow, opts.model, opts.debug, debugName, debugBaseDir, verbose, transport, opts.mcpSafety, provenance);
+        lifecycleCore.registerAgent(agent);
+        return agent;
+    } catch (error) {
+        await workspace.dispose().catch(() => {});
+        throw error;
+    }
+}
+
+async function buildStandaloneAgentInvocationProvenance(input: {
+    agentName: AgentName;
+    transport?: AgentTransport;
+    model?: string;
+    workspaceEnv: Record<string, string>;
+}): Promise<AgentInvocationProvenance> {
+    if (input.agentName === 'claude') {
+        const runtime = await verifyBundledClaudeRuntime();
+        return {
+            agent: 'claude',
+            transport: input.transport ?? 'native',
+            model: input.model === undefined
+                ? { id: null, source: 'provider-default' }
+                : { id: input.model, source: 'user' },
+            authentication: input.workspaceEnv.PATHGRADE_CLAUDE_LOCAL_OAUTH === '1'
+                ? 'claude-oauth'
+                : 'api-key',
+            runtime: {
+                package: '@anthropic-ai/claude-agent-sdk',
+                package_version: runtime.sdkVersion,
+                embedded_binary_version: runtime.embeddedBinaryVersion,
+                provenance: runtime.provenance,
+            },
+        };
+    }
+
+    const runtime = await verifyBundledCodexRuntime(resolveBundledCodexCommand());
+    return {
+        agent: 'codex',
+        transport: input.transport ?? 'native',
+        model: input.model === undefined
+            ? { id: 'gpt-5.4', source: 'pathgrade-default' }
+            : { id: input.model, source: 'user' },
+        authentication: 'api-key',
+        runtime: {
+            package: '@openai/codex',
+            package_version: runtime.packageVersion,
+            embedded_binary_version: runtime.nativeVersion,
+            provenance: runtime.provenance,
+        },
+    };
 }

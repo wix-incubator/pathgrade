@@ -24,11 +24,13 @@ import type { RunnerInvocationAdapter } from '../runners/invocation.js';
 import type { SpawnVitest } from '../runners/vitest-invocation.js';
 import type { SelectionResult } from '../affected/types.js';
 import type { PathgradeRunArgs } from './run-args.js';
+import { validateStandaloneInvocation } from '../standalone/validation.js';
 
 export type { SpawnVitest };
 
 export interface RunChangedOptions {
     cwd: string;
+    standalone?: boolean;
     parsed: PathgradeRunArgs;
     /** Override for tests; default spawns `npx vitest` inheriting stdio. */
     spawnVitest?: SpawnVitest;
@@ -41,6 +43,7 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
         ...process.env,
         ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
         ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
+        ...(parsed.quiet ? { PATHGRADE_QUIET: '1' } : {}),
     };
     const configPath = findVitestConfigArg(parsed.runnerArgs);
 
@@ -49,16 +52,24 @@ export async function runChanged(opts: RunChangedOptions): Promise<number> {
     try {
         config = await resolvePathgradeConfig({
             cwd,
+            standalone: opts.standalone,
             legacyVitestConfigPath: configPath,
             warn: w => {
                 if (!parsed.quiet) process.stderr.write(`${w}\n`);
             },
         });
+        if (opts.standalone) {
+            validateStandaloneInvocation({
+                adapterName: parsed.adapterName ?? config.runner.adapter,
+                runnerArgs: [...config.runner.args, ...parsed.runnerArgs],
+            });
+        }
         runnerInvocation = opts.runnerInvocation ?? await loadRunnerInvocationAdapter({
             adapterName: parsed.adapterName ?? config.runner.adapter,
             cwd,
             config,
             spawnVitest: opts.spawnVitest,
+            standalone: opts.standalone,
         });
     } catch (err) {
         process.stderr.write(`${errMsg(err)}\n`);

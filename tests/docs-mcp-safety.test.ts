@@ -27,4 +27,23 @@ describe('MCP safety documentation', () => {
         expect(guide).toContain('Denied calls are declined before approval');
         expect(guide).toContain('secret-looking MCP arguments are redacted');
     });
+
+    it('separates standalone prerequisites and environment behavior from project-local mode', async () => {
+        const guide = await fs.readFile(path.join(docsDir, 'USER_GUIDE.md'), 'utf8');
+
+        for (const promise of [
+            'Standalone—Node only',
+            'Node.js 22 or 24',
+            'macOS, Linux, or WSL',
+            'root `vitest`',
+            'Vitest subpaths',
+            'project Vitest configuration is ignored',
+            'does not load `.env`',
+            'not a security sandbox',
+            'application dependencies remain your responsibility',
+            'project-local commands remain unchanged',
+        ]) {
+            expect(guide).toContain(promise);
+        }
+    });
 });

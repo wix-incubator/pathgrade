@@ -23,7 +23,7 @@ import type {
 } from '../src/agents/codex-app-server/protocol/index.js';
 
 describe('vendored codex-app-server protocol types', () => {
-    it('ClientRequestMethod enumerates the 8 methods the pathgrade driver may send', () => {
+    it('ClientRequestMethod enumerates the 9 methods the pathgrade driver may send', () => {
         // Switch-exhaustiveness-style probe. Response-shaped entries
         // (e.g. */answer) are deliberately excluded — they flow through
         // `transport.sendResponse(req.id, …)`, not through this union.
@@ -36,8 +36,9 @@ describe('vendored codex-app-server protocol types', () => {
             'thread/read': true,
             'thread/list': true,
             'review/start': true,
+            'account/login/start': true,
         };
-        expect(Object.keys(values)).toHaveLength(8);
+        expect(Object.keys(values)).toHaveLength(9);
     });
 
     it('ClientRequestMethod excludes phantom response-shaped entries', () => {
@@ -49,7 +50,7 @@ describe('vendored codex-app-server protocol types', () => {
         expect(true).toBe(true);
     });
 
-    it('ServerRequestMethod enumerates the 9 server-request variants under rust-v0.124.0', () => {
+    it('ServerRequestMethod enumerates the 10 server-request variants under rust-v0.144.0', () => {
         const values: Record<ServerRequestMethod, true> = {
             'item/tool/requestUserInput': true,
             'item/permissions/requestApproval': true,
@@ -60,8 +61,9 @@ describe('vendored codex-app-server protocol types', () => {
             'applyPatchApproval': true,
             'execCommandApproval': true,
             'account/chatgptAuthTokens/refresh': true,
+            'attestation/generate': true,
         };
-        expect(Object.keys(values)).toHaveLength(9);
+        expect(Object.keys(values)).toHaveLength(10);
     });
 
     it('ServerRequestMethod lists each v0.124 rename target individually', () => {
@@ -107,12 +109,13 @@ describe('vendored codex-app-server protocol types', () => {
         expect(q.options?.[0].label).toBe('us-east-1');
     });
 
-    it('ToolRequestUserInputParams has threadId/turnId/itemId/questions', () => {
+    it('ToolRequestUserInputParams has threadId/turnId/itemId/questions and auto-resolution', () => {
         const params: ToolRequestUserInputParams = {
             threadId: 't',
             turnId: 'turn',
             itemId: 'item',
             questions: [],
+            autoResolutionMs: null,
         };
         expect(params.questions).toEqual([]);
     });
@@ -152,7 +155,7 @@ describe('vendored codex-app-server protocol types', () => {
             jsonrpc: '2.0',
             id: 1,
             method: 'turn/start',
-            params: { threadId: 't', turnId: 'turn', itemId: 'item', questions: [] },
+            params: { threadId: 't', turnId: 'turn', itemId: 'item', questions: [], autoResolutionMs: null },
         };
         expect(req.jsonrpc).toBe('2.0');
     });
@@ -161,7 +164,7 @@ describe('vendored codex-app-server protocol types', () => {
         const req: ServerRequest = {
             method: 'item/tool/requestUserInput',
             id: 42,
-            params: { threadId: 't', turnId: 'turn', itemId: 'item', questions: [] },
+            params: { threadId: 't', turnId: 'turn', itemId: 'item', questions: [], autoResolutionMs: null },
         };
         if (req.method === 'item/tool/requestUserInput') {
             expect(req.params.itemId).toBe('item');
@@ -172,13 +175,13 @@ describe('vendored codex-app-server protocol types', () => {
 
     it('Other vendored types compile standalone', () => {
         // Ensure standalone vendored types import without errors.
-        const thread: ThreadStartParams = {
-            experimentalRawEvents: false,
-            persistExtendedHistory: false,
-        };
+        const thread: ThreadStartParams = { threadSource: 'pathgrade' };
+        // @ts-expect-error — rust-v0.144.0 ThreadSource is a string.
+        const invalidThreadSource: ThreadStartParams = { threadSource: { source: 'pathgrade' } };
         const opt: ToolRequestUserInputOption = { label: 'x', description: 'y' };
         const perm: PermissionsRequestApprovalParams = {
             threadId: 't', turnId: 'turn', itemId: 'item', cwd: '/tmp', reason: null, permissions: null,
+            environmentId: 'env-1', startedAtMs: 1,
         };
         const dyn: DynamicToolCallParams = {
             threadId: 't', turnId: 'turn', callId: 'c', namespace: null, tool: 'x', arguments: null,
@@ -192,6 +195,7 @@ describe('vendored codex-app-server protocol types', () => {
             threadId: 't', turnId: null, serverName: 'mcp', mode: 'url', _meta: null, message: 'hi', url: 'https://x', elicitationId: 'e',
         };
         const turn: TurnCompletedNotification = { threadId: 't', turn: null };
-        expect([thread.experimentalRawEvents, opt.label, perm.cwd, dyn.tool, elicit.mode, turn.threadId]).toBeDefined();
+        expect([thread.threadSource, opt.label, perm.environmentId, perm.startedAtMs, dyn.tool, elicit.mode, turn.threadId]).toBeDefined();
+        void invalidThreadSource;
     });
 });

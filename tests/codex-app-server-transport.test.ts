@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'stream';
 import {
     buildAppServerSpawnArgs,
+    buildAppServerProcessArgs,
     createAppServerSessionHandle,
     createNdjsonTransport,
+    spawnAppServerTransport,
     type SessionChildHandle,
 } from '../src/agents/codex-app-server/transport.js';
 
@@ -201,6 +203,86 @@ describe('buildAppServerSpawnArgs', () => {
             '--verbose',
             'app-server',
         ]);
+    });
+});
+
+describe('buildAppServerProcessArgs', () => {
+    it('places a bundled JavaScript launcher before Codex app-server arguments', () => {
+        expect(buildAppServerProcessArgs(
+            ['/tool/codex.js'],
+            ['--model', 'gpt-5.4'],
+            {},
+        )).toEqual([
+            '/tool/codex.js',
+            '-c',
+            'features.default_mode_request_user_input=true',
+            '--model',
+            'gpt-5.4',
+            'app-server',
+        ]);
+    });
+});
+
+describe('spawnAppServerTransport stderr diagnostics', () => {
+    it('redacts every API-key occurrence while retaining safe stderr context', async () => {
+        const sentinelKey = 'sentinel-key-must-not-leak';
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const handle = spawnAppServerTransport({
+            binary: process.execPath,
+            prefixArgs: [
+                '-e',
+                [
+                    'const key = process.env.OPENAI_API_KEY;',
+                    'process.stderr.write(`safe-prefix\\n${key.slice(0, 8)}`);',
+                    'setTimeout(() => {',
+                    'process.stderr.write(`${key.slice(8)}\\nrepeat=${key}\\n${key}\\nsafe-suffix\\n`);',
+                    'process.exit(17);',
+                    '}, 10);',
+                ].join(''),
+                '--',
+            ],
+            env: { ...process.env, OPENAI_API_KEY: sentinelKey },
+        });
+
+        try {
+            await new Promise<void>((resolve) => {
+                handle.transport.onClose(() => resolve());
+            });
+            const diagnostic = error.mock.calls.flat().join('\n');
+            expect(diagnostic).toContain('safe-prefix');
+            expect(diagnostic).toContain('safe-suffix');
+            expect(diagnostic).not.toContain(sentinelKey);
+            expect(diagnostic.match(/\[redacted\]/g)).toHaveLength(3);
+        } finally {
+            await handle.close();
+            error.mockRestore();
+        }
+    });
+
+    it('retains stderr unchanged when no API key is configured', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const { OPENAI_API_KEY: _removed, ...envWithoutApiKey } = process.env;
+        const handle = spawnAppServerTransport({
+            binary: process.execPath,
+            prefixArgs: [
+                '-e',
+                'process.stderr.write("safe-context-unchanged\\n");process.exit(17);',
+                '--',
+            ],
+            env: envWithoutApiKey,
+        });
+
+        try {
+            await new Promise<void>((resolve) => {
+                handle.transport.onClose(() => resolve());
+            });
+            const diagnostic = error.mock.calls.flat().join('\n');
+            expect(diagnostic).toContain('safe-context-unchanged');
+            expect(diagnostic).not.toContain('[redacted]');
+        } finally {
+            await handle.close();
+            error.mockRestore();
+        }
     });
 });
 

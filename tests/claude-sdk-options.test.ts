@@ -213,6 +213,14 @@ describe('resolveClaudeCodeExecutable — override precedence (TB6)', () => {
         expect(exe).toBe('/from/env/claude');
     });
 
+    it('rejects PATHGRADE_CLAUDE_CODE_EXECUTABLE in standalone mode', () => {
+        expect(() => resolveClaudeCodeExecutable({
+            agentOptionsExecutable: undefined,
+            envExecutable: '/from/env/claude',
+            standalone: true,
+        })).toThrow(/PATHGRADE_CLAUDE_CODE_EXECUTABLE.*standalone/);
+    });
+
     it('AgentOptions.claudeCodeExecutable wins over the env variable', () => {
         // Run-level precedence: explicit AgentOptions beats process env.
         const exe = resolveClaudeCodeExecutable({

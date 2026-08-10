@@ -1,4 +1,4 @@
-// Vendored from openai/codex@rust-v0.124.0
+// Vendored from openai/codex@rust-v0.144.0
 // Source: codex-rs/app-server-protocol/schema/typescript/v2/ToolRequestUserInputParams.ts
 // GENERATED CODE in upstream; do not modify locally either.
 
@@ -12,4 +12,5 @@ export type ToolRequestUserInputParams = {
     turnId: string;
     itemId: string;
     questions: Array<ToolRequestUserInputQuestion>;
+    autoResolutionMs: number | null;
 };

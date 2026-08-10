@@ -3,6 +3,8 @@ import { writePathgradeArtifacts } from '../reporting/artifacts.js';
 import { projectNormalizedRunSnapshotToReportInput } from './report-projection.js';
 import type { PathgradeSelectionReport } from '../types.js';
 import type { ReportSummaryGroup } from '../reporting/types.js';
+import type { ArtifactWriteResult, PathgradeReportBuildResult } from '../reporting/types.js';
+import type { StandaloneRunProvenance } from '../standalone/provenance.js';
 import type {
     AdapterDiscoveryInput,
     AdapterLifecycleHooks,
@@ -21,6 +23,7 @@ export interface PathgradeRunOptions {
     reporterMode?: AdapterReporterMode;
     threshold?: number;
     selection?: PathgradeSelectionReport;
+    provenance?: StandaloneRunProvenance;
     lifecycle?: AdapterLifecycleHooks;
     signal?: AbortSignal;
     printSummary?: (summaries: ReportSummaryGroup[]) => void;
@@ -30,6 +33,10 @@ export interface PathgradeRunOptions {
     writeEmptyReport?: boolean;
     log?: (message: string) => void;
     warn?: (message: string) => void;
+    onArtifactsWritten?: (input: {
+        built: PathgradeReportBuildResult;
+        artifacts: ArtifactWriteResult;
+    }) => void | Promise<void>;
 }
 
 export async function runWithAdapter(input: {
@@ -59,6 +66,7 @@ export async function runWithAdapter(input: {
         );
         let built = buildPathgradeReport({
             threshold: options.threshold,
+            provenance: options.provenance,
             ...reportInput,
         });
 
@@ -75,6 +83,7 @@ export async function runWithAdapter(input: {
             built = buildPathgradeReport({
                 threshold: options.threshold,
                 selection: loadedSelection,
+                provenance: options.provenance,
                 groups: reportInput.groups,
             });
         }
@@ -84,7 +93,8 @@ export async function runWithAdapter(input: {
             options.printSummary?.(built.summaries);
         }
 
-        await writePathgradeArtifacts(options.artifactRoot, built);
+        const artifacts = await writePathgradeArtifacts(options.artifactRoot, built);
+        await options.onArtifactsWritten?.({ built, artifacts });
         options.log?.(`results:${options.artifactRoot}`);
 
         if (mode === 'browser') {

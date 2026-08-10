@@ -105,6 +105,35 @@ export default {
         }
     });
 
+    it('standalone affected ignores legacy Vitest config', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pathgrade-affected-standalone-'));
+        fs.mkdirSync(path.join(root, 'skills/alpha'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'skills/alpha/SKILL.md'), '# alpha');
+        fs.writeFileSync(
+            path.join(root, 'skills/alpha/alpha.eval.ts'),
+            "import { createAgent } from '@wix/pathgrade';\nvoid createAgent;\n",
+        );
+        fs.writeFileSync(path.join(root, 'vitest.config.ts'), `
+export default {
+    plugins: [{
+        name: 'pathgrade',
+        __pathgradeOptions: { include: ['legacy/**/*.eval.ts'] },
+    }],
+};
+`);
+        fs.writeFileSync(changedFilesPath, 'skills/alpha/src/x.ts\n');
+
+        const cap = captureStd();
+        try {
+            const code = await runAffected({ cwd: root, changedFilesPath, standalone: true });
+            expect(code).toBe(0);
+            expect(cap.stdout()).toContain('skills/alpha/alpha.eval.ts');
+        } finally {
+            cap.restore();
+            try { fs.unlinkSync(changedFilesPath); } catch {}
+        }
+    });
+
     it('empty changed-files file → empty stdout, exit 0', async () => {
         fs.writeFileSync(changedFilesPath, '');
 

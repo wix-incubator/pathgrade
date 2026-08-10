@@ -30,8 +30,6 @@ suiteFn('codex app-server protocol fixture suite', () => {
                 approvalPolicy: 'on-request',
                 sandbox: 'workspace-write',
                 ephemeral: true,
-                experimentalRawEvents: false,
-                persistExtendedHistory: false,
             });
 
             expect(typeof response).toBe('object');
@@ -76,8 +74,6 @@ suiteFn('codex app-server protocol fixture suite', () => {
                 approvalPolicy: 'never',
                 sandbox: 'workspace-write',
                 ephemeral: true,
-                experimentalRawEvents: false,
-                persistExtendedHistory: false,
             })) as { thread?: { id?: unknown } };
             expect(typeof echo.thread?.id).toBe('string');
         } finally {

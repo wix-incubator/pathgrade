@@ -9,7 +9,8 @@
     "vitest.config.ts",
     "evals/vitest.config.mts",
     "examples/**/vitest.config.mts",
-    "scripts/*.ts"
+    "scripts/*.ts",
+    "scripts/release/*.mjs"
   ],
   "project": [
     "src/**/*.ts",
@@ -17,12 +18,14 @@
     "evals/**/*.ts",
     "examples/**/*.ts",
     "scripts/**/*.ts",
+    "scripts/**/*.mjs",
     "scorers/**/*.ts"
   ],
   "ignore": [
     "tests/fixtures/**"
   ],
   "ignoreDependencies": [
-    "jest"
+    "jest",
+    "@openai/codex"
   ]
 }

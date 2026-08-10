@@ -24,6 +24,14 @@ import { runChanged } from './commands/run-changed.js';
 import { clearSidecar } from './affected/sidecar.js';
 import { resolvePathgradeConfig } from './config/pathgrade.js';
 import { loadRunnerInvocationAdapter } from './runners/adapter-loader.js';
+import {
+    parseStandaloneCommand,
+    PATHGRADE_STANDALONE_ENV,
+} from './standalone/mode.js';
+import {
+    assertStandalonePlatform,
+    validateStandaloneInvocation,
+} from './standalone/validation.js';
 import { fmt } from './utils/cli.js';
 import { shutdown } from './utils/shutdown.js';
 
@@ -50,36 +58,80 @@ function loadDotenv(): void {
     }
 }
 
-function validateApiKeys(): void {
+function validateApiKeys(standalone = false): void {
     const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
-    const hasClaude = !!process.env.HOME; // Claude CLI uses OS keychain, just check it exists
+
+    // Standalone validates the selected provider at invocation time. A generic
+    // warning here is both noisy for deterministic evals and unable to account
+    // for Claude keychain or Codex cached authentication.
+    if (standalone) return;
 
     if (!hasAnthropic && !hasOpenAI) {
+        const location = '.env or environment';
+        const fallback = 'Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.';
         console.log(
-            `\n  ${fmt.dim('warning:')} No API keys found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env or environment.\n` +
-            `  ${fmt.dim('         Claude CLI auth (keychain) and Codex exec cached login (~/.codex/auth.json) may still work if installed.')}\n`,
+            `\n  ${fmt.dim('warning:')} No API keys found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in ${location}.\n` +
+            `  ${fmt.dim(`         ${fallback}`)}\n`,
         );
     }
 }
 
 async function main() {
     shutdown.install();
-    const args = process.argv.slice(2);
+    const parsedCommand = parseStandaloneCommand(process.argv.slice(2));
+    if (parsedCommand.standalone) {
+        process.env[PATHGRADE_STANDALONE_ENV] = '1';
+    } else {
+        delete process.env[PATHGRADE_STANDALONE_ENV];
+    }
+
+    const args = parsedCommand.args;
     const command = args[0];
+
+    if (parsedCommand.standalone && (command === '--help' || command === '-h')) {
+        printStandaloneHelp();
+        return;
+    }
+
+    if (parsedCommand.standalone && command === '--version') {
+        console.log(await readPackageVersion());
+        return;
+    }
+
+    if (
+        parsedCommand.standalone
+        && command !== 'run'
+        && command !== 'affected'
+        && !command.startsWith('-')
+    ) {
+        console.error(`pathgrade standalone: unsupported command "${command}"`);
+        console.error('Run "pathgrade standalone --help" for supported commands.');
+        process.exitCode = 1;
+        return;
+    }
+
+    if (parsedCommand.standalone) {
+        try {
+            assertStandalonePlatform({
+                nodeMajor: Number(process.versions.node.split('.')[0]),
+                platform: process.platform,
+                arch: process.arch,
+            });
+        } catch (err) {
+            console.error(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+            return;
+        }
+    }
 
     if (command === '--help' || command === '-h') {
         printHelp();
         return;
     }
 
-    if (command === '--version' || command === '-v') {
-        const pkg = JSON.parse(
-            await import('fs').then(fs => fs.promises.readFile(
-                new URL('../package.json', import.meta.url), 'utf-8'
-            ))
-        );
-        console.log(pkg.version);
+    if (command === '--version' || (!parsedCommand.standalone && command === '-v')) {
+        console.log(await readPackageVersion());
         return;
     }
 
@@ -145,6 +197,7 @@ async function main() {
         const json = affectedArgs.includes('--json');
         const exitCode = await runAffected({
             cwd: process.cwd(),
+            standalone: parsedCommand.standalone,
             changedFilesPath,
             since,
             explain,
@@ -167,10 +220,18 @@ async function main() {
 
     if (command === 'run' || !command || command.startsWith('-')) {
         // pathgrade run [--changed [--since=…|--changed-files=…]] [--] [runner-args]
-        loadDotenv();
-        validateApiKeys();
+        if (!parsedCommand.standalone) {
+            loadDotenv();
+        }
+        validateApiKeys(parsedCommand.standalone);
 
         const parsed = parsePathgradeRunArgs(command === 'run' ? args.slice(1) : args);
+
+        if (parsedCommand.standalone && parsed.forceVerbose && parsed.quiet) {
+            console.error('pathgrade standalone: --quiet and --verbose are mutually exclusive');
+            process.exitCode = 1;
+            return;
+        }
 
         for (const warning of parsed.warnings ?? []) {
             console.error(`pathgrade: ${warning}`);
@@ -180,6 +241,7 @@ async function main() {
             const exitCode = await runChanged({
                 cwd: process.cwd(),
                 parsed,
+                standalone: parsedCommand.standalone,
             });
             process.exitCode = exitCode;
             return;
@@ -194,13 +256,24 @@ async function main() {
             ...process.env,
             ...(parsed.forceDiagnostics ? { PATHGRADE_DIAGNOSTICS: '1' } : {}),
             ...(parsed.forceVerbose ? { PATHGRADE_VERBOSE: '1' } : {}),
+            ...(parsed.quiet ? { PATHGRADE_QUIET: '1' } : {}),
         };
         try {
-            const config = await resolvePathgradeConfig({ cwd: process.cwd() });
+            const config = await resolvePathgradeConfig({
+                cwd: process.cwd(),
+                standalone: parsedCommand.standalone,
+            });
+            if (parsedCommand.standalone) {
+                validateStandaloneInvocation({
+                    adapterName: parsed.adapterName ?? config.runner.adapter,
+                    runnerArgs: [...config.runner.args, ...parsed.runnerArgs],
+                });
+            }
             const runner = await loadRunnerInvocationAdapter({
                 adapterName: parsed.adapterName ?? config.runner.adapter,
                 cwd: process.cwd(),
                 config,
+                standalone: parsedCommand.standalone,
             });
             process.exitCode = await runner.run({
                 cwd: process.cwd(),
@@ -232,6 +305,8 @@ function printHelp() {
                      [--diagnostics]           Print full diagnostics for passing evals too
                      [--quiet]                 Suppress the run-start summary
                      [--verbose|-v]            Stream live per-turn events to stderr during the run
+    pathgrade standalone [run|affected]
+                                      Embedded Vitest; Claude and Codex app-server only
     pathgrade init [--force]         Generate eval scaffolding
     pathgrade analyze [--skill=X]    Analyze skills and output JSON
     pathgrade validate <file>        Validate an .eval.ts file
@@ -264,6 +339,36 @@ function printHelp() {
     pathgrade preview browser        # open web UI
     pathgrade preview-reactions --snapshot ./pathgrade-debug/run-snapshot.json --reactions ./reactions.ts
 `);
+}
+
+function printStandaloneHelp(): void {
+    console.log(`
+  pathgrade standalone - Run evals with the embedded Vitest runtime
+
+  Usage:
+    pathgrade standalone [run] [eval-files...] [options]
+    pathgrade standalone affected [options]
+
+  Run options:
+    --verbose, -v                  Stream live agent events
+    --quiet                        Suppress progress and passing case details
+    --diagnostics                  Print expanded final diagnostics
+    --changed                      Run only affected evals
+    --since=<ref>                  Override the affected base ref
+    --changed-files=<path>         Read changed files from a newline-delimited file
+    -t, --testNamePattern=<name>   Filter Vitest cases by name
+
+  Affected options:
+    --since=<ref>                  Diff <ref>...HEAD
+    --changed-files=<path>         Read an explicit changed-file list
+    --explain                      Explain each selection decision on stderr
+    --json                         Emit structured JSON on stdout
+`);
+}
+
+async function readPackageVersion(): Promise<string> {
+    const content = await fs.promises.readFile(new URL('../package.json', import.meta.url), 'utf-8');
+    return (JSON.parse(content) as { version: string }).version;
 }
 
 main().catch(err => {

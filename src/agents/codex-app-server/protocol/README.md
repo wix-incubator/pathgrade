@@ -2,7 +2,7 @@
 
 The `.ts` files in this directory are a curated Pathgrade protocol surface
 based on [`openai/codex`](https://github.com/openai/codex) at tag
-`rust-v0.124.0`. Most vendored shapes live upstream under
+`rust-v0.144.0`. Most vendored shapes live upstream under
 `codex-rs/app-server-protocol/schema/typescript/v2/`. The union files
 `ClientRequest.ts` and `ServerRequest.ts` live upstream directly under
 `codex-rs/app-server-protocol/schema/typescript/` (no `v2/` segment), but
@@ -40,7 +40,7 @@ does not currently inspect the nested shape.
 
 ## Runtime consumption
 
-Pathgrade does not depend on the `@openai/codex` npm package at build or run
-time; the driver spawns the PATH-installed `codex` binary and talks JSON-RPC
-over stdio, using these vendored types for compile-time shape checking. The
-protocol tag above is the single source of truth for protocol alignment.
+Pathgrade's standalone runtime depends on the pinned `@openai/codex` npm
+package and invokes its JavaScript launcher through Node. Project-local mode
+continues to spawn the PATH-installed `codex` binary. Both modes talk JSON-RPC
+over stdio using these vendored types for compile-time shape checking.

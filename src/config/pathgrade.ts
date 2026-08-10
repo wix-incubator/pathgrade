@@ -80,17 +80,20 @@ export function defaultPathgradeConfig(): ResolvedPathgradeConfig {
 
 export async function resolvePathgradeConfig(input: {
     cwd: string;
+    standalone?: boolean;
     cli?: PathgradeConfig;
     configPath?: string;
     legacyVitestConfigPath?: string;
     warn?: (message: string) => void;
 }): Promise<ResolvedPathgradeConfig> {
     const fileConfig = await loadPathgradeConfigFile(input.cwd, input.configPath);
-    const legacyConfig = await loadLegacyVitestConfig(
-        input.cwd,
-        input.legacyVitestConfigPath,
-        input.warn,
-    );
+    const legacyConfig = input.standalone
+        ? undefined
+        : await loadLegacyVitestConfig(
+            input.cwd,
+            input.legacyVitestConfigPath,
+            input.warn,
+        );
     return mergePathgradeConfig(
         mergePathgradeConfig(
             mergePathgradeConfig(defaultPathgradeConfig(), legacyConfig),
