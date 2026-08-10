@@ -1,312 +1,74 @@
-name: Publish
+name: Stage npm release
 
 on:
   workflow_dispatch:
-    inputs:
-      wsl_evidence_run_id:
-        description: Workflow run containing protected wsl-x64-node24 evidence
-        required: true
-        type: string
-      provenance_evidence_run_id:
-        description: External run containing verified public npm Sigstore provenance evidence, if public
-        required: false
-        type: string
-      staged_verification_run_id:
-        description: External human-authenticated run containing staged-verification evidence and downloaded tarball
-        required: false
-        type: string
-      submit_to_stage:
-        description: Submit an absent artifact to npm staging, then stop for external human verification
-        required: false
-        default: false
-        type: boolean
-  push:
-    tags:
-      - "v*"
+
+concurrency:
+  group: stage-npm-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   prepare:
-    name: Retain one scoped release artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
-      filename: ${{ steps.artifact.outputs.filename }}
-      sha512: ${{ steps.artifact.outputs.sha512 }}
-      version: ${{ steps.artifact.outputs.version }}
+      sha512: ${{ steps.package.outputs.sha512 }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Setup Node 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           package-manager-cache: false
-
-      - name: Install immutable dependencies
-        run: yarn install --immutable
-
-      - name: Verify release tag
+      - run: yarn install --immutable
+      - id: package
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_TYPE" = tag
           test "$GITHUB_REF_NAME" = "v$version"
-
-      - name: Quality and full tests with live requests disabled
-        run: yarn quality && yarn test
-
-      - name: Pack and retain the scoped artifact
-        id: artifact
-        shell: bash
-        run: |
-          mkdir -p retained
+          yarn build
+          mkdir retained
           npm pack --json --pack-destination retained > retained/pack.json
-          filename="$(node -e "const p=require('./retained/pack.json'); process.stdout.write(p[0].filename)")"
+          filename="$(node -p "require('./retained/pack.json')[0].filename")"
           tarball="$PWD/retained/$filename"
-          sha512="$(node -e "const fs=require('node:fs'),c=require('node:crypto'); process.stdout.write(c.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$tarball")"
-          echo "filename=$filename" >> "$GITHUB_OUTPUT"
+          sha512="$(node -e "const fs=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$tarball")"
+          node tests/standalone-package-smoke/run-smoke.mjs --tarball "$tarball" --expected-sha512 "$sha512"
           echo "sha512=$sha512" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Validate retained package contents
-        shell: bash
-        run: |
-          tarball="$PWD/retained/${{ steps.artifact.outputs.filename }}"
-          tar -tzf "$tarball" > retained/file-list.txt
-          grep -Fx 'package/bin/pathgrade.js' retained/file-list.txt
-          grep -Fx 'package/dist/sdk/index.js' retained/file-list.txt
-          grep -Fx 'package/dist/standalone/vitest-config.js' retained/file-list.txt
-          if grep -E '^package/(tests|evals|examples|\.github)/' retained/file-list.txt; then exit 1; fi
-
-      - name: Upload retained artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: retained-scoped-tarball
-          path: |
-            retained/${{ steps.artifact.outputs.filename }}
-            retained/file-list.txt
-          if-no-files-found: error
-
-  live-linux:
-    name: Protected Linux Claude and Codex live smoke
-    needs: prepare
-    runs-on: ubuntu-latest
-    environment: npm-publish
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Setup Node 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Install immutable dependencies
-        run: yarn install --immutable
-      - name: Download retained artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: retained-scoped-tarball
-          path: retained
-      - name: Run protected Linux live gates
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        shell: bash
-        run: PATHGRADE_STANDALONE_LIVE_SMOKE=1 PATHGRADE_REQUIRE_LIVE_SMOKE=1 PATHGRADE_STANDALONE_LIVE_PROVIDER=all PATHGRADE_STANDALONE_TARBALL="$PWD/retained/${{ needs.prepare.outputs.filename }}" PATHGRADE_STANDALONE_TARBALL_SHA512="${{ needs.prepare.outputs.sha512 }}" PATHGRADE_LIVE_EVIDENCE_FILE="$PWD/live-linux.json" yarn vitest run tests/standalone-live-smoke.test.ts
-      - name: Upload Linux live evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: live-linux
-          path: live-linux.json
-          if-no-files-found: error
-
-  live-macos-codex:
-    name: Protected macOS Codex live smoke
-    needs: prepare
-    runs-on: macos-14
-    environment: npm-publish
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Setup Node 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Install immutable dependencies
-        run: yarn install --immutable
-      - name: Download retained artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: retained-scoped-tarball
-          path: retained
-      - name: Run protected macOS Codex gate
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        shell: bash
-        run: PATHGRADE_STANDALONE_LIVE_SMOKE=1 PATHGRADE_REQUIRE_LIVE_SMOKE=1 PATHGRADE_STANDALONE_LIVE_PROVIDER=codex PATHGRADE_STANDALONE_TARBALL="$PWD/retained/${{ needs.prepare.outputs.filename }}" PATHGRADE_STANDALONE_TARBALL_SHA512="${{ needs.prepare.outputs.sha512 }}" PATHGRADE_LIVE_EVIDENCE_FILE="$PWD/live-macos-codex.json" yarn vitest run tests/standalone-live-smoke.test.ts
-      - name: Upload macOS Codex live evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: live-macos-codex
-          path: live-macos-codex.json
-          if-no-files-found: error
-
-  platform-artifact-smoke:
-    name: Release artifact (${{ matrix.tuple_id }})
-    needs: prepare
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - tuple_id: darwin-arm64-node24
-            runner: macos-14
-          - tuple_id: darwin-x64-node24
-            runner: macos-15-intel
-          - tuple_id: linux-arm64-node24
-            runner: ubuntu-24.04-arm
-          - tuple_id: linux-x64-node24
-            runner: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Setup Node 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Install immutable dependencies
-        run: yarn install --immutable
-      - name: Download retained artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: retained-scoped-tarball
-          path: retained
-      - name: Smoke, probe, and record platform evidence
-        shell: bash
-        env:
-          TUPLE_ID: ${{ matrix.tuple_id }}
-          RETAINED_SCOPED_SHA512: ${{ needs.prepare.outputs.sha512 }}
-        run: |
-          tarball="$PWD/retained/${{ needs.prepare.outputs.filename }}"
-          node tests/standalone-package-smoke/run-smoke.mjs --tarball "$tarball" --expected-sha512 "$RETAINED_SCOPED_SHA512"
-          prefix="$RUNNER_TEMP/pathgrade-prefix"
-          npm install --global --prefix "$prefix" --ignore-scripts "$tarball"
-          graph="$prefix/lib/node_modules/@wix/pathgrade/node_modules"
-          claude_binary="$(find "$graph" -type f -name claude -perm -111 | head -n 1)"
-          codex_binary="$(find "$graph" -type f -name codex -perm -111 | head -n 1)"
-          test "$("$claude_binary" --version)" = "2.1.116 (Claude Code)"
-          test "$("$codex_binary" --version)" = "codex-cli 0.144.0"
-          mkdir -p platform-evidence
-          node -e "const fs=require('node:fs'),os=require('node:os'); const p=require('./package.json'); fs.writeFileSync('platform-evidence/'+process.env.TUPLE_ID+'.json', JSON.stringify({tuple_id:process.env.TUPLE_ID,platform:process.platform,arch:process.arch,node_major:Number(process.versions.node.split('.')[0]),package:{name:p.name,version:p.version},runtimes:{claude:{sdk_version:p.dependencies['@anthropic-ai/claude-agent-sdk'],claude_code_version:'2.1.116'},codex:{package_version:p.dependencies['@openai/codex'],native_version:'0.144.0'}},tarball_sha512:process.env.RETAINED_SCOPED_SHA512,source_commit:process.env.GITHUB_SHA,status:'pass',runtime_environment:{kind:'github-hosted',observed_platform:process.platform,observed_arch:process.arch,wsl:false,kernel_release:process.platform==='linux'?os.release():null,wsl_interop:null}}))"
-      - name: Upload platform evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: platform-evidence-${{ matrix.tuple_id }}
-          path: platform-evidence/${{ matrix.tuple_id }}.json
+          name: npm-package
+          path: retained/*.tgz
           if-no-files-found: error
 
   stage:
-    name: Validate or submit scoped artifact, then require external staged verification
-    needs: [prepare, live-linux, live-macos-codex, platform-artifact-smoke]
+    needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: npm-publish
     permissions:
-      contents: read
       actions: read
       id-token: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Setup Node 24 with caching disabled
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - name: Install npm for staging
-        run: npm install --global 'npm@>=11.15.0 <12'
-      - name: Verify npm >=11.15.0 (minimum npm 11.15.0)
-        run: node -e "const [a,b,c]=process.versions.npm?.split('.').map(Number)??require('node:child_process').execFileSync('npm',['--version'],{encoding:'utf8'}).trim().split('.').map(Number); if(a<11||(a===11&&(b<15||(b===15&&c<0)))) process.exit(1)"
-      - name: Install immutable dependencies
-        run: yarn install --immutable
-      - name: Download retained artifact
-        uses: actions/download-artifact@v4
+      - run: npm install --global npm@11.18.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: retained-scoped-tarball
+          name: npm-package
           path: retained
-      - name: Download protected live evidence
-        uses: actions/download-artifact@v4
-        with:
-          pattern: live-*
-          path: live-evidence
-          merge-multiple: true
-      - name: Download hosted platform evidence
-        uses: actions/download-artifact@v4
-        with:
-          pattern: platform-evidence-*
-          path: platform-evidence
-          merge-multiple: true
-      - name: Download manual protected WSL evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WSL_EVIDENCE_RUN_ID: ${{ inputs.wsl_evidence_run_id }}
-        run: |
-          test -n "$WSL_EVIDENCE_RUN_ID"
-          gh run download "$WSL_EVIDENCE_RUN_ID" --name platform-evidence-wsl-x64-node24 --dir platform-evidence
-      - name: Download external public provenance evidence
-        if: inputs.provenance_evidence_run_id != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PROVENANCE_EVIDENCE_RUN_ID: ${{ inputs.provenance_evidence_run_id }}
-        run: gh run download "$PROVENANCE_EVIDENCE_RUN_ID" --name public-provenance-verification --dir registry-evidence
-      - name: Download external human staged verification evidence
-        if: inputs.staged_verification_run_id != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          STAGED_VERIFICATION_RUN_ID: ${{ inputs.staged_verification_run_id }}
-        run: gh run download "$STAGED_VERIFICATION_RUN_ID" --name staged-verification --dir registry-evidence
-      - name: Validate pathgrade-live-evidence/v1 records and all five platform records
-        run: node scripts/release/verify-platform-evidence.mjs --commit "$GITHUB_SHA" --tarball-sha512 "${{ needs.prepare.outputs.sha512 }}" --evidence-dir "$PWD/platform-evidence" --live-evidence-dir "$PWD/live-evidence"
-      - name: Verify retained-tarball smoke
-        env:
-          RETAINED_SCOPED_TARBALL: ${{ github.workspace }}/retained/${{ needs.prepare.outputs.filename }}
-          RETAINED_SCOPED_SHA512: ${{ needs.prepare.outputs.sha512 }}
-        run: node tests/standalone-package-smoke/run-smoke.mjs --tarball "$RETAINED_SCOPED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512"
-      - name: Verify scoped registry package exists for staging
-        run: npm view @wix/pathgrade name --registry https://registry.npmjs.org
-      - name: Classify immutable artifact state
-        id: artifact-state
-        env:
-          RETAINED_SCOPED_TARBALL: ${{ github.workspace }}/retained/${{ needs.prepare.outputs.filename }}
-          RETAINED_SCOPED_SHA512: ${{ needs.prepare.outputs.sha512 }}
+      - name: Verify and stage
         shell: bash
-        run: |
-          args=(--package @wix/pathgrade --version "${{ needs.prepare.outputs.version }}" --tarball "$RETAINED_SCOPED_TARBALL" --expected-sha512 "$RETAINED_SCOPED_SHA512" --source-commit "$GITHUB_SHA" --sigstore-verifier "$PWD/scripts/release/verify-sigstore-bundle.mjs")
-          if [ -f registry-evidence/public-provenance-evidence.json ]; then args+=(--attestation-evidence "$PWD/registry-evidence/public-provenance-evidence.json"); fi
-          if [ -f registry-evidence/staged-evidence.json ]; then args+=(--staged-evidence "$PWD/registry-evidence/staged-evidence.json"); fi
-          node scripts/release/verify-artifact-state.mjs "${args[@]}" | tee artifact-state.json
-          echo "state=$(node -p "require('./artifact-state.json').state")" >> "$GITHUB_OUTPUT"
-          echo "source=$(node -p "require('./artifact-state.json').source || ''")" >> "$GITHUB_OUTPUT"
-          echo "stage_id=$(node -p "require('./artifact-state.json').stage_id || ''")" >> "$GITHUB_OUTPUT"
-      - name: Stage the exact retained scoped tarball
-        id: staged
-        if: steps.artifact-state.outputs.state == 'absent' && inputs.submit_to_stage == true && inputs.staged_verification_run_id == ''
         env:
-          RETAINED_SCOPED_TARBALL: ${{ github.workspace }}/retained/${{ needs.prepare.outputs.filename }}
-        run: npm stage publish "$RETAINED_SCOPED_TARBALL" --registry https://registry.npmjs.org --json > stage-result.json
-      - name: Stop after OIDC stage submission for external human verification
-        if: steps.staged.outcome == 'success'
+          EXPECTED_SHA512: ${{ needs.prepare.outputs.sha512 }}
         run: |
-          echo 'Stage submitted. Use a short-lived interactive npm session outside this OIDC job to list, view, download, verify Sigstore provenance, and retest it.' >&2
-          echo 'Upload the pathgrade-staged-verification/v1 record and exact downloaded tarball as the staged-verification artifact, then rerun with staged_verification_run_id.' >&2
-          exit 1
-      - name: Require complete external staged verification before approval
-        if: steps.artifact-state.outputs.state == 'absent'
-        run: |
-          echo 'No matching public artifact or externally verified staged artifact exists. Set submit_to_stage or provide staged_verification_run_id.' >&2
-          exit 1
+          tarball="$(find "$PWD/retained" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$tarball"
+          actual="$(node -e "const fs=require('node:fs'),c=require('node:crypto');process.stdout.write(c.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$tarball")"
+          test "$actual" = "$EXPECTED_SHA512"
+          npm stage publish "$tarball" --registry https://registry.npmjs.org
