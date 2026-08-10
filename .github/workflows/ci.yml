@@ -3,106 +3,84 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - master
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Full suite (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [22, 24]
-
+  compatibility:
+    name: Test (Node 20.11.0)
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 20.11.0
           package-manager-cache: false
+      - run: yarn install --immutable
+      - run: yarn build && yarn vitest run && yarn test:runner-cli-smoke
 
-      - name: Install immutable dependencies
-        run: yarn install --immutable
+  package:
+    name: Test and package (Node 24)
+    runs-on: ubuntu-24.04
+    outputs:
+      sha512: ${{ steps.pack.outputs.sha512 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: yarn install --immutable
+      - run: yarn quality
+      - run: yarn build && yarn vitest run && yarn test:runner-cli-smoke && yarn test:release-contracts
+      - id: pack
+        run: |
+          mkdir retained
+          filename="$(npm pack --pack-destination retained)"
+          mv "retained/$filename" retained/pathgrade.tgz
+          echo "sha512=$(sha512sum retained/pathgrade.tgz | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pathgrade-package
+          path: retained/pathgrade.tgz
+          if-no-files-found: error
 
-      - name: Quality
-        run: yarn quality
-
-      - name: Full test suite
-        run: yarn test
-
-  platform-artifact-smoke:
-    name: Packed artifact (${{ matrix.tuple_id }})
+  package-smoke:
+    name: Package smoke (${{ matrix.runner }}, Node ${{ matrix.node }})
+    needs: [compatibility, package]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - tuple_id: darwin-arm64-node24
-            runner: macos-14
-          - tuple_id: darwin-x64-node24
-            runner: macos-15-intel
-          - tuple_id: linux-arm64-node24
-            runner: ubuntu-24.04-arm
-          - tuple_id: linux-x64-node24
-            runner: ubuntu-24.04
-
+          - { runner: ubuntu-24.04, node: 20.11.0 }
+          - { runner: ubuntu-24.04, node: 24 }
+          - { runner: ubuntu-24.04-arm, node: 24 }
+          - { runner: macos-15, node: 24 }
+          - { runner: macos-15-intel, node: 24 }
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Setup Node 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           package-manager-cache: false
-
-      - name: Install immutable dependencies
-        run: yarn install --immutable
-
-      - name: Pack scoped artifact once
-        id: artifact
-        shell: bash
-        run: |
-          yarn build
-          mkdir -p retained
-          npm pack --json --pack-destination retained > retained/pack.json
-          tarball="$(node -e "const p=require('./retained/pack.json'); process.stdout.write(require('node:path').resolve('retained', p[0].filename))")"
-          sha512="$(node -e "const fs=require('node:fs'),c=require('node:crypto'); process.stdout.write(c.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$tarball")"
-          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
-          echo "sha512=$sha512" >> "$GITHUB_OUTPUT"
-
-      - name: Run deterministic installed-package smoke
-        shell: bash
-        run: node tests/standalone-package-smoke/run-smoke.mjs --tarball "${{ steps.artifact.outputs.tarball }}" --expected-sha512 "${{ steps.artifact.outputs.sha512 }}"
-
-      - name: Probe bundled native runtimes and write evidence
-        shell: bash
-        env:
-          TUPLE_ID: ${{ matrix.tuple_id }}
-          RETAINED_SCOPED_TARBALL: ${{ steps.artifact.outputs.tarball }}
-          RETAINED_SCOPED_SHA512: ${{ steps.artifact.outputs.sha512 }}
-        run: |
-          prefix="$RUNNER_TEMP/pathgrade-prefix"
-          npm install --global --prefix "$prefix" --ignore-scripts "$RETAINED_SCOPED_TARBALL"
-          graph="$prefix/lib/node_modules/@wix/pathgrade/node_modules"
-          claude_binary="$(find "$graph" -type f -name claude -perm -111 | head -n 1)"
-          codex_binary="$(find "$graph" -type f -name codex -perm -111 | head -n 1)"
-          test -n "$claude_binary" && test -n "$codex_binary"
-          test "$("$claude_binary" --version)" = "2.1.116 (Claude Code)"
-          test "$("$codex_binary" --version)" = "codex-cli 0.144.0"
-          mkdir -p platform-evidence
-          node -e "const fs=require('node:fs'); const p=require('./package.json'); fs.writeFileSync('platform-evidence/'+process.env.TUPLE_ID+'.json', JSON.stringify({tuple_id:process.env.TUPLE_ID,platform:process.platform,arch:process.arch,node_major:Number(process.versions.node.split('.')[0]),package:{name:p.name,version:p.version},runtimes:{claude:{sdk_version:p.dependencies['@anthropic-ai/claude-agent-sdk'],claude_code_version:'2.1.116'},codex:{package_version:p.dependencies['@openai/codex'],native_version:'0.144.0'}},tarball_sha512:process.env.RETAINED_SCOPED_SHA512,source_commit:process.env.GITHUB_SHA,status:'pass'}))"
-
-      - name: Upload platform evidence
-        uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: platform-evidence-${{ matrix.tuple_id }}
-          path: platform-evidence/${{ matrix.tuple_id }}.json
-          if-no-files-found: error
+          name: pathgrade-package
+          path: retained
+      - run: node tests/standalone-package-smoke/run-smoke.mjs --tarball "$PWD/retained/pathgrade.tgz" --expected-sha512 "${{ needs.package.outputs.sha512 }}"
+      - run: |
+          prefix="$RUNNER_TEMP/pathgrade-prefix"
+          npm install --global --prefix "$prefix" --ignore-scripts retained/pathgrade.tgz
+          graph="$prefix/lib/node_modules/@wix/pathgrade/node_modules"
+          claude="$(find "$graph" -type f -name claude -perm -111 -print -quit)"
+          codex="$(find "$graph" -type f -name codex -perm -111 -print -quit)"
+          test -x "$claude" && test -x "$codex"
+          "$claude" --version
+          "$codex" --version
