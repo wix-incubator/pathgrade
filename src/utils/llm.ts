@@ -8,7 +8,7 @@ import type {
     ToolUseMessage,
     TokenUsage,
 } from './llm-types.js';
-import { cliProvider } from './llm-providers/cli.js';
+import { cliProvider, codexCliProvider } from './llm-providers/cli.js';
 import { anthropicProvider } from './llm-providers/anthropic.js';
 import { openaiProvider } from './llm-providers/openai.js';
 
@@ -142,7 +142,7 @@ export function createLLMClient(
             // If model explicitly targets a provider type (e.g., "gpt-4o" → openai),
             // narrow to only providers of that type
             const narrowed = requestedProviderType
-                ? candidates.filter((p) => p.name === requestedProviderType)
+                ? candidates.filter((p) => (p.modelFamily ?? p.name) === requestedProviderType)
                 : candidates;
 
             // Try narrowed set first, then fall back to all candidates
@@ -195,7 +195,7 @@ export function createLLMClient(
             }
             if (agentName === 'codex') {
                 throw new Error(
-                    'Codex CLI not found on PATH. Install with: npm install -g @openai/codex'
+                    'Codex judge requires an authenticated Codex CLI or OPENAI_API_KEY.'
                 );
             }
             if (agentName === 'cursor') {
@@ -237,7 +237,7 @@ export async function callLLM(prompt: string, opts: LLMCallOptions = {}): Promis
  * Create an LLM client scoped to the providers that match the given agent.
  *
  * - claude → CLI + Anthropic API (no OpenAI fallthrough)
- * - codex  → OpenAI API
+ * - codex  → Codex CLI + OpenAI API
  *
  * If `agentEnv` is provided, it is merged into every LLM call so that
  * the agent's env propagates to persona/judge/summarization calls.
@@ -250,11 +250,12 @@ export function createAgentLLM(agentName: string, agentEnv?: Record<string, stri
     // harnesses — see PRD §"LLM-backend routing"). Cursor evals therefore
     // depend on Claude CLI or ANTHROPIC_API_KEY being available at judge time.
     const baseAdapters = agentName === 'codex'
-        ? [openaiProvider]
+        ? [codexCliProvider, openaiProvider]
         : [cliProvider, anthropicProvider];
     const adapters = agentEnv && Object.keys(agentEnv).length > 0
         ? baseAdapters.map<LLMProviderAdapter>((a) => ({
             ...a,
+            isAvailable: (env) => a.isAvailable({ ...agentEnv, ...env }),
             call: (prompt, opts) => a.call(prompt, { ...opts, env: { ...agentEnv, ...opts.env } }),
             ...(a.callWithTools
                 ? { callWithTools: (messages, opts) => a.callWithTools!(messages, { ...opts, env: { ...agentEnv, ...opts.env } }) }

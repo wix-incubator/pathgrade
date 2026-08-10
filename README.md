@@ -195,6 +195,8 @@ Judge scorers also support:
 - `input` for extra context such as generated file contents or command output
 - `tools` to let the judge LLM read workspace artifacts itself via a bounded tool-use loop (`readFile`, `listDir`, `grep`, `getToolEvents`)
 
+Plain Codex judges reuse the authenticated local Codex CLI first. `OPENAI_API_KEY` remains an optional HTTP fallback.
+
 Example with artifact-backed input:
 
 ```typescript

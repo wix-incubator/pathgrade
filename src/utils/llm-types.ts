@@ -109,6 +109,8 @@ export type CallWithToolsResult =
 /** Wide implementor-facing type — each provider adapter implements this. */
 export interface LLMProviderAdapter {
     name: string;
+    /** Model family served by adapters whose transport name differs from the API provider name. */
+    modelFamily?: 'anthropic' | 'openai';
     isAvailable(env?: Record<string, string>): Promise<boolean>;
     call(prompt: string, opts: LLMCallOptions): Promise<LLMCallResult>;
     callWithTools?(messages: ToolUseMessage[], opts: CallWithToolsOptions): Promise<CallWithToolsResult>;

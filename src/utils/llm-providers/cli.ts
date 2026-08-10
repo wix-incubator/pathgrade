@@ -5,19 +5,29 @@ import type { LLMProvider, LLMCallOptions, LLMCallResult } from '../llm-types.js
 
 const availabilityPromises = new Map<string, Promise<boolean>>();
 
-function getCliAvailability(command: string, args: string[], timeoutSec: number): Promise<boolean> {
-    const cacheKey = `${command} ${args.join(' ')}`;
+function getCliAvailability(
+    command: string,
+    args: string[],
+    timeoutSec: number,
+    env: Record<string, string | undefined> = {},
+): Promise<boolean> {
+    const cacheKey = JSON.stringify([command, args, env.PATH, env.CODEX_HOME]);
     const existing = availabilityPromises.get(cacheKey);
     if (existing) return existing;
 
-    const promise = checkCliAvailability(command, args, timeoutSec);
+    const promise = checkCliAvailability(command, args, timeoutSec, env);
     availabilityPromises.set(cacheKey, promise);
     return promise;
 }
 
-async function checkCliAvailability(command: string, args: string[], timeoutSec: number): Promise<boolean> {
+async function checkCliAvailability(
+    command: string,
+    args: string[],
+    timeoutSec: number,
+    env: Record<string, string | undefined>,
+): Promise<boolean> {
     try {
-        const result = await runCli(command, args, {}, timeoutSec);
+        const result = await runCli(command, args, env, timeoutSec);
         return result.exitCode === 0;
     } catch {
         return false;
@@ -34,8 +44,8 @@ export async function isClaudeCliAvailable(): Promise<boolean> {
     return getCliAvailability('claude', ['auth', 'status'], 5);
 }
 
-export async function isCodexCliAvailable(): Promise<boolean> {
-    return getCliAvailability('codex', ['login', 'status'], 5);
+export async function isCodexCliAvailable(env: Record<string, string | undefined> = {}): Promise<boolean> {
+    return getCliAvailability('codex', ['login', 'status'], 5, env);
 }
 
 // --- JSON envelope parsing ---
@@ -80,6 +90,7 @@ export function extractStructuredOutput(raw: string): string {
 
 export const cliProvider: LLMProvider = {
     name: 'cli',
+    modelFamily: 'anthropic',
 
     async isAvailable(): Promise<boolean> {
         return isClaudeCliAvailable();
@@ -155,6 +166,53 @@ export const cliProvider: LLMProvider = {
             outputTokens: usage?.output_tokens,
             provider: 'cli',
             model: opts.model || 'claude-cli',
+        };
+    },
+};
+
+export const codexCliProvider: LLMProvider = {
+    name: 'codex-cli',
+    modelFamily: 'openai',
+
+    async isAvailable(env): Promise<boolean> {
+        return isCodexCliAvailable(env);
+    },
+
+    supportsModel(model: string): boolean {
+        const normalized = model.trim().toLowerCase();
+        return normalized.startsWith('gpt-')
+            || normalized.startsWith('chatgpt-')
+            || normalized.startsWith('o1')
+            || normalized.startsWith('o3')
+            || normalized.startsWith('o4');
+    },
+
+    async call(prompt: string, opts: LLMCallOptions): Promise<LLMCallResult> {
+        const args = [
+            'exec',
+            '--ephemeral',
+            '--skip-git-repo-check',
+            '--sandbox',
+            'read-only',
+            '--color',
+            'never',
+        ];
+        if (opts.model) {
+            args.push('--model', opts.model);
+        }
+        args.push('-');
+
+        const result = await runCli('codex', args, opts.env ?? {}, 120, prompt);
+        if (result.exitCode !== 0) {
+            throw new Error(
+                `Codex CLI exited with code ${result.exitCode}: ${result.stderr.slice(0, 300)}`
+            );
+        }
+
+        return {
+            text: result.stdout.trim(),
+            provider: 'cli',
+            model: opts.model || 'codex-cli',
         };
     },
 };
