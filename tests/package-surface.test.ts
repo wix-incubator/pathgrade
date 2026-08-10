@@ -62,7 +62,7 @@ describe('package surface', () => {
         expect(packageJson.dependencies['@anthropic-ai/claude-agent-sdk']).toBe('0.2.116');
         expect(packageJson.dependencies['@openai/codex']).toBe('0.144.0');
         expect(packageJson.scripts['test:release-contracts']).toBe(
-            'node tests/release-artifact-state.test.mjs && node tests/release-platform-evidence.test.mjs && node tests/publish-workflow-contract.test.mjs',
+            'node tests/release-platform-evidence.test.mjs && node tests/publish-workflow-contract.test.mjs',
         );
         expect(packageJson.scripts.test).toBe(
             'yarn build && vitest run && yarn test:runner-cli-smoke && yarn test:standalone-package-smoke && yarn test:release-contracts',

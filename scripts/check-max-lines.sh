@@ -79,6 +79,7 @@ while IFS= read -r -d '' file; do
     path="$file"
   fi
 
+  [[ -f "$path" ]] || continue
   should_skip "$display" && continue
   should_check "$display" || continue
 

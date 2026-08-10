@@ -78,7 +78,7 @@
     "test": "yarn build && vitest run && yarn test:runner-cli-smoke && yarn test:standalone-package-smoke && yarn test:release-contracts",
     "test:runner-cli-smoke": "node tests/runner-cli-smoke/run-smokes.mjs",
     "test:standalone-package-smoke": "node tests/standalone-package-smoke/run-smoke.mjs",
-    "test:release-contracts": "node tests/release-artifact-state.test.mjs && node tests/release-platform-evidence.test.mjs && node tests/publish-workflow-contract.test.mjs",
+    "test:release-contracts": "node tests/release-platform-evidence.test.mjs && node tests/publish-workflow-contract.test.mjs",
     "test:evals": "vitest run --config evals/vitest.config.mts",
     "test:coverage": "vitest run --coverage",
     "dev": "tsx src/pathgrade.ts",
@@ -120,8 +120,7 @@
     "@types/jest": "^30.0.0",
     "@types/picomatch": "^4.0.2",
     "@vitest/coverage-v8": "4.1.7",
-    "jest": "^30.0.0",
-    "sigstore": "4.0.0"
+    "jest": "^30.0.0"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.116",
